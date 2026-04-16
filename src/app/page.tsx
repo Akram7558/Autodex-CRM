@@ -1,65 +1,140 @@
-import Image from "next/image";
+'use client'
 
-export default function Home() {
+import { useState } from 'react'
+import { supabase } from '@/lib/supabase'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Car, Loader2 } from 'lucide-react'
+
+export default function LoginPage() {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  async function handleLogin(e: React.FormEvent) {
+    e.preventDefault()
+    setLoading(true)
+    setError('')
+
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
+
+    if (error) {
+      setError(error.message)
+      setLoading(false)
+    } else {
+      window.location.href = '/dashboard'
+    }
+  }
+
+  async function handleDemoLogin() {
+    setLoading(true)
+    setError('')
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email: 'demo@daricm.dz',
+      password: 'demo123',
+    })
+
+    if (error) {
+      setError("Connexion démo indisponible pour l'instant.")
+      setLoading(false)
+    } else {
+      window.location.href = '/dashboard'
+    }
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen bg-[#0d0d0d] flex flex-col items-center justify-center px-4">
+      {/* Logo */}
+      <div className="flex flex-col items-center mb-10">
+        <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-white/10 mb-4 border border-white/10">
+          <Car className="w-7 h-7 text-white" />
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+        <h1 className="text-white text-3xl font-semibold tracking-tight">Dari CRM</h1>
+        <p className="text-white/40 text-sm mt-1">Gestion commerciale automobile · Algérie</p>
+      </div>
+
+      {/* Card */}
+      <div className="w-full max-w-sm bg-white/5 border border-white/10 rounded-2xl p-8 backdrop-blur-sm">
+        <h2 className="text-white text-lg font-medium mb-6">Connexion</h2>
+
+        <form onSubmit={handleLogin} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="email" className="text-white/60 text-sm">
+              Adresse e-mail
+            </Label>
+            <Input
+              id="email"
+              type="email"
+              placeholder="exemple@daricm.dz"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              className="bg-white/8 border-white/15 text-white placeholder:text-white/25 focus-visible:ring-white/30 h-10"
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="password" className="text-white/60 text-sm">
+              Mot de passe
+            </Label>
+            <Input
+              id="password"
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              className="bg-white/8 border-white/15 text-white placeholder:text-white/25 focus-visible:ring-white/30 h-10"
+            />
+          </div>
+
+          {error && (
+            <p className="text-red-400 text-sm">{error}</p>
+          )}
+
+          <Button
+            type="submit"
+            disabled={loading}
+            className="w-full h-10 bg-white text-black hover:bg-white/90 font-medium mt-2"
           >
-            Documentation
-          </a>
+            {loading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              'Se connecter'
+            )}
+          </Button>
+        </form>
+
+        <div className="relative my-5">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-white/10" />
+          </div>
+          <div className="relative flex justify-center text-xs">
+            <span className="bg-[#141414] px-3 text-white/30">ou</span>
+          </div>
         </div>
-      </main>
+
+        <Button
+          type="button"
+          variant="outline"
+          onClick={handleDemoLogin}
+          disabled={loading}
+          className="w-full h-10 border-white/15 bg-transparent text-white/70 hover:bg-white/8 hover:text-white"
+        >
+          Connexion démo
+        </Button>
+
+        <p className="text-white/25 text-xs text-center mt-4">
+          demo@daricm.dz · demo123
+        </p>
+      </div>
+
+      <p className="text-white/20 text-xs mt-8">
+        © {new Date().getFullYear()} Dari CRM — Tous droits réservés
+      </p>
     </div>
-  );
+  )
 }
