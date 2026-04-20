@@ -74,7 +74,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const item = navItems.find(
       (n) => n.href === pathname || (n.href !== '/dashboard' && pathname.startsWith(n.href))
     )
-    return item?.label ?? 'Dari CRM'
+    return item?.label ?? 'Autodex'
   }
 
   // Shared sidebar body so desktop + mobile drawer stay in sync.
@@ -86,7 +86,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <Car className="w-4 h-4 text-indigo-400" />
         </div>
         <div className="flex-1">
-          <p className="text-white text-sm font-semibold leading-none tracking-tight">Dari CRM</p>
+          <p className="text-white text-sm font-semibold leading-none tracking-tight">Autodex</p>
           <p className="text-white/30 text-[10px] mt-0.5 leading-none">Automobile · Algérie</p>
         </div>
         {/* Close button — mobile drawer only */}
@@ -214,7 +214,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <Menu className="w-5 h-5" />
             </button>
             <span className="hidden sm:inline text-gray-400 text-xs font-medium uppercase tracking-wider">
-              Dari CRM
+              Autodex
             </span>
             <span className="hidden sm:inline text-gray-300">/</span>
             <span className="text-gray-800 font-semibold text-sm truncate">{activeLabel()}</span>

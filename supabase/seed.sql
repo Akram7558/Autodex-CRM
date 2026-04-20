@@ -1,9 +1,9 @@
 -- ============================================================
--- Dari CRM — Données de démonstration (Algérie)
+-- Autodex — Données de démonstration (Algérie)
 -- ============================================================
 -- IMPORTANT: Exécutez d'abord schema.sql, puis ce fichier.
 -- Pour la connexion démo, créez un utilisateur Auth dans
--- Supabase Dashboard : demo@daricm.dz / Demo1234!
+-- Supabase Dashboard : demo@autodex.store / Demo1234!
 -- ============================================================
 
 -- Nettoyage (optionnel — désactiver si vous voulez conserver les données)
@@ -17,21 +17,21 @@ truncate table showrooms   restart identity cascade;
 -- Showrooms
 -- ============================================================
 insert into showrooms (id, name, city, address, phone) values
-  ('a1000000-0000-0000-0000-000000000001', 'Dari Auto Alger',      'Alger',       '12 Rue Didouche Mourad, Hussein Dey', '023 45 67 89'),
-  ('a1000000-0000-0000-0000-000000000002', 'Dari Auto Oran',       'Oran',        '45 Boulevard du 1er Novembre, Oran',  '041 23 45 67'),
-  ('a1000000-0000-0000-0000-000000000003', 'Dari Auto Constantine','Constantine', '7 Rue Larbi Ben M''hidi, Constantine','031 87 65 43'),
-  ('a1000000-0000-0000-0000-000000000004', 'Dari Auto Annaba',     'Annaba',      '23 Avenue du 8 Mai 1945, Annaba',     '038 12 34 56'),
-  ('a1000000-0000-0000-0000-000000000005', 'Dari Auto Sétif',      'Sétif',       '3 Rue de l''Indépendance, Sétif',     '036 98 76 54');
+  ('a1000000-0000-0000-0000-000000000001', 'Autodex Auto Alger',      'Alger',       '12 Rue Didouche Mourad, Hussein Dey', '023 45 67 89'),
+  ('a1000000-0000-0000-0000-000000000002', 'Autodex Auto Oran',       'Oran',        '45 Boulevard du 1er Novembre, Oran',  '041 23 45 67'),
+  ('a1000000-0000-0000-0000-000000000003', 'Autodex Auto Constantine','Constantine', '7 Rue Larbi Ben M''hidi, Constantine','031 87 65 43'),
+  ('a1000000-0000-0000-0000-000000000004', 'Autodex Auto Annaba',     'Annaba',      '23 Avenue du 8 Mai 1945, Annaba',     '038 12 34 56'),
+  ('a1000000-0000-0000-0000-000000000005', 'Autodex Auto Sétif',      'Sétif',       '3 Rue de l''Indépendance, Sétif',     '036 98 76 54');
 
 -- ============================================================
 -- Users (agents commerciaux)
 -- ============================================================
 insert into users (id, showroom_id, email, full_name, role) values
-  ('b1000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000001', 'demo@daricm.dz',          'Compte Démo',      'admin'),
-  ('b1000000-0000-0000-0000-000000000002', 'a1000000-0000-0000-0000-000000000001', 'karim.benali@daricm.dz',  'Karim Benali',     'manager'),
-  ('b1000000-0000-0000-0000-000000000003', 'a1000000-0000-0000-0000-000000000002', 'youcef.amrani@daricm.dz', 'Youcef Amrani',    'agent'),
-  ('b1000000-0000-0000-0000-000000000004', 'a1000000-0000-0000-0000-000000000003', 'rachid.meziani@daricm.dz','Rachid Meziani',   'agent'),
-  ('b1000000-0000-0000-0000-000000000005', 'a1000000-0000-0000-0000-000000000004', 'hamza.slimani@daricm.dz', 'Hamza Slimani',    'agent');
+  ('b1000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000001', 'demo@autodex.store',          'Compte Démo',      'admin'),
+  ('b1000000-0000-0000-0000-000000000002', 'a1000000-0000-0000-0000-000000000001', 'karim.benali@autodex.store',  'Karim Benali',     'manager'),
+  ('b1000000-0000-0000-0000-000000000003', 'a1000000-0000-0000-0000-000000000002', 'youcef.amrani@autodex.store', 'Youcef Amrani',    'agent'),
+  ('b1000000-0000-0000-0000-000000000004', 'a1000000-0000-0000-0000-000000000003', 'rachid.meziani@autodex.store','Rachid Meziani',   'agent'),
+  ('b1000000-0000-0000-0000-000000000005', 'a1000000-0000-0000-0000-000000000004', 'hamza.slimani@autodex.store', 'Hamza Slimani',    'agent');
 
 -- ============================================================
 -- Vehicles (Geely, Chery, Fiat, Renault, DFSK)

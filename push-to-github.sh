@@ -1,5 +1,5 @@
 #!/bin/bash
-# Dari CRM — Push to GitHub
+# Autodex — Push to GitHub
 # Run this once from your terminal: bash ~/crm-auto-algerie/push-to-github.sh
 
 set -e
@@ -16,7 +16,7 @@ echo "📝 Staging all files..."
 git add .
 
 echo "💾 Committing..."
-git commit -m "Initial commit - Dari CRM" || echo "(nothing new to commit, using existing commit)"
+git commit -m "Initial commit - Autodex" || echo "(nothing new to commit, using existing commit)"
 
 echo "🔗 Adding GitHub remote..."
 git remote remove origin 2>/dev/null || true

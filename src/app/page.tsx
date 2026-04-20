@@ -33,7 +33,7 @@ export default function LoginPage() {
     setError('')
 
     const { error } = await supabase.auth.signInWithPassword({
-      email: 'demo@daricm.dz',
+      email: 'demo@autodex.store',
       password: 'demo123',
     })
 
@@ -52,7 +52,7 @@ export default function LoginPage() {
         <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-white/10 mb-4 border border-white/10">
           <Car className="w-7 h-7 text-white" />
         </div>
-        <h1 className="text-white text-3xl font-semibold tracking-tight">Dari CRM</h1>
+        <h1 className="text-white text-3xl font-semibold tracking-tight">Autodex</h1>
         <p className="text-white/40 text-sm mt-1">Gestion commerciale automobile · Algérie</p>
       </div>
 
@@ -68,7 +68,7 @@ export default function LoginPage() {
             <Input
               id="email"
               type="email"
-              placeholder="exemple@daricm.dz"
+              placeholder="exemple@autodex.store"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -128,12 +128,12 @@ export default function LoginPage() {
         </Button>
 
         <p className="text-white/25 text-xs text-center mt-4">
-          demo@daricm.dz · demo123
+          demo@autodex.store · demo123
         </p>
       </div>
 
       <p className="text-white/20 text-xs mt-8">
-        © {new Date().getFullYear()} Dari CRM — Tous droits réservés
+        © {new Date().getFullYear()} Autodex — Tous droits réservés
       </p>
     </div>
   )

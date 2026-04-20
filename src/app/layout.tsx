@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Dari CRM — Gestion automobile Algérie",
+  title: "Autodex — Gestion automobile Algérie",
   description: "CRM commercial automobile pour showrooms en Algérie",
 };
 

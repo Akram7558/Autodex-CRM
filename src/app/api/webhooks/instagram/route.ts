@@ -51,7 +51,7 @@ export async function POST(req: Request) {
   // Dev bypass: lets us POST test payloads without a valid Meta signature.
   // Real Meta requests never set this header, so production security is
   // unchanged as long as the token stays private.
-  const testMode = req.headers.get('x-test-mode') === 'dari-crm-dev-2024'
+  const testMode = req.headers.get('x-test-mode') === 'autodex-dev-2024'
 
   if (!testMode && !verifyMetaSignature(raw, sig)) {
     return NextResponse.json({ error: 'invalid signature' }, { status: 401 })

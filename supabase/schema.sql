@@ -1,5 +1,5 @@
 -- ============================================================
--- Dari CRM — Schéma de base de données
+-- Autodex — Schéma de base de données
 -- ============================================================
 
 -- Extensions
@@ -18,10 +18,10 @@ create table if not exists showrooms (
 );
 
 insert into showrooms (name, city, address, phone) values
-  ('Dari Auto Alger Centre',  'Alger',    '12 Rue Didouche Mourad, Alger',       '023 XX XX XX'),
-  ('Dari Auto Oran',          'Oran',     '45 Boulevard Millénium, Oran',         '041 XX XX XX'),
-  ('Dari Auto Constantine',   'Constantine', '7 Rue Larbi Ben M''hidi, Constantine', '031 XX XX XX'),
-  ('Dari Auto Annaba',        'Annaba',   '23 Avenue du 1er Novembre, Annaba',    '038 XX XX XX');
+  ('Autodex Auto Alger Centre',  'Alger',    '12 Rue Didouche Mourad, Alger',       '023 XX XX XX'),
+  ('Autodex Auto Oran',          'Oran',     '45 Boulevard Millénium, Oran',         '041 XX XX XX'),
+  ('Autodex Auto Constantine',   'Constantine', '7 Rue Larbi Ben M''hidi, Constantine', '031 XX XX XX'),
+  ('Autodex Auto Annaba',        'Annaba',   '23 Avenue du 1er Novembre, Annaba',    '038 XX XX XX');
 
 -- ============================================================
 -- Users (sales agents & managers)
@@ -38,10 +38,10 @@ create table if not exists users (
 );
 
 insert into users (email, full_name, role) values
-  ('demo@daricm.dz',        'Compte Démo',         'admin'),
-  ('karim.boudiaf@daricm.dz', 'Karim Boudiaf',     'manager'),
-  ('amina.hadj@daricm.dz',  'Amina Hadj',          'agent'),
-  ('youcef.kaci@daricm.dz', 'Youcef Kaci',         'agent');
+  ('demo@autodex.store',        'Compte Démo',         'admin'),
+  ('karim.boudiaf@autodex.store', 'Karim Boudiaf',     'manager'),
+  ('amina.hadj@autodex.store',  'Amina Hadj',          'agent'),
+  ('youcef.kaci@autodex.store', 'Youcef Kaci',         'agent');
 
 -- ============================================================
 -- Vehicles
