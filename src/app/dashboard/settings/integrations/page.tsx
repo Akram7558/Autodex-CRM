@@ -127,8 +127,8 @@ function ConnectModal({
   }
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-background/70 backdrop-blur-sm p-4">
+      <div className="rounded-2xl bg-card border border-border shadow-2xl w-full max-w-md overflow-hidden">
         <div className="flex items-start justify-between px-5 py-4 border-b border-gray-100">
           <div className="flex items-center gap-3">
             <div className={`w-9 h-9 rounded-lg ${provider.iconBg} flex items-center justify-center`}>

@@ -11,7 +11,7 @@ import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import {
   Search, Plus, Phone, Mail, MapPin,
-  SlidersHorizontal, Clock, User2,
+  SlidersHorizontal, Clock, User2, Inbox,
 } from 'lucide-react'
 
 // ── Status tabs config ───────────────────────────────────────
@@ -84,8 +84,8 @@ function AddLeadModal({
 
   if (!open) return null
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm p-4">
+      <div className="rounded-2xl bg-card border border-border shadow-2xl w-full max-w-lg">
         <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-gray-100">
           <h2 className="text-base font-semibold text-gray-900">Nouveau prospect</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
@@ -273,17 +273,17 @@ export default function LeadsPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="rounded-xl border border-border overflow-hidden bg-card">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-100 bg-gray-50/50">
-                <th className="px-5 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Prospect</th>
-                <th className="px-5 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Contact</th>
-                <th className="px-5 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Wilaya</th>
-                <th className="px-5 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Source</th>
-                <th className="px-5 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Statut</th>
-                <th className="px-5 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Date</th>
+            <thead className="bg-muted/60 text-xs uppercase tracking-wider text-muted-foreground">
+              <tr>
+                <th className="px-5 py-3 text-left font-medium">Prospect</th>
+                <th className="px-5 py-3 text-left font-medium">Contact</th>
+                <th className="px-5 py-3 text-left font-medium">Wilaya</th>
+                <th className="px-5 py-3 text-left font-medium">Source</th>
+                <th className="px-5 py-3 text-left font-medium">Statut</th>
+                <th className="px-5 py-3 text-left font-medium">Date</th>
                 <th className="px-5 py-3" />
               </tr>
             </thead>
@@ -298,13 +298,25 @@ export default function LeadsPage() {
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-5 py-12 text-center text-gray-400">
-                    Aucun prospect trouvé.
+                  <td colSpan={7} className="px-5 py-12">
+                    <div className="flex flex-col items-center justify-center text-center gap-3 rounded-lg border-2 border-dashed border-border py-10 px-6 mx-auto max-w-md">
+                      <Inbox className="w-10 h-10 text-muted-foreground/60" />
+                      <div>
+                        <p className="text-sm font-medium text-foreground">Aucun prospect</p>
+                        <p className="text-xs text-muted-foreground mt-1">Aucun résultat ne correspond à vos filtres.</p>
+                      </div>
+                      <button
+                        onClick={() => setModalOpen(true)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 transition"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Nouveau prospect
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ) : (
                 filtered.map(lead => (
-                  <tr key={lead.id} className="border-b border-gray-50 hover:bg-gray-50/70 transition-colors group">
+                  <tr key={lead.id} className="odd:bg-transparent even:bg-muted/30 hover:bg-muted/70 transition-colors group">
                     {/* Name */}
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-2.5">

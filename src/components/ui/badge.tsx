@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils'
 
 const badgeVariants = {
   default:   'bg-gray-100 text-gray-600',
+  subtle:    'bg-primary/10 text-primary ring-1 ring-primary/20',
   success:   'bg-emerald-50 text-emerald-700',
   warning:   'bg-amber-50 text-amber-700',
   danger:    'bg-red-50 text-red-700',

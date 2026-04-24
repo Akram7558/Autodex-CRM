@@ -72,8 +72,8 @@ function AddVehicleModal({
 
   if (!open) return null
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm p-4">
+      <div className="rounded-2xl bg-card border border-border shadow-2xl w-full max-w-md">
         <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-gray-100">
           <h2 className="text-base font-semibold text-gray-900">Ajouter un véhicule</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
@@ -267,16 +267,25 @@ export default function VehiculesPage() {
           <div className="w-7 h-7 rounded-full border-2 border-indigo-400/30 border-t-indigo-500 animate-spin" />
         </div>
       ) : filtered.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-200 py-16 text-center">
-          <Car className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-          <p className="text-gray-400 text-sm">Aucun véhicule correspondant.</p>
+        <div className="rounded-xl border-2 border-dashed border-border bg-card py-16 text-center flex flex-col items-center gap-3">
+          <Car className="w-10 h-10 text-muted-foreground/60" />
+          <div>
+            <p className="text-sm font-medium text-foreground">Aucun véhicule</p>
+            <p className="text-xs text-muted-foreground mt-1">Aucun véhicule ne correspond à vos filtres.</p>
+          </div>
+          <button
+            onClick={() => setModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 transition"
+          >
+            <Plus className="w-3.5 h-3.5" /> Ajouter véhicule
+          </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {filtered.map(v => (
             <div
               key={v.id}
-              className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-sm hover:border-gray-300 transition-all"
+              className="rounded-xl bg-card border border-border p-4 hover:shadow-md hover:border-indigo-400/60 transition-all duration-150"
             >
               {/* Card header */}
               <div className="flex items-start justify-between mb-3">

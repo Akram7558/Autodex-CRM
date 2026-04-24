@@ -91,32 +91,32 @@ export default function DashboardPage() {
       value: leads.length,
       sub: `+${leadsThisMonth.length} ce mois`,
       icon: Users,
-      color: 'text-indigo-600',
-      bg: 'bg-indigo-50',
+      color: 'text-indigo-600 dark:text-indigo-300',
+      bg: 'bg-indigo-500/10 dark:bg-indigo-500/15',
     },
     {
       label: 'Prospects ce mois',
       value: leadsThisMonth.length,
       sub: `sur 30 jours glissants`,
       icon: TrendingUp,
-      color: 'text-violet-600',
-      bg: 'bg-violet-50',
+      color: 'text-violet-600 dark:text-violet-300',
+      bg: 'bg-violet-500/10 dark:bg-violet-500/15',
     },
     {
       label: 'Véhicules disponibles',
       value: availableVehicles.length,
       sub: `sur ${vehicles.length} en stock`,
       icon: Car,
-      color: 'text-emerald-600',
-      bg: 'bg-emerald-50',
+      color: 'text-emerald-600 dark:text-emerald-300',
+      bg: 'bg-emerald-500/10 dark:bg-emerald-500/15',
     },
     {
       label: 'Ventes conclues',
       value: wonLeads.length,
       sub: `taux : ${leads.length ? Math.round((wonLeads.length / leads.length) * 100) : 0}%`,
       icon: Trophy,
-      color: 'text-amber-600',
-      bg: 'bg-amber-50',
+      color: 'text-amber-600 dark:text-amber-300',
+      bg: 'bg-amber-500/10 dark:bg-amber-500/15',
     },
   ]
 
@@ -125,7 +125,7 @@ export default function DashboardPage() {
       <div className="flex items-center justify-center h-full">
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 rounded-full border-2 border-indigo-500/30 border-t-indigo-500 animate-spin" />
-          <p className="text-gray-400 text-sm">Chargement du tableau de bord…</p>
+          <p className="text-muted-foreground text-sm">Chargement du tableau de bord…</p>
         </div>
       </div>
     )
@@ -135,8 +135,8 @@ export default function DashboardPage() {
     <div className="p-6 space-y-6">
       {/* ── Header ── */}
       <div>
-        <h1 className="text-xl font-semibold text-gray-900">Tableau de bord</h1>
-        <p className="text-sm text-gray-500 mt-0.5">
+        <h1 className="text-xl font-semibold text-foreground tracking-tight">Tableau de bord</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">
           {format(now, "EEEE d MMMM yyyy", { locale: fr })} · Vue d&apos;ensemble commerciale
         </p>
       </div>
@@ -146,20 +146,21 @@ export default function DashboardPage() {
 
       {/* ── KPI cards ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        {kpis.map((kpi) => {
+        {kpis.map((kpi, i) => {
           const Icon = kpi.icon
           return (
             <div
               key={kpi.label}
-              className="bg-white rounded-xl border border-gray-200 p-5 flex items-start gap-4"
+              style={{ animationDelay: `${i * 60}ms` }}
+              className="group bg-gradient-to-br from-card to-muted/40 rounded-xl border border-border p-5 flex items-start gap-4 card-elevated transition-all duration-200 hover:-translate-y-0.5 animate-in fade-in slide-in-from-bottom-2 duration-500"
             >
-              <div className={`flex-shrink-0 w-10 h-10 rounded-lg ${kpi.bg} flex items-center justify-center`}>
+              <div className={`flex-shrink-0 w-10 h-10 rounded-lg ${kpi.bg} flex items-center justify-center ring-1 ring-inset ring-border/40`}>
                 <Icon className={`w-5 h-5 ${kpi.color}`} />
               </div>
-              <div>
-                <p className="text-xs text-gray-500 font-medium">{kpi.label}</p>
-                <p className="text-2xl font-bold text-gray-900 mt-0.5 leading-none">{kpi.value}</p>
-                <p className="text-xs text-gray-400 mt-1">{kpi.sub}</p>
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">{kpi.label}</p>
+                <p className="text-2xl font-semibold text-foreground mt-1 leading-none tracking-tight">{kpi.value}</p>
+                <p className="text-xs text-muted-foreground mt-1.5">{kpi.sub}</p>
               </div>
             </div>
           )

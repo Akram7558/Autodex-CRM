@@ -20,6 +20,7 @@ import {
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
 import { NotificationBell } from '@/components/alerts/notification-bell'
+import { ThemeToggle } from '@/components/theme-toggle'
 
 const navItems = [
   { href: '/dashboard',             label: 'Tableau de bord', icon: LayoutDashboard },
@@ -101,6 +102,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       {/* Navigation */}
       <nav className="flex-1 px-2 pt-4 pb-2 space-y-0.5 overflow-y-auto">
+        <p className="text-white/30 text-[10px] uppercase tracking-wider px-3 mb-1 mt-1 font-semibold">
+          Navigation
+        </p>
         {navItems.map((item) => {
           const Icon     = item.icon
           const isActive =
@@ -112,13 +116,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               href={item.href}
               onClick={() => setMobileOpen(false)}
               className={cn(
-                'flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium transition-colors',
+                'relative flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium transition-colors duration-150',
                 isActive
-                  ? 'bg-white/10 text-white'
+                  ? 'bg-white/[0.07] text-white before:absolute before:left-0 before:top-1 before:bottom-1 before:w-[3px] before:rounded-full before:bg-indigo-500'
                   : 'text-white/45 hover:text-white/75 hover:bg-white/5'
               )}
             >
-              <Icon className="w-4 h-4 flex-shrink-0" />
+              <Icon className={cn('w-4 h-4 flex-shrink-0', isActive && 'text-indigo-400')} />
               {item.label}
             </Link>
           )
@@ -127,10 +131,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       {/* Footer */}
       <div className="px-2 pb-3 border-t border-white/[0.06] pt-2 space-y-0.5">
+        <p className="text-white/30 text-[10px] uppercase tracking-wider px-3 mb-1 mt-1 font-semibold">
+          Compte
+        </p>
         <Link
           href="/dashboard/parametres"
           onClick={() => setMobileOpen(false)}
-          className="flex items-center gap-2.5 px-3 py-2 rounded-md text-sm text-white/45 hover:text-white/75 hover:bg-white/5 transition-colors"
+          className={cn(
+            'relative flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors duration-150',
+            pathname === '/dashboard/parametres'
+              ? 'bg-white/[0.07] text-white before:absolute before:left-0 before:top-1 before:bottom-1 before:w-[3px] before:rounded-full before:bg-indigo-500'
+              : 'text-white/45 hover:text-white/75 hover:bg-white/5'
+          )}
         >
           <Settings className="w-4 h-4" />
           Paramètres
@@ -139,9 +151,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           href="/dashboard/settings/integrations"
           onClick={() => setMobileOpen(false)}
           className={cn(
-            'flex items-center gap-2.5 pl-9 pr-3 py-1.5 rounded-md text-xs transition-colors',
+            'relative flex items-center gap-2.5 pl-9 pr-3 py-1.5 rounded-md text-xs transition-colors duration-150',
             pathname.startsWith('/dashboard/settings/integrations')
-              ? 'bg-white/10 text-white'
+              ? 'bg-white/[0.07] text-white before:absolute before:left-0 before:top-1 before:bottom-1 before:w-[3px] before:rounded-full before:bg-indigo-500'
               : 'text-white/40 hover:text-white/70 hover:bg-white/5'
           )}
         >
@@ -150,7 +162,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </Link>
         <button
           onClick={handleLogout}
-          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm text-white/45 hover:text-white/75 hover:bg-white/5 transition-colors"
+          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm text-white/45 hover:text-white/75 hover:bg-white/5 transition-colors duration-150"
         >
           <LogOut className="w-4 h-4" />
           Déconnexion
@@ -171,7 +183,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   )
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden">
+    <div className="flex h-screen bg-background overflow-hidden">
       {/* ── Desktop sidebar ─────────────────────────────────── */}
       <aside className="hidden md:flex flex-col w-56 bg-[#0f1117] border-r border-white/[0.06] flex-shrink-0">
         {sidebarBody}
@@ -203,23 +215,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* ── Main content ────────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Top bar */}
-        <header className="flex items-center justify-between h-14 px-4 md:px-6 bg-white border-b border-gray-200 flex-shrink-0">
+        <header className="flex items-center justify-between h-14 px-4 md:px-6 bg-card border-b border-border flex-shrink-0">
           <div className="flex items-center gap-2 text-sm min-w-0">
             {/* Hamburger — mobile only */}
             <button
               onClick={() => setMobileOpen(true)}
-              className="md:hidden p-2 -ml-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors"
+              className="md:hidden p-2 -ml-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
               aria-label="Ouvrir le menu"
             >
               <Menu className="w-5 h-5" />
             </button>
-            <span className="hidden sm:inline text-gray-400 text-xs font-medium uppercase tracking-wider">
+            <span className="hidden sm:inline text-muted-foreground text-xs font-medium uppercase tracking-wider">
               Autodex
             </span>
-            <span className="hidden sm:inline text-gray-300">/</span>
-            <span className="text-gray-800 font-semibold text-sm truncate">{activeLabel()}</span>
+            <span className="hidden sm:inline text-muted-foreground/60">/</span>
+            <span className="text-foreground font-semibold text-sm truncate">{activeLabel()}</span>
           </div>
           <div className="flex items-center gap-2">
+            <ThemeToggle />
             <NotificationBell userId={userId} />
             <div className="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center">
               <span className="text-white text-xs font-bold">{userInitial}</span>
@@ -228,7 +241,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto animate-in fade-in duration-300">
           {children}
         </main>
       </div>

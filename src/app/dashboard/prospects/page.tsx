@@ -185,10 +185,10 @@ function LeadCardContent({ lead, ghost = false }: { lead: Lead; ghost?: boolean 
     <div
       style={borderStyle}
       className={[
-        'bg-white rounded-xl border border-gray-200 select-none',
+        'rounded-lg bg-card border border-border select-none',
         ghost
-          ? 'shadow-2xl rotate-[2deg] opacity-95'
-          : 'shadow-sm hover:shadow-md hover:border-gray-300 cursor-grab active:cursor-grabbing transition-all group',
+          ? 'shadow-xl ring-1 ring-indigo-500/30 rotate-1 opacity-95'
+          : 'hover:border-indigo-400/60 hover:shadow-md cursor-grab active:cursor-grabbing transition-all duration-150 group',
       ].join(' ')}
     >
       <div className="p-3.5">
@@ -308,15 +308,15 @@ function KanbanColumn({
       {/* Column header */}
       <div className={`flex items-center justify-between px-3.5 py-2.5 border-b border-black/5 ${col.headerCls}`}>
         <div className="flex items-center gap-2">
-          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${col.dotCls}`} />
-          <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
+          <span
+            className="w-2 h-2 rounded-sm flex-shrink-0"
+            style={{ background: col.accent }}
+          />
+          <span className="text-xs font-semibold text-foreground">
             {col.label}
           </span>
         </div>
-        <span
-          className="text-xs font-bold px-1.5 py-0.5 rounded-full"
-          style={{ background: col.accent + '22', color: col.accent }}
-        >
+        <span className="rounded-full bg-muted px-2 text-xs text-muted-foreground">
           {leads.length}
         </span>
       </div>
@@ -324,8 +324,7 @@ function KanbanColumn({
       {/* Cards area */}
       <div
         className={[
-          'flex-1 min-h-[480px] p-2 space-y-2 overflow-y-auto transition-colors duration-150',
-          col.bgCls,
+          'flex-1 min-h-[480px] p-2 space-y-2 overflow-y-auto transition-colors duration-150 rounded-xl border border-border/60 bg-muted/30',
           // Subtle inner highlight when hovering
           isOver ? 'bg-indigo-50/60' : '',
         ].join(' ')}
@@ -474,8 +473,8 @@ function AddLeadModal({ open, onClose, onSaved }: {
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm p-4">
+      <div className="rounded-2xl bg-card border border-border shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-gray-100 flex-shrink-0">
           <div>
