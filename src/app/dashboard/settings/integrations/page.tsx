@@ -75,13 +75,13 @@ function ToastStack({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id: nu
               ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
               : t.tone === 'error'
               ? 'bg-red-50 border-red-200 text-red-800'
-              : 'bg-white border-gray-200 text-gray-800'
+              : 'bg-card border-border text-foreground'
           }`}
         >
           {t.tone === 'success' && <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" />}
           {t.tone === 'error'   && <XCircle       className="w-4 h-4 mt-0.5 flex-shrink-0" />}
           <span className="flex-1">{t.message}</span>
-          <button onClick={() => onDismiss(t.id)} className="text-gray-400 hover:text-gray-600">
+          <button onClick={() => onDismiss(t.id)} className="text-muted-foreground hover:text-foreground">
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -129,26 +129,26 @@ function ConnectModal({
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-background/70 backdrop-blur-sm p-4">
       <div className="rounded-2xl bg-card border border-border shadow-2xl w-full max-w-md overflow-hidden">
-        <div className="flex items-start justify-between px-5 py-4 border-b border-gray-100">
+        <div className="flex items-start justify-between px-5 py-4 border-b border-border">
           <div className="flex items-center gap-3">
             <div className={`w-9 h-9 rounded-lg ${provider.iconBg} flex items-center justify-center`}>
               <provider.Icon className={`w-5 h-5 ${provider.iconColor}`} />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-gray-900">Connecter {provider.title}</h3>
-              <p className="text-xs text-gray-500 mt-0.5">
+              <h3 className="text-sm font-semibold text-foreground">Connecter {provider.title}</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
                 Mode démo — OAuth réel disponible après validation Meta
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1">
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1">
             <X className="w-4 h-4" />
           </button>
         </div>
 
         <form onSubmit={submit} className="p-5 space-y-4">
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">
+            <label className="block text-xs font-medium text-foreground mb-1">
               {provider.accountLabel} *
             </label>
             <input
@@ -156,13 +156,13 @@ function ConnectModal({
               value={accountName}
               onChange={(e) => setAccountName(e.target.value)}
               placeholder="ex. Autodex Automobile Oran"
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              className="w-full px-3 py-2 border border-border bg-background text-foreground placeholder:text-muted-foreground rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
             />
           </div>
 
           {provider.phoneRequired && (
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
+              <label className="block text-xs font-medium text-foreground mb-1">
                 Numéro WhatsApp Business *
               </label>
               <input
@@ -170,21 +170,21 @@ function ConnectModal({
                 value={phoneNumber}
                 onChange={(e) => setPhoneNumber(e.target.value)}
                 placeholder="+213 555 12 34 56"
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                className="w-full px-3 py-2 border border-border bg-background text-foreground placeholder:text-muted-foreground rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
               />
             </div>
           )}
 
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">
-              Identifiant Meta <span className="text-gray-400">(optionnel)</span>
+            <label className="block text-xs font-medium text-foreground mb-1">
+              Identifiant Meta <span className="text-muted-foreground">(optionnel)</span>
             </label>
             <input
               type="text"
               value={accountId}
               onChange={(e) => setAccountId(e.target.value)}
               placeholder={provider.id === 'whatsapp' ? 'Phone Number ID' : 'Page / Account ID'}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              className="w-full px-3 py-2 border border-border bg-background text-foreground placeholder:text-muted-foreground rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
             />
           </div>
 
@@ -199,7 +199,7 @@ function ConnectModal({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 rounded-lg"
+              className="px-4 py-2 text-xs font-medium text-foreground hover:bg-muted rounded-lg"
             >
               Annuler
             </button>
@@ -403,7 +403,7 @@ export default function IntegrationsPage() {
       <div className="flex items-center justify-center h-full">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="w-6 h-6 text-indigo-500 animate-spin" />
-          <p className="text-gray-400 text-sm">Chargement des intégrations…</p>
+          <p className="text-muted-foreground text-sm">Chargement des intégrations…</p>
         </div>
       </div>
     )
@@ -414,7 +414,7 @@ export default function IntegrationsPage() {
       {/* Header */}
       <div>
         <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-foreground">Intégrations</h1>
-        <p className="text-sm text-gray-500 mt-0.5">
+        <p className="text-sm text-muted-foreground mt-0.5">
           Connectez vos réseaux sociaux pour capturer automatiquement les leads
         </p>
       </div>
@@ -430,7 +430,7 @@ export default function IntegrationsPage() {
           return (
             <div
               key={card.id}
-              className="bg-white rounded-xl border border-gray-200 overflow-hidden"
+              className="bg-card rounded-xl border border-border overflow-hidden"
               style={{ borderWidth: '0.5px' }}
             >
               <div className="p-5 flex items-start gap-4">
@@ -440,39 +440,39 @@ export default function IntegrationsPage() {
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="text-sm font-semibold text-gray-900">{card.title}</h3>
+                    <h3 className="text-sm font-semibold text-foreground">{card.title}</h3>
                     <span
                       className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${
                         connected
-                          ? 'bg-emerald-50 text-emerald-700'
-                          : 'bg-gray-100 text-gray-500'
+                          ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
+                          : 'bg-muted text-muted-foreground'
                       }`}
                     >
                       <span
                         className={`w-1.5 h-1.5 rounded-full ${
-                          connected ? 'bg-emerald-500' : 'bg-gray-400'
+                          connected ? 'bg-emerald-500' : 'bg-muted-foreground'
                         }`}
                       />
                       {connected ? 'Connecté' : 'Non connecté'}
                     </span>
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">{card.description}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{card.description}</p>
 
                   {connected && integ && (
-                    <div className="mt-3 flex items-center gap-4 text-xs text-gray-600">
+                    <div className="mt-3 flex items-center gap-4 text-xs text-foreground">
                       {integ.account_name && (
                         <span>
-                          <span className="text-gray-400">Compte : </span>
+                          <span className="text-muted-foreground">Compte : </span>
                           <span className="font-medium">{integ.account_name}</span>
                         </span>
                       )}
                       {integ.phone_number && (
                         <span>
-                          <span className="text-gray-400">Numéro : </span>
+                          <span className="text-muted-foreground">Numéro : </span>
                           <span className="font-medium">{integ.phone_number}</span>
                         </span>
                       )}
-                      <span className="text-gray-400">
+                      <span className="text-muted-foreground">
                         Connecté le {format(new Date(integ.connected_at), 'd MMM yyyy', { locale: fr })}
                       </span>
                     </div>
@@ -484,7 +484,7 @@ export default function IntegrationsPage() {
                     <button
                       onClick={() => handleDisconnect(card)}
                       disabled={isBusy}
-                      className="px-3 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 rounded-lg disabled:opacity-50 flex items-center gap-1.5"
+                      className="px-3 py-2 text-xs font-medium text-foreground bg-card border border-border hover:bg-muted rounded-lg disabled:opacity-50 flex items-center gap-1.5"
                     >
                       <Plug2 className="w-3.5 h-3.5" />
                       Déconnecter
@@ -512,8 +512,8 @@ export default function IntegrationsPage() {
 
               {/* Test section */}
               {connected && (
-                <div className="px-5 py-3 bg-gray-50/60 border-t border-gray-100 flex items-center justify-between">
-                  <p className="text-xs text-gray-500">
+                <div className="px-5 py-3 bg-muted/50 border-t border-border flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">
                     Envoyer un message de test à travers le webhook pour vérifier la capture.
                   </p>
                   <button
@@ -532,8 +532,8 @@ export default function IntegrationsPage() {
       </div>
 
       {/* Help footer */}
-      <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50/40 p-4 text-xs text-gray-500">
-        <p className="font-medium text-gray-700 mb-1">Comment ça marche ?</p>
+      <div className="rounded-xl border border-dashed border-border bg-muted/50 p-4 text-xs text-muted-foreground">
+        <p className="font-medium text-foreground mb-1">Comment ça marche ?</p>
         <ol className="list-decimal pl-5 space-y-1">
           <li>Connectez le compte Meta de votre showroom (WhatsApp, Messenger ou Instagram)</li>
           <li>Nos webhooks reçoivent chaque nouveau message entrant</li>

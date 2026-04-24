@@ -108,7 +108,7 @@ export default function AlertsPage() {
       <div className="flex items-center justify-center h-full">
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 rounded-full border-2 border-indigo-500/30 border-t-indigo-500 animate-spin" />
-          <p className="text-gray-400 text-sm">Chargement des alertes…</p>
+          <p className="text-muted-foreground text-sm">Chargement des alertes…</p>
         </div>
       </div>
     )
@@ -120,7 +120,7 @@ export default function AlertsPage() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-foreground">Alertes</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <p className="text-sm text-muted-foreground mt-0.5">
             {items.length} alerte{items.length > 1 ? 's' : ''} ·{' '}
             <span className={unreadCount > 0 ? 'text-red-600 font-medium' : ''}>
               {unreadCount} non lue{unreadCount > 1 ? 's' : ''}
@@ -131,7 +131,7 @@ export default function AlertsPage() {
           <button
             onClick={runChecks}
             disabled={refreshing}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-foreground bg-card border border-border rounded-lg hover:bg-muted disabled:opacity-50 transition-colors"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
             Rafraîchir
@@ -150,7 +150,7 @@ export default function AlertsPage() {
 
       {/* Filters */}
       <div className="flex items-center gap-2 flex-wrap">
-        <Filter className="w-4 h-4 text-gray-400" />
+        <Filter className="w-4 h-4 text-muted-foreground" />
         {FILTERS.map((f) => (
           <button
             key={f.key}
@@ -158,7 +158,7 @@ export default function AlertsPage() {
             className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
               filter === f.key
                 ? 'bg-indigo-600 text-white'
-                : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                : 'bg-card text-foreground border border-border hover:bg-muted'
             }`}
           >
             {f.label}
@@ -172,8 +172,8 @@ export default function AlertsPage() {
       <Group title="Plus ancien"   items={older}    />
 
       {filtered.length === 0 && (
-        <div className="bg-white rounded-xl border border-gray-200 px-6 py-12 text-center">
-          <p className="text-sm text-gray-500">Aucune alerte pour ce filtre.</p>
+        <div className="bg-card rounded-xl border border-border px-6 py-12 text-center">
+          <p className="text-sm text-muted-foreground">Aucune alerte pour ce filtre.</p>
         </div>
       )}
     </div>
@@ -184,35 +184,35 @@ function Group({ title, items }: { title: string; items: Notification[] }) {
   if (items.length === 0) return null
   return (
     <div>
-      <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2 px-1">
+      <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 px-1">
         {title} · {items.length}
       </h2>
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="bg-card rounded-xl border border-border overflow-hidden">
         {items.map((n, i) => {
           const Icon = iconFor(n.type)
           return (
             <Link
               key={n.id}
               href={hrefFor(n)}
-              className={`flex items-start gap-4 px-5 py-4 hover:bg-gray-50 transition-colors ${
-                i < items.length - 1 ? 'border-b border-gray-50' : ''
-              } ${n.read ? '' : 'bg-indigo-50/20'}`}
+              className={`flex items-start gap-4 px-5 py-4 hover:bg-muted transition-colors ${
+                i < items.length - 1 ? 'border-b border-border' : ''
+              } ${n.read ? '' : 'bg-indigo-50/20 dark:bg-indigo-500/10'}`}
             >
               <div className={`flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center border ${colorFor(n.type)}`}>
                 <Icon className="w-4 h-4" />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <p className="text-sm font-medium text-gray-900">{n.title}</p>
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                  <p className="text-sm font-medium text-foreground">{n.title}</p>
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                     {NOTIFICATION_TYPE_LABELS[n.type]}
                   </span>
                   {!n.read && (
                     <span className="inline-block w-2 h-2 rounded-full bg-indigo-500" />
                   )}
                 </div>
-                <p className="text-sm text-gray-500 mt-0.5">{n.message}</p>
-                <p className="text-[11px] text-gray-400 mt-1">
+                <p className="text-sm text-muted-foreground mt-0.5">{n.message}</p>
+                <p className="text-[11px] text-muted-foreground mt-1">
                   {format(new Date(n.created_at), "d MMM yyyy 'à' HH:mm", { locale: fr })}
                 </p>
               </div>

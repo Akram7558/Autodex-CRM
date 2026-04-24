@@ -96,7 +96,7 @@ export function NotificationBell({ userId }: { userId: string | null }) {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="relative flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors"
+        className="relative flex items-center justify-center w-8 h-8 rounded-lg text-muted-foreground hover:bg-muted transition-colors"
         aria-label="Notifications"
       >
         <Bell className="w-4 h-4" />
@@ -108,12 +108,12 @@ export function NotificationBell({ userId }: { userId: string | null }) {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-10 z-50 w-80 bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
+        <div className="absolute right-0 top-10 z-50 w-80 bg-card rounded-xl shadow-lg border border-border overflow-hidden">
           {/* header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
             <div>
-              <p className="text-sm font-semibold text-gray-900">Notifications</p>
-              <p className="text-xs text-gray-400">{unread} non lue{unread > 1 ? 's' : ''}</p>
+              <p className="text-sm font-semibold text-foreground">Notifications</p>
+              <p className="text-xs text-muted-foreground">{unread} non lue{unread > 1 ? 's' : ''}</p>
             </div>
             {unread > 0 && (
               <button
@@ -128,7 +128,7 @@ export function NotificationBell({ userId }: { userId: string | null }) {
           {/* list */}
           <div className="max-h-96 overflow-y-auto">
             {items.length === 0 && (
-              <div className="px-4 py-8 text-center text-sm text-gray-400">
+              <div className="px-4 py-8 text-center text-sm text-muted-foreground">
                 Aucune alerte pour l’instant.
               </div>
             )}
@@ -139,17 +139,17 @@ export function NotificationBell({ userId }: { userId: string | null }) {
                   key={n.id}
                   href={hrefFor(n)}
                   onClick={() => setOpen(false)}
-                  className={`flex items-start gap-3 px-4 py-3 hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0 ${
-                    n.read ? '' : 'bg-indigo-50/30'
+                  className={`flex items-start gap-3 px-4 py-3 hover:bg-muted transition-colors border-b border-border last:border-0 ${
+                    n.read ? '' : 'bg-indigo-50/30 dark:bg-indigo-500/10'
                   }`}
                 >
                   <div className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${colorFor(n.type)}`}>
                     <Icon className="w-4 h-4" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">{n.title}</p>
-                    <p className="text-xs text-gray-500 line-clamp-2 mt-0.5">{n.message}</p>
-                    <p className="text-[11px] text-gray-400 mt-1">
+                    <p className="text-sm font-medium text-foreground truncate">{n.title}</p>
+                    <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{n.message}</p>
+                    <p className="text-[11px] text-muted-foreground mt-1">
                       {formatDistanceToNow(new Date(n.created_at), { addSuffix: true, locale: fr })}
                     </p>
                   </div>
@@ -163,7 +163,7 @@ export function NotificationBell({ userId }: { userId: string | null }) {
           <Link
             href="/dashboard/alerts"
             onClick={() => setOpen(false)}
-            className="block text-center text-xs font-medium text-indigo-600 hover:text-indigo-700 py-3 border-t border-gray-100"
+            className="block text-center text-xs font-medium text-indigo-600 hover:text-indigo-700 py-3 border-t border-border"
           >
             Voir toutes les alertes →
           </Link>

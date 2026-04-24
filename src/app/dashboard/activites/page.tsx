@@ -38,7 +38,7 @@ function typeIconBg(type: Activity['type']): string {
     call:          'bg-blue-50 text-blue-600',
     email:         'bg-violet-50 text-violet-600',
     meeting:       'bg-indigo-50 text-indigo-600',
-    note:          'bg-gray-100 text-gray-500',
+    note:          'bg-muted text-muted-foreground',
     status_change: 'bg-amber-50 text-amber-600',
   }
   return map[type]
@@ -86,13 +86,13 @@ function AddActivityModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm p-4">
       <div className="rounded-2xl bg-card border border-border shadow-2xl w-full max-w-md">
-        <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-gray-100">
-          <h2 className="text-base font-semibold text-gray-900">Nouvelle activité</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+        <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-border">
+          <h2 className="text-base font-semibold text-foreground">Nouvelle activité</h2>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground text-xl leading-none">&times;</button>
         </div>
         <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Type</label>
+            <label className="block text-xs font-medium text-foreground mb-1">Type</label>
             <div className="flex flex-wrap gap-2">
               {(['call', 'email', 'meeting', 'note', 'status_change'] as Activity['type'][]).map(t => (
                 <button
@@ -102,7 +102,7 @@ function AddActivityModal({
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
                     form.type === t
                       ? 'bg-indigo-600 text-white border-indigo-600'
-                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                      : 'bg-card text-foreground border-border hover:bg-muted'
                   }`}
                 >
                   {typeIcon(t)} {ACTIVITY_TYPE_LABELS[t]}
@@ -111,22 +111,22 @@ function AddActivityModal({
             </div>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Titre *</label>
+            <label className="block text-xs font-medium text-foreground mb-1">Titre *</label>
             <input
               value={form.title}
               onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
               placeholder="ex. Appel de qualification"
-              className="w-full h-9 px-3 rounded-lg border border-gray-200 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition"
+              className="w-full h-9 px-3 rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 transition"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
+            <label className="block text-xs font-medium text-foreground mb-1">Description</label>
             <textarea
               value={form.body}
               onChange={e => setForm(f => ({ ...f, body: e.target.value }))}
               rows={3}
               placeholder="Détails de l'activité…"
-              className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition resize-none"
+              className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 transition resize-none"
             />
           </div>
           <label className="flex items-center gap-2 cursor-pointer">
@@ -134,13 +134,13 @@ function AddActivityModal({
               type="checkbox"
               checked={form.done}
               onChange={e => setForm(f => ({ ...f, done: e.target.checked }))}
-              className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+              className="w-4 h-4 rounded border-border text-indigo-600 focus:ring-indigo-500"
             />
-            <span className="text-sm text-gray-600">Marquée comme terminée</span>
+            <span className="text-sm text-foreground">Marquée comme terminée</span>
           </label>
           {error && <p className="text-red-500 text-xs">{error}</p>}
           <div className="flex justify-end gap-2 pt-1">
-            <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100 transition">Annuler</button>
+            <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg text-sm text-foreground hover:bg-muted transition">Annuler</button>
             <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg text-sm bg-indigo-600 text-white hover:bg-indigo-700 transition disabled:opacity-60">
               {saving ? 'Enregistrement…' : 'Enregistrer'}
             </button>
@@ -194,7 +194,7 @@ export default function ActivitesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-foreground">Activités</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{activities.length} activité{activities.length > 1 ? 's' : ''} enregistrée{activities.length > 1 ? 's' : ''}</p>
+          <p className="text-sm text-muted-foreground mt-0.5">{activities.length} activité{activities.length > 1 ? 's' : ''} enregistrée{activities.length > 1 ? 's' : ''}</p>
         </div>
         <button
           onClick={() => setModalOpen(true)}
@@ -213,7 +213,7 @@ export default function ActivitesPage() {
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
               typeFilter === f.value
                 ? 'bg-indigo-600 text-white'
-                : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+                : 'bg-card border border-border text-foreground hover:bg-muted'
             }`}
           >
             {f.label}
@@ -227,9 +227,9 @@ export default function ActivitesPage() {
           <div className="w-7 h-7 rounded-full border-2 border-indigo-400/30 border-t-indigo-500 animate-spin" />
         </div>
       ) : filtered.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-200 py-16 text-center">
-          <Clock className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-          <p className="text-gray-400 text-sm">Aucune activité trouvée.</p>
+        <div className="bg-card rounded-xl border border-border py-16 text-center">
+          <Clock className="w-10 h-10 text-muted-foreground/60 mx-auto mb-3" />
+          <p className="text-muted-foreground text-sm">Aucune activité trouvée.</p>
         </div>
       ) : (
         <div className="space-y-6">
@@ -237,11 +237,11 @@ export default function ActivitesPage() {
             <div key={dateKey}>
               {/* Date divider */}
               <div className="flex items-center gap-3 mb-3">
-                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider capitalize">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider capitalize">
                   {groupLabel(items[0].created_at)}
                 </span>
-                <div className="flex-1 h-px bg-gray-100" />
-                <span className="text-xs text-gray-300">{items.length}</span>
+                <div className="flex-1 h-px bg-border" />
+                <span className="text-xs text-muted-foreground/60">{items.length}</span>
               </div>
 
               {/* Activity cards */}
@@ -249,8 +249,8 @@ export default function ActivitesPage() {
                 {items.map(activity => (
                   <div
                     key={activity.id}
-                    className={`bg-white rounded-xl border p-4 flex gap-4 transition-all ${
-                      activity.done ? 'border-gray-100' : 'border-gray-200 shadow-sm'
+                    className={`bg-card rounded-xl border p-4 flex gap-4 transition-all ${
+                      activity.done ? 'border-border/60' : 'border-border shadow-sm'
                     }`}
                   >
                     {/* Icon */}
@@ -262,7 +262,7 @@ export default function ActivitesPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2 flex-wrap">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className={`text-sm font-medium leading-tight ${activity.done ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
+                          <h3 className={`text-sm font-medium leading-tight ${activity.done ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
                             {activity.title}
                           </h3>
                           <Badge variant={typeVariant(activity.type)}>
@@ -275,25 +275,25 @@ export default function ActivitesPage() {
                               <CheckCircle2 className="w-3.5 h-3.5" /> Terminée
                             </span>
                           )}
-                          <span className="text-xs text-gray-400">
+                          <span className="text-xs text-muted-foreground">
                             {format(new Date(activity.created_at), 'HH:mm')}
                           </span>
                         </div>
                       </div>
 
                       {activity.body && (
-                        <p className="text-sm text-gray-500 mt-1 leading-relaxed">{activity.body}</p>
+                        <p className="text-sm text-muted-foreground mt-1 leading-relaxed">{activity.body}</p>
                       )}
 
                       <div className="flex items-center gap-3 mt-2 flex-wrap">
                         {(activity as any).leads?.full_name && (
-                          <span className="flex items-center gap-1 text-xs text-gray-400">
+                          <span className="flex items-center gap-1 text-xs text-muted-foreground">
                             <User2 className="w-3 h-3" />
                             <span dir="auto">{(activity as any).leads.full_name}</span>
                           </span>
                         )}
                         {(activity as any).users?.full_name && (
-                          <span className="flex items-center gap-1 text-xs text-gray-400">
+                          <span className="flex items-center gap-1 text-xs text-muted-foreground">
                             <span className="w-3 h-3 rounded-full bg-indigo-200 inline-block" />
                             {(activity as any).users.full_name}
                           </span>
@@ -305,7 +305,7 @@ export default function ActivitesPage() {
                             await supabase.from('activities').update({ done }).eq('id', activity.id)
                             setActivities(prev => prev.map(a => a.id === activity.id ? { ...a, done } : a))
                           }}
-                          className="text-xs text-gray-400 hover:text-gray-600 transition ml-auto"
+                          className="text-xs text-muted-foreground hover:text-foreground transition ml-auto"
                         >
                           {activity.done ? 'Marquer en attente' : 'Marquer terminée'}
                         </button>

@@ -157,7 +157,7 @@ const ACTIVITY_ICON_CLS: Record<Activity['type'], string> = {
   call:          'bg-blue-50 text-blue-600',
   email:         'bg-violet-50 text-violet-600',
   meeting:       'bg-indigo-50 text-indigo-600',
-  note:          'bg-gray-100 text-gray-500',
+  note:          'bg-muted text-muted-foreground',
   status_change: 'bg-amber-50 text-amber-600',
 }
 
@@ -472,12 +472,12 @@ function AddLeadModal({ open, onClose, onSaved }: {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm p-4">
       <div className="rounded-2xl bg-card border border-border shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-gray-100 flex-shrink-0">
+        <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-border flex-shrink-0">
           <div>
-            <h2 className="text-base font-semibold text-gray-900">Nouveau lead</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Ajouté en colonne « Nouveau »</p>
+            <h2 className="text-base font-semibold text-foreground">Nouveau lead</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Ajouté en colonne « Nouveau »</p>
           </div>
-          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 transition">
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted transition">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -486,14 +486,14 @@ function AddLeadModal({ open, onClose, onSaved }: {
         <form onSubmit={submit} className="overflow-y-auto flex-1 px-6 py-5 space-y-4">
           {/* Source buttons */}
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-2">Source *</label>
+            <label className="block text-xs font-medium text-foreground mb-2">Source *</label>
             <div className="flex flex-wrap gap-2">
               {KANBAN_SOURCES.map(s => (
                 <button key={s.value} type="button" onClick={() => set('source', s.value)}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
                     form.source === s.value
                       ? 'bg-indigo-600 text-white border-indigo-600'
-                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                      : 'bg-card text-foreground border-border hover:bg-muted'
                   }`}>
                   <span>{SOURCE_ICONS[s.value]}</span>
                   {s.label}
@@ -504,24 +504,24 @@ function AddLeadModal({ open, onClose, onSaved }: {
 
           {/* Name */}
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Nom complet *</label>
+            <label className="block text-xs font-medium text-foreground mb-1">Nom complet *</label>
             <input dir="auto" value={form.full_name} onChange={e => set('full_name', e.target.value)}
               placeholder="ex. Karim Benali"
-              className="w-full h-10 px-3 rounded-lg border border-gray-200 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition" />
+              className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 transition" />
           </div>
 
           {/* Phone + Wilaya */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Téléphone</label>
+              <label className="block text-xs font-medium text-foreground mb-1">Téléphone</label>
               <input value={form.phone} onChange={e => set('phone', e.target.value)}
                 placeholder="0555 XX XX XX"
-                className="w-full h-10 px-3 rounded-lg border border-gray-200 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition" />
+                className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 transition" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Wilaya</label>
+              <label className="block text-xs font-medium text-foreground mb-1">Wilaya</label>
               <select value={form.wilaya} onChange={e => set('wilaya', e.target.value)}
-                className="w-full h-10 px-3 rounded-lg border border-gray-200 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition bg-white">
+                className="w-full h-10 px-3 rounded-lg border border-border text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 transition bg-background text-foreground">
                 <option value="">— Choisir —</option>
                 {WILAYAS_58.map((w, i) => (
                   <option key={w} value={w}>{String(i + 1).padStart(2, '0')} · {w}</option>
@@ -533,37 +533,37 @@ function AddLeadModal({ open, onClose, onSaved }: {
           {/* Model + Budget */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Modèle souhaité</label>
+              <label className="block text-xs font-medium text-foreground mb-1">Modèle souhaité</label>
               <input list="models-list" value={form.model_wanted} onChange={e => set('model_wanted', e.target.value)}
                 placeholder="ex. Geely Coolray"
-                className="w-full h-10 px-3 rounded-lg border border-gray-200 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition" />
+                className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 transition" />
               <datalist id="models-list">
                 {CAR_MODELS.map(m => <option key={m} value={m} />)}
               </datalist>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Budget (DA)</label>
+              <label className="block text-xs font-medium text-foreground mb-1">Budget (DA)</label>
               <input value={form.budget_dzd} onChange={e => set('budget_dzd', e.target.value)}
                 placeholder="ex. 4500000"
-                className="w-full h-10 px-3 rounded-lg border border-gray-200 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition" />
+                className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 transition" />
             </div>
           </div>
 
           {/* Notes */}
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Notes</label>
+            <label className="block text-xs font-medium text-foreground mb-1">Notes</label>
             <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={2}
               placeholder="Observations, demande spécifique…"
-              className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition resize-none" />
+              className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 transition resize-none" />
           </div>
 
           {error && <p className="text-red-500 text-xs bg-red-50 rounded-lg px-3 py-2">{error}</p>}
         </form>
 
         {/* Footer */}
-        <div className="flex justify-end gap-2 px-6 py-4 border-t border-gray-100 flex-shrink-0">
+        <div className="flex justify-end gap-2 px-6 py-4 border-t border-border flex-shrink-0">
           <button type="button" onClick={onClose}
-            className="px-4 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100 transition">
+            className="px-4 py-2 rounded-lg text-sm text-foreground hover:bg-muted transition">
             Annuler
           </button>
           <button onClick={submit} disabled={saving}
@@ -728,12 +728,12 @@ function LeadSidePanel({ lead, onClose, onLeadUpdated }: {
       <div className="fixed inset-0 bg-black/20 backdrop-blur-[2px]" onClick={onClose} />
 
       {/* Panel */}
-      <div className="relative ml-auto w-[420px] bg-white border-l border-gray-200 shadow-2xl flex flex-col h-full overflow-hidden">
+      <div className="relative ml-auto w-[420px] bg-card border-l border-border shadow-2xl flex flex-col h-full overflow-hidden">
 
         {/* ── Header ── */}
-        <div className="flex items-start justify-between px-5 pt-5 pb-4 border-b border-gray-100 flex-shrink-0">
+        <div className="flex items-start justify-between px-5 pt-5 pb-4 border-b border-border flex-shrink-0">
           <div className="flex-1 min-w-0 pr-3">
-            <p dir="auto" className="font-bold text-gray-900 text-base leading-tight break-words">
+            <p dir="auto" className="font-bold text-foreground text-base leading-tight break-words">
               {lead.full_name}
             </p>
             {lead.phone && (
@@ -744,13 +744,13 @@ function LeadSidePanel({ lead, onClose, onLeadUpdated }: {
             )}
             {lead.email && (
               <a href={`mailto:${lead.email}`}
-                className="text-xs text-gray-400 hover:underline flex items-center gap-1 mt-0.5">
+                className="text-xs text-muted-foreground hover:underline flex items-center gap-1 mt-0.5">
                 <Mail className="w-3 h-3" /> {lead.email}
               </a>
             )}
           </div>
           <button onClick={onClose}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 transition flex-shrink-0">
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted transition flex-shrink-0">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -759,29 +759,29 @@ function LeadSidePanel({ lead, onClose, onLeadUpdated }: {
         <div className="flex-1 overflow-y-auto">
 
           {/* Meta */}
-          <div className="px-5 py-4 border-b border-gray-100 space-y-3">
+          <div className="px-5 py-4 border-b border-border space-y-3">
             {/* Status */}
             <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-400 w-20 flex-shrink-0">Statut</span>
+              <span className="text-xs text-muted-foreground w-20 flex-shrink-0">Statut</span>
               <select value={panelStatus}
                 onChange={e => handleStatusChange(e.target.value as Lead['status'])}
-                className="flex-1 h-8 px-2 rounded-lg border border-gray-200 text-xs font-medium outline-none focus:border-indigo-400 bg-white text-gray-700">
+                className="flex-1 h-8 px-2 rounded-lg border border-border text-xs font-medium outline-none focus:border-indigo-400 bg-background text-foreground">
                 {STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </div>
 
             {lead.wilaya && (
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-400 w-20 flex-shrink-0">Wilaya</span>
-                <span className="text-xs text-gray-700 flex items-center gap-1">
-                  <MapPin className="w-3 h-3 text-gray-400" /> {lead.wilaya}
+                <span className="text-xs text-muted-foreground w-20 flex-shrink-0">Wilaya</span>
+                <span className="text-xs text-foreground flex items-center gap-1">
+                  <MapPin className="w-3 h-3 text-muted-foreground" /> {lead.wilaya}
                 </span>
               </div>
             )}
 
             {lead.model_wanted && (
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-400 w-20 flex-shrink-0">Modèle</span>
+                <span className="text-xs text-muted-foreground w-20 flex-shrink-0">Modèle</span>
                 <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${modelColor(lead.model_wanted)}`}>
                   <Car className="w-3 h-3" /> {lead.model_wanted}
                 </span>
@@ -790,7 +790,7 @@ function LeadSidePanel({ lead, onClose, onLeadUpdated }: {
 
             {lead.budget_dzd && (
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-400 w-20 flex-shrink-0">Budget</span>
+                <span className="text-xs text-muted-foreground w-20 flex-shrink-0">Budget</span>
                 <span className="text-xs text-emerald-700 font-semibold">
                   {formatDZD(lead.budget_dzd)}
                 </span>
@@ -798,15 +798,15 @@ function LeadSidePanel({ lead, onClose, onLeadUpdated }: {
             )}
 
             <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-400 w-20 flex-shrink-0">Source</span>
-              <span className="text-xs text-gray-700">
+              <span className="text-xs text-muted-foreground w-20 flex-shrink-0">Source</span>
+              <span className="text-xs text-foreground">
                 {SOURCE_ICONS[lead.source]} {LEAD_SOURCE_LABELS[lead.source] ?? lead.source}
               </span>
             </div>
 
             <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-400 w-20 flex-shrink-0">Créé</span>
-              <span className="text-xs text-gray-500">
+              <span className="text-xs text-muted-foreground w-20 flex-shrink-0">Créé</span>
+              <span className="text-xs text-muted-foreground">
                 {format(new Date(lead.created_at), "d MMM yyyy 'à' HH:mm", { locale: fr })}
               </span>
             </div>
@@ -822,10 +822,10 @@ function LeadSidePanel({ lead, onClose, onLeadUpdated }: {
           </div>
 
           {/* Vehicle selector */}
-          <div className="px-5 py-4 border-b border-gray-100">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Véhicule proposé</p>
+          <div className="px-5 py-4 border-b border-border">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Véhicule proposé</p>
             <select value={vehicleId ?? ''} onChange={e => handleVehicleChange(e.target.value || null)}
-              className="w-full h-9 px-3 rounded-lg border border-gray-200 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition bg-white text-gray-700">
+              className="w-full h-9 px-3 rounded-lg border border-border text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 transition bg-background text-foreground">
               <option value="">— Aucun —</option>
               {vehicles.map(v => (
                 <option key={v.id} value={v.id}>
@@ -836,15 +836,15 @@ function LeadSidePanel({ lead, onClose, onLeadUpdated }: {
               ))}
             </select>
             {vehicles.length === 0 && !loadingAct && (
-              <p className="text-xs text-gray-400 mt-1.5 flex items-center gap-1">
+              <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
                 <Car className="w-3 h-3" /> Aucun véhicule disponible en stock.
               </p>
             )}
           </div>
 
           {/* Quick actions */}
-          <div className="px-5 py-4 border-b border-gray-100">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Action rapide</p>
+          <div className="px-5 py-4 border-b border-border">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Action rapide</p>
             <div className="flex gap-2 flex-wrap mb-3">
               {QUICK_ACTIONS.map(a => (
                 <button key={a.type} onClick={() => addQuickActivity(a.type)}
@@ -858,7 +858,7 @@ function LeadSidePanel({ lead, onClose, onLeadUpdated }: {
               <input value={quickNote} onChange={e => setQuickNote(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') addNoteActivity() }}
                 placeholder="Note rapide…"
-                className="flex-1 h-9 px-3 rounded-lg border border-gray-200 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition" />
+                className="flex-1 h-9 px-3 rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 transition" />
               <button onClick={addNoteActivity} disabled={!quickNote.trim() || addingAct}
                 className="w-9 h-9 flex items-center justify-center rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition disabled:opacity-40">
                 <Send className="w-3.5 h-3.5" />
@@ -867,14 +867,14 @@ function LeadSidePanel({ lead, onClose, onLeadUpdated }: {
           </div>
 
           {/* Notes */}
-          <div className="px-5 py-4 border-b border-gray-100">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Notes</p>
+          <div className="px-5 py-4 border-b border-border">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Notes</p>
             <textarea value={notes} onChange={e => handleNotesChange(e.target.value)}
               rows={3}
               placeholder="Notes, observations, informations client…"
-              className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition resize-none" />
+              className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 transition resize-none" />
             <button onClick={saveNotes} disabled={savingNotes || !notesDirty}
-              className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-900 text-white hover:bg-gray-700 transition disabled:opacity-40">
+              className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-foreground text-background hover:opacity-90 transition disabled:opacity-40">
               <CheckCircle2 className="w-3.5 h-3.5" />
               {savingNotes ? 'Sauvegarde…' : 'Sauvegarder'}
             </button>
@@ -882,7 +882,7 @@ function LeadSidePanel({ lead, onClose, onLeadUpdated }: {
 
           {/* Activity history */}
           <div className="px-5 py-4">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
               Historique
             </p>
             {loadingAct ? (
@@ -890,7 +890,7 @@ function LeadSidePanel({ lead, onClose, onLeadUpdated }: {
                 <div className="w-5 h-5 rounded-full border-2 border-indigo-400/30 border-t-indigo-500 animate-spin" />
               </div>
             ) : activities.length === 0 ? (
-              <p className="text-xs text-gray-400 text-center py-6">Aucune activité enregistrée.</p>
+              <p className="text-xs text-muted-foreground text-center py-6">Aucune activité enregistrée.</p>
             ) : (
               <div className="space-y-3">
                 {activities.map(act => (
@@ -904,14 +904,14 @@ function LeadSidePanel({ lead, onClose, onLeadUpdated }: {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2">
-                        <p className="text-xs font-medium text-gray-700 leading-tight">{act.title}</p>
-                        <span className="text-[10px] text-gray-400 flex-shrink-0 mt-0.5">
+                        <p className="text-xs font-medium text-foreground leading-tight">{act.title}</p>
+                        <span className="text-[10px] text-muted-foreground flex-shrink-0 mt-0.5">
                           {format(new Date(act.created_at), 'd MMM, HH:mm', { locale: fr })}
                         </span>
                       </div>
-                      {act.body && <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{act.body}</p>}
+                      {act.body && <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{act.body}</p>}
                       {(act as Activity & { users?: { full_name: string } }).users?.full_name && (
-                        <p className="text-[10px] text-gray-400 mt-0.5">
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
                           par {(act as Activity & { users: { full_name: string } }).users.full_name}
                         </p>
                       )}
@@ -1088,7 +1088,7 @@ export default function ProspectsPage() {
         <div className="flex items-center justify-center flex-1">
           <div className="flex flex-col items-center gap-3">
             <div className="w-8 h-8 rounded-full border-2 border-indigo-500/30 border-t-indigo-500 animate-spin" />
-            <p className="text-sm text-gray-400">Chargement du pipeline…</p>
+            <p className="text-sm text-muted-foreground">Chargement du pipeline…</p>
           </div>
         </div>
       ) : (

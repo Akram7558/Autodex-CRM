@@ -75,17 +75,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const sidebarBody = (
     <>
       {/* Logo */}
-      <div className="flex items-center gap-2.5 px-4 h-14 border-b border-white/[0.06] flex-shrink-0">
-        <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-indigo-500/20 border border-indigo-500/30">
-          <Car className="w-5 h-5 text-indigo-400" />
+      <div className="flex items-center gap-2.5 px-4 h-14 border-b border-gray-200 dark:border-white/[0.06] flex-shrink-0">
+        <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-indigo-100 border border-indigo-200 dark:bg-indigo-500/20 dark:border-indigo-500/30">
+          <Car className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
         </div>
         <div className="flex-1">
-          <p className="text-white text-base font-bold leading-none tracking-tight">AutoDex</p>
+          <p className="text-gray-900 dark:text-white text-base font-bold leading-none tracking-tight">AutoDex</p>
         </div>
         {/* Close button — mobile drawer only */}
         <button
           onClick={() => setMobileOpen(false)}
-          className="md:hidden p-1.5 rounded-md text-white/60 hover:text-white hover:bg-white/5 transition-colors"
+          className="md:hidden p-1.5 rounded-md text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:text-white/60 dark:hover:text-white dark:hover:bg-white/5 transition-colors"
           aria-label="Fermer le menu"
         >
           <X className="w-4 h-4" />
@@ -107,11 +107,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               className={cn(
                 'flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors duration-150',
                 isActive
-                  ? 'bg-indigo-500/15 text-white font-medium'
-                  : 'text-white/45 hover:text-white/75 hover:bg-white/5'
+                  ? 'bg-indigo-50 text-indigo-900 font-medium dark:bg-indigo-500/15 dark:text-white'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-white/45 dark:hover:text-white/75 dark:hover:bg-white/5'
               )}
             >
-              <Icon className={cn('w-4 h-4 flex-shrink-0', isActive && 'text-indigo-400')} />
+              <Icon className={cn('w-4 h-4 flex-shrink-0', isActive && 'text-indigo-600 dark:text-indigo-400')} />
               {item.label}
             </Link>
           )
@@ -119,15 +119,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </nav>
 
       {/* Footer */}
-      <div className="px-2 pb-3 border-t border-white/[0.06] pt-2 space-y-0.5">
+      <div className="px-2 pb-3 border-t border-gray-200 dark:border-white/[0.06] pt-2 space-y-0.5">
         <Link
           href="/dashboard/parametres"
           onClick={() => setMobileOpen(false)}
           className={cn(
             'flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors duration-150',
             pathname === '/dashboard/parametres'
-              ? 'bg-indigo-500/15 text-white font-medium'
-              : 'text-white/45 hover:text-white/75 hover:bg-white/5'
+              ? 'bg-indigo-50 text-indigo-900 font-medium dark:bg-indigo-500/15 dark:text-white'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-white/45 dark:hover:text-white/75 dark:hover:bg-white/5'
           )}
         >
           <Settings className="w-4 h-4" />
@@ -139,8 +139,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           className={cn(
             'flex items-center gap-2.5 pl-9 pr-3 py-1.5 rounded-md text-xs transition-colors duration-150',
             pathname.startsWith('/dashboard/settings/integrations')
-              ? 'bg-indigo-500/15 text-white font-medium'
-              : 'text-white/40 hover:text-white/70 hover:bg-white/5'
+              ? 'bg-indigo-50 text-indigo-900 font-medium dark:bg-indigo-500/15 dark:text-white'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-white/40 dark:hover:text-white/70 dark:hover:bg-white/5'
           )}
         >
           <Plug className="w-3.5 h-3.5" />
@@ -148,7 +148,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </Link>
         <button
           onClick={handleLogout}
-          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm text-white/45 hover:text-white/75 hover:bg-white/5 transition-colors duration-150"
+          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-white/45 dark:hover:text-white/75 dark:hover:bg-white/5 transition-colors duration-150"
         >
           <LogOut className="w-4 h-4" />
           Déconnexion
@@ -156,14 +156,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </div>
 
       {/* User pill */}
-      <div className="mx-2 mb-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-white/[0.08]">
+      <div className="mx-2 mb-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-100 border border-gray-200 dark:bg-white/5 dark:border-white/[0.08]">
         <div className="w-7 h-7 rounded-full bg-purple-500 flex items-center justify-center flex-shrink-0">
           <span className="text-white text-[11px] font-bold">{userInitial}</span>
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-white/80 text-xs font-medium truncate">{userName}</p>
+          <p className="text-gray-900 dark:text-white/80 text-xs font-medium truncate">{userName}</p>
         </div>
-        <MoreVertical className="w-3.5 h-3.5 text-white/30 flex-shrink-0" />
+        <MoreVertical className="w-3.5 h-3.5 text-gray-400 dark:text-white/30 flex-shrink-0" />
       </div>
     </>
   )
@@ -171,7 +171,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div className="flex h-screen bg-background overflow-hidden">
       {/* ── Desktop sidebar ─────────────────────────────────── */}
-      <aside className="hidden md:flex flex-col w-56 bg-background flex-shrink-0">
+      <aside className="hidden md:flex flex-col w-56 bg-white border-r border-gray-200 dark:bg-background dark:border-white/[0.06] flex-shrink-0">
         {sidebarBody}
       </aside>
 
@@ -188,7 +188,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* Drawer */}
       <aside
         className={cn(
-          'md:hidden fixed inset-y-0 left-0 z-50 flex flex-col w-64 bg-background border-r border-white/[0.06]',
+          'md:hidden fixed inset-y-0 left-0 z-50 flex flex-col w-64 bg-white border-r border-gray-200 dark:bg-background dark:border-white/[0.06]',
           'transform transition-transform duration-300 ease-in-out',
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
         )}
