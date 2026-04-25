@@ -60,11 +60,13 @@ function AddVehicleModal({
 
   const seedForm = () => {
     if (initial) {
-      const brand = (ALGERIA_BRANDS as readonly string[]).includes(initial.brand)
-        ? (initial.brand as Brand)
-        : ('Renault' as Brand)
-      const models = MODELS_BY_BRAND[brand] ?? ['Autre']
-      const model = models.includes(initial.model) ? initial.model : models[0]
+      // Preserve whatever brand string is in the DB — even if it's a custom one.
+      const brand = initial.brand
+      const knownBrand = (ALGERIA_BRANDS as readonly string[]).includes(brand)
+      const models = knownBrand ? (MODELS_BY_BRAND[brand as Brand] ?? ['Autre']) : []
+      const model = knownBrand
+        ? (models.includes(initial.model) ? initial.model : models[0])
+        : initial.model
       return {
         brand,
         model,
@@ -75,8 +77,8 @@ function AddVehicleModal({
       }
     }
     return {
-      brand: 'Renault' as Brand,
-      model: MODELS_BY_BRAND['Renault'][0],
+      brand: 'Renault' as string,
+      model: MODELS_BY_BRAND['Renault'][0] as string,
       year: String(defaultYear),
       color: '',
       price_dzd: '',
@@ -97,7 +99,11 @@ function AddVehicleModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initial?.id])
 
-  const modelOptions = MODELS_BY_BRAND[form.brand] ?? ['Autre']
+  // Custom brand = anything the user typed that isn't in our known list.
+  const isKnownBrand = (ALGERIA_BRANDS as readonly string[]).includes(form.brand)
+  const modelOptions = isKnownBrand
+    ? (MODELS_BY_BRAND[form.brand as Brand] ?? ['Autre'])
+    : []
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -159,27 +165,44 @@ function AddVehicleModal({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Marque *</label>
-              <select
+              <input
+                list="vehicle-brands-list"
                 value={form.brand}
                 onChange={e => {
-                  const brand = e.target.value as Brand
-                  const firstModel = (MODELS_BY_BRAND[brand] ?? ['Autre'])[0]
-                  setForm(f => ({ ...f, brand, model: firstModel }))
+                  const brand = e.target.value
+                  const known = (ALGERIA_BRANDS as readonly string[]).includes(brand)
+                  // When user picks/types a known brand, default model to its first option.
+                  // When they type a custom brand, clear the model so they can type their own.
+                  const nextModel = known
+                    ? (MODELS_BY_BRAND[brand as Brand] ?? ['Autre'])[0]
+                    : ''
+                  setForm(f => ({ ...f, brand, model: nextModel }))
                 }}
+                placeholder="Choisir ou saisir une marque"
                 className="w-full h-9 px-3 rounded-lg bg-card border border-border text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
-              >
-                {ALGERIA_BRANDS.map(b => <option key={b} value={b}>{b}</option>)}
-              </select>
+              />
+              <datalist id="vehicle-brands-list">
+                {ALGERIA_BRANDS.map(b => <option key={b} value={b} />)}
+              </datalist>
             </div>
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Modèle *</label>
-              <select
-                value={form.model}
-                onChange={e => setForm(f => ({ ...f, model: e.target.value }))}
-                className="w-full h-9 px-3 rounded-lg bg-card border border-border text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
-              >
-                {modelOptions.map(m => <option key={m} value={m}>{m}</option>)}
-              </select>
+              {isKnownBrand ? (
+                <select
+                  value={form.model}
+                  onChange={e => setForm(f => ({ ...f, model: e.target.value }))}
+                  className="w-full h-9 px-3 rounded-lg bg-card border border-border text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
+                >
+                  {modelOptions.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              ) : (
+                <input
+                  value={form.model}
+                  onChange={e => setForm(f => ({ ...f, model: e.target.value }))}
+                  placeholder="ex. Modèle X"
+                  className="w-full h-9 px-3 rounded-lg bg-card border border-border text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
+                />
+              )}
             </div>
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Année</label>
