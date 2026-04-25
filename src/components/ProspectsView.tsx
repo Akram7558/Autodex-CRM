@@ -139,6 +139,20 @@ export function ProspectsView() {
     }
   }, [menuOpenId, contactPopover])
 
+  async function updateSuivi(id: string, suivi: LeadSuivi | null) {
+    // Optimistic update so the badge color flips immediately.
+    setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, suivi } : l)))
+    const { error: err } = await supabase
+      .from('leads')
+      .update({ suivi })
+      .eq('id', id)
+    if (err) {
+      console.warn('[ProspectsView] failed to update suivi:', err.message)
+      // Rollback on failure.
+      fetchLeads()
+    }
+  }
+
   async function deleteLead(id: string) {
     if (!confirm('Supprimer ce prospect ? Cette action est irréversible.')) return
     setLeads((prev) => prev.filter((l) => l.id !== id))
@@ -360,16 +374,34 @@ export function ProspectsView() {
                     <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">{prospect.source}</div>
                   </td>
                   <td className="py-4 px-6 max-w-[220px]">
-                    {prospect.suivi ? (
-                      <span className={cn(
-                        "inline-flex px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest border",
-                        LEAD_SUIVI_BADGE_CLASSES[prospect.suivi]
-                      )}>
-                        {LEAD_SUIVI_LABELS[prospect.suivi]}
-                      </span>
-                    ) : (
-                      <span className="text-xs font-bold text-slate-300 dark:text-slate-600">—</span>
-                    )}
+                    <div className="relative inline-block">
+                      <select
+                        value={prospect.suivi ?? ''}
+                        onChange={(e) =>
+                          updateSuivi(
+                            prospect.id,
+                            e.target.value ? (e.target.value as LeadSuivi) : null
+                          )
+                        }
+                        className={cn(
+                          "appearance-none cursor-pointer pl-3 pr-7 py-1 rounded-full text-xs font-black uppercase tracking-widest border focus:outline-none focus:ring-2 focus:ring-indigo-500/30",
+                          prospect.suivi
+                            ? LEAD_SUIVI_BADGE_CLASSES[prospect.suivi]
+                            : "bg-slate-50 text-slate-400 border-slate-200 dark:bg-slate-800 dark:text-slate-500 dark:border-slate-700"
+                        )}
+                      >
+                        <option value="">— Aucun —</option>
+                        {LEAD_SUIVI_VALUES.map((s) => (
+                          <option key={s} value={s}>{LEAD_SUIVI_LABELS[s]}</option>
+                        ))}
+                      </select>
+                      <svg
+                        className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 opacity-70"
+                        viewBox="0 0 20 20" fill="currentColor"
+                      >
+                        <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                      </svg>
+                    </div>
                     {prospect.notes && (
                       <div
                         title={prospect.notes}
