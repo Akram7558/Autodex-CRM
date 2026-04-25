@@ -239,11 +239,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-6">
             <ThemeToggle />
             <NotificationBell userId={userId} />
-            <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center">
-              <span className="text-white text-xs font-bold">{userInitial}</span>
+            <div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-indigo-600/20">
+              {userInitial}
             </div>
           </div>
         </header>
@@ -251,6 +251,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* Page content */}
         <main className="flex-1 overflow-y-auto animate-in fade-in duration-300">
           {children}
+          <footer className="mt-16 pb-10 text-center text-zinc-500 text-[10px] font-bold uppercase tracking-[0.3em]">
+            &copy; 2026 AutoDex • All Systems Operations Optimal
+          </footer>
         </main>
       </div>
     </div>
