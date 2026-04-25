@@ -859,6 +859,7 @@ export default function VehiculesPage() {
 
   async function handleImmediateStatusChange(v: Vehicle, next: Vehicle['status']) {
     const wasReserved = v.status === 'reserved'
+    const previousLeadId = v.reserved_by_lead_id
     const payload: Record<string, unknown> = { status: next }
     if (wasReserved) payload.reserved_by_lead_id = null
 
@@ -878,6 +879,23 @@ export default function VehiculesPage() {
       // revert
       setVehicles(prev => prev.map(x => x.id === v.id ? v : x))
       alert(`Erreur : ${err.message}`)
+      return
+    }
+
+    // Side-effect: when un-reserving, log an activity on the previous lead.
+    // Do NOT auto-change the lead's status — let the user handle it.
+    if (wasReserved && previousLeadId) {
+      const vehicleLabel = `${v.brand} ${v.model}${v.year ? ` ${v.year}` : ''}`.trim()
+      const { error: actErr } = await supabase.from('activities').insert([{
+        lead_id: previousLeadId,
+        type:    'status_change',
+        title:   'Réservation annulée',
+        body:    `Réservation annulée pour ${vehicleLabel}`,
+        done:    true,
+      }])
+      if (actErr) {
+        console.warn('[vehicules] failed to log un-reservation activity:', actErr.message)
+      }
     }
   }
 
@@ -903,7 +921,34 @@ export default function VehiculesPage() {
     if (err) {
       setVehicles(prev => prev.map(x => x.id === v.id ? v : x))
       alert(`Erreur : ${err.message}`)
+      setPendingReserve(null)
+      return
     }
+
+    // Side-effects on successful reservation:
+    // (1) bump the lead's status to 'proposal' ("Offre faite")
+    // (2) log an activity on the lead
+    const vehicleLabel = `${v.brand} ${v.model}${v.year ? ` ${v.year}` : ''}`.trim()
+
+    const { error: leadErr } = await supabase
+      .from('leads')
+      .update({ status: 'proposal' })
+      .eq('id', lead.id)
+    if (leadErr) {
+      console.warn('[vehicules] failed to update lead status to proposal:', leadErr.message)
+    }
+
+    const { error: actErr } = await supabase.from('activities').insert([{
+      lead_id: lead.id,
+      type:    'status_change',
+      title:   'Véhicule réservé',
+      body:    `${vehicleLabel} réservé pour ce client`,
+      done:    true,
+    }])
+    if (actErr) {
+      console.warn('[vehicules] failed to log reservation activity:', actErr.message)
+    }
+
     setPendingReserve(null)
   }
 
