@@ -1,424 +1,304 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
-import { supabase } from '@/lib/supabase'
+import { useEffect, useMemo, useState } from 'react'
+import { motion } from 'motion/react'
 import {
-  LEAD_STATUS_LABELS, LEAD_SOURCE_LABELS,
-  type Lead,
-} from '@/lib/types'
-import { format, isToday } from 'date-fns'
-import { fr } from 'date-fns/locale'
-import {
-  Plus, Phone, MessageSquare, Eye,
-  MessageCircle, Camera, Globe, User2, Users, Sparkles, Clock,
-  ChevronDown, Inbox,
+  Search,
+  Filter,
+  Plus,
+  MoreHorizontal,
+  Mail,
+  Phone,
+  MessageSquare,
+  Star,
+  Download,
 } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { supabase } from '@/lib/supabase'
+import { LEAD_SOURCE_LABELS, type Lead } from '@/lib/types'
+import { format, isToday, isYesterday } from 'date-fns'
+import { fr } from 'date-fns/locale'
 
-// ── Source & status styles ───────────────────────────────────
-function sourcePill(source: Lead['source']) {
-  const map: Record<Lead['source'], string> = {
-    'walk-in':  'bg-slate-500/15 text-slate-300',
-    phone:      'bg-sky-500/15 text-sky-400',
-    website:    'bg-slate-500/15 text-slate-300',
-    referral:   'bg-indigo-500/15 text-indigo-400',
-    social:     'bg-amber-500/15 text-amber-400',
-    facebook:   'bg-blue-500/15 text-blue-400',
-    instagram:  'bg-pink-500/15 text-pink-400',
-    whatsapp:   'bg-emerald-500/15 text-emerald-400',
-    telephone:  'bg-sky-500/15 text-sky-400',
+// ── Map real Lead.status (DB enum) → display label used by the design ──
+type DisplayStatus = 'Chaud' | 'En cours' | 'Nouveau' | 'Froid' | 'Contacté'
+
+function toDisplayStatus(s: Lead['status']): DisplayStatus {
+  switch (s) {
+    case 'new':       return 'Nouveau'
+    case 'contacted': return 'Contacté'
+    case 'qualified': return 'En cours'
+    case 'proposal':  return 'Chaud'
+    case 'won':       return 'Contacté'
+    case 'lost':      return 'Froid'
   }
-  return map[source] ?? 'bg-slate-500/15 text-slate-300'
 }
 
-function SourceIcon({ source }: { source: Lead['source'] }) {
-  const common = 'w-3.5 h-3.5'
-  if (source === 'whatsapp')  return <MessageCircle  className={`${common} text-emerald-400`} />
-  if (source === 'facebook')  return <MessageSquare  className={`${common} text-blue-400`} />
-  if (source === 'instagram') return <Camera         className={`${common} text-pink-400`} />
-  if (source === 'website')   return <Globe          className={`${common} text-slate-300`} />
-  if (source === 'phone' || source === 'telephone') return <Phone className={`${common} text-sky-400`} />
-  return <User2 className={`${common} text-slate-300`} />
+// ── Pretty-format created_at the way the design shows it ──
+function formatDate(d: string): string {
+  const date = new Date(d)
+  if (isToday(date))     return "Aujourd'hui"
+  if (isYesterday(date)) return 'Hier'
+  return format(date, 'd MMM', { locale: fr })
 }
 
-function statusPill(status: Lead['status']) {
-  const map: Record<Lead['status'], string> = {
-    new:       'bg-emerald-500/15 text-emerald-400',
-    contacted: 'bg-amber-500/15 text-amber-400',
-    qualified: 'bg-sky-500/15 text-sky-400',
-    proposal:  'bg-rose-500/15 text-rose-400',
-    won:       'bg-violet-500/15 text-violet-400',
-    lost:      'bg-red-500/15 text-red-400',
-  }
-  return map[status] ?? 'bg-muted text-muted-foreground'
+// VIP heuristic: high budget signals priority lead.
+const VIP_BUDGET_THRESHOLD = 5_000_000
+
+const statusStyles = {
+  'Chaud': 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400 border-rose-200/50 dark:border-rose-500/20',
+  'En cours': 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400 border-amber-200/50 dark:border-amber-500/20',
+  'Nouveau': 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400 border-indigo-200/50 dark:border-indigo-500/20',
+  'Froid': 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border-slate-200/50 dark:border-slate-700/50',
+  'Contacté': 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400 border-emerald-200/50 dark:border-emerald-500/20',
 }
 
-// ── Modal: Add Lead ──────────────────────────────────────────
-function AddLeadModal({
-  open, onClose, onSaved,
-}: { open: boolean; onClose: () => void; onSaved: () => void }) {
-  const [form, setForm] = useState({
-    full_name: '', phone: '', email: '', wilaya: '',
-    source: 'walk-in' as Lead['source'],
-    status: 'new' as Lead['status'],
-    notes: '',
-  })
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
+const PAGE_SIZE = 6
 
-  const wilayas = ['Alger', 'Oran', 'Constantine', 'Annaba', 'Sétif', 'Blida', 'Batna', 'Tizi Ouzou', 'Béjaïa', 'Autre']
+export default function ProspectsPage() {
+  const [leads, setLeads] = useState<Lead[]>([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!form.full_name.trim()) { setError('Le nom est requis.'); return }
-    setSaving(true)
-    const { error: err } = await supabase.from('leads').insert([{
-      full_name: form.full_name.trim(),
-      phone:     form.phone || null,
-      email:     form.email || null,
-      wilaya:    form.wilaya || null,
-      source:    form.source,
-      status:    form.status,
-      notes:     form.notes || null,
-    }])
-    setSaving(false)
-    if (err) { setError(err.message); return }
-    setForm({ full_name: '', phone: '', email: '', wilaya: '', source: 'walk-in', status: 'new', notes: '' })
-    setError('')
-    onSaved()
-    onClose()
-  }
-
-  if (!open) return null
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm p-4">
-      <div className="rounded-2xl bg-card border border-border shadow-2xl w-full max-w-lg">
-        <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-border">
-          <h2 className="text-base font-semibold text-foreground">Nouveau prospect</h2>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground text-xl leading-none">&times;</button>
-        </div>
-        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2">
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Nom complet *</label>
-              <input
-                dir="auto"
-                value={form.full_name}
-                onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))}
-                placeholder="ex. Karim Benali"
-                className="w-full h-9 px-3 rounded-lg bg-card border border-border text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Téléphone</label>
-              <input
-                value={form.phone}
-                onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
-                placeholder="0555 XX XX XX"
-                className="w-full h-9 px-3 rounded-lg bg-card border border-border text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Email</label>
-              <input
-                type="email"
-                value={form.email}
-                onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                placeholder="email@exemple.com"
-                className="w-full h-9 px-3 rounded-lg bg-card border border-border text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Wilaya</label>
-              <select
-                value={form.wilaya}
-                onChange={e => setForm(f => ({ ...f, wilaya: e.target.value }))}
-                className="w-full h-9 px-3 rounded-lg bg-card border border-border text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
-              >
-                <option value="">— Choisir —</option>
-                {wilayas.map(w => <option key={w} value={w}>{w}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Source</label>
-              <select
-                value={form.source}
-                onChange={e => setForm(f => ({ ...f, source: e.target.value as Lead['source'] }))}
-                className="w-full h-9 px-3 rounded-lg bg-card border border-border text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
-              >
-                {Object.entries(LEAD_SOURCE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </select>
-            </div>
-            <div className="col-span-2">
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Notes</label>
-              <textarea
-                value={form.notes}
-                onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-                rows={2}
-                placeholder="Observations, budget, modèle souhaité…"
-                className="w-full px-3 py-2 rounded-lg bg-card border border-border text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition resize-none"
-              />
-            </div>
-          </div>
-          {error && <p className="text-red-500 text-xs">{error}</p>}
-          <div className="flex justify-end gap-2 pt-1">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted transition"
-            >
-              Annuler
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="px-4 py-2 rounded-lg text-sm bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition disabled:opacity-60"
-            >
-              {saving ? 'Enregistrement…' : 'Enregistrer'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  )
-}
-
-// ── Main page ────────────────────────────────────────────────
-const PAGE_SIZE = 15
-
-export default function LeadsPage() {
-  const [leads,       setLeads]       = useState<Lead[]>([])
-  const [loading,     setLoading]     = useState(true)
-  const [sourceFilter, setSourceFilter] = useState<Lead['source'] | 'all'>('all')
-  const [statusFilter, setStatusFilter] = useState<Lead['status'] | 'all'>('all')
-  const [page, setPage]               = useState(1)
-  const [modalOpen,   setModalOpen]   = useState(false)
-
-  async function fetchLeads() {
-    const { data } = await supabase
+  useEffect(() => {
+    supabase
       .from('leads')
       .select('*')
       .order('created_at', { ascending: false })
-    setLeads((data ?? []) as Lead[])
-    setLoading(false)
-  }
+      .then(({ data }) => {
+        setLeads((data ?? []) as Lead[])
+        setLoading(false)
+      })
+  }, [])
 
-  useEffect(() => { fetchLeads() }, [])
+  // Real leads → shape the design template expects.
+  const prospectsData = useMemo(() => {
+    const term = search.trim().toLowerCase()
+    return leads
+      .filter((l) => {
+        if (!term) return true
+        return (
+          l.full_name.toLowerCase().includes(term) ||
+          (l.email ?? '').toLowerCase().includes(term) ||
+          (l.model_wanted ?? '').toLowerCase().includes(term)
+        )
+      })
+      .map((l) => ({
+        id: l.id,
+        name: l.full_name,
+        email: l.email ?? '—',
+        phone: l.phone ?? '—',
+        car: l.model_wanted ?? '—',
+        status: toDisplayStatus(l.status),
+        source: LEAD_SOURCE_LABELS[l.source] ?? l.source,
+        date: formatDate(l.created_at),
+        isVip: !!(l.budget_dzd && l.budget_dzd >= VIP_BUDGET_THRESHOLD),
+      }))
+  }, [leads, search])
 
-  const filtered = useMemo(() => {
-    return leads.filter(l => {
-      if (sourceFilter !== 'all' && l.source !== sourceFilter) return false
-      if (statusFilter !== 'all' && l.status !== statusFilter) return false
-      return true
-    })
-  }, [leads, sourceFilter, statusFilter])
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const total = prospectsData.length
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
   const safePage = Math.min(page, totalPages)
-  const start = (safePage - 1) * PAGE_SIZE
-  const end = Math.min(start + PAGE_SIZE, filtered.length)
-  const pageRows = filtered.slice(start, end)
-
-  // Summary stats
-  const total = leads.length
-  const newToday = leads.filter(l => {
-    try { return isToday(new Date(l.created_at)) } catch { return false }
-  }).length
-  const enAttente = leads.filter(l => l.status === 'new' || l.status === 'contacted').length
-
-  const stats = [
-    { label: 'Total prospects',      value: total,     icon: Users,     color: 'text-indigo-400' },
-    { label: 'Nouveaux aujourd\u2019hui', value: newToday, icon: Sparkles,  color: 'text-purple-400' },
-    { label: 'En attente',           value: enAttente, icon: Clock,     color: 'text-amber-400' },
-  ]
-
-  function pageNumbers(): (number | 'gap')[] {
-    if (totalPages <= 5) return Array.from({ length: totalPages }, (_, i) => i + 1)
-    if (safePage <= 3) return [1, 2, 3, 'gap', totalPages]
-    if (safePage >= totalPages - 2) return [1, 'gap', totalPages - 2, totalPages - 1, totalPages]
-    return [1, 'gap', safePage - 1, safePage, safePage + 1, 'gap', totalPages]
-  }
+  const startIdx = (safePage - 1) * PAGE_SIZE
+  const pageRows = prospectsData.slice(startIdx, startIdx + PAGE_SIZE)
+  const fromLabel = total === 0 ? 0 : startIdx + 1
+  const toLabel   = Math.min(startIdx + PAGE_SIZE, total)
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Hero */}
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <h1 className="text-3xl md:text-4xl font-bold text-foreground tracking-tight">Liste des Prospects</h1>
-        <button
-          onClick={() => setModalOpen(true)}
-          className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg px-4 py-2.5 font-semibold transition"
-        >
-          <Plus className="w-4 h-4" /> Nouveau Prospect
-        </button>
-      </div>
-
-      {/* Stat cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {stats.map(s => {
-          const Icon = s.icon
-          return (
-            <div key={s.label} className="rounded-xl border border-border bg-card p-5 flex items-center gap-4">
-              <div className="flex-shrink-0 w-11 h-11 rounded-lg bg-muted/50 flex items-center justify-center">
-                <Icon className={`w-5 h-5 ${s.color}`} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">{s.label}</p>
-                <p className="text-3xl md:text-4xl font-bold text-foreground mt-1 leading-none tracking-tight">{s.value}</p>
-              </div>
-            </div>
-          )
-        })}
-      </div>
-
-      {/* Table card */}
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
-        {/* Filters row */}
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-b border-border flex-wrap">
-          <div className="relative">
-            <select
-              value={sourceFilter}
-              onChange={e => { setSourceFilter(e.target.value as Lead['source'] | 'all'); setPage(1) }}
-              className="appearance-none h-9 pl-4 pr-9 rounded-full bg-muted/40 border border-border text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
-            >
-              <option value="all">Source : Toutes</option>
-              {Object.entries(LEAD_SOURCE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-            </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-          </div>
-          <div className="relative">
-            <select
-              value={statusFilter}
-              onChange={e => { setStatusFilter(e.target.value as Lead['status'] | 'all'); setPage(1) }}
-              className="appearance-none h-9 pl-4 pr-9 rounded-full bg-muted/40 border border-border text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
-            >
-              <option value="all">Statut : Tous</option>
-              {Object.entries(LEAD_STATUS_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-            </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-          </div>
+    <div className="max-w-7xl mx-auto space-y-6 pb-12">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <motion.h1
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-3xl font-black tracking-tight text-slate-900 dark:text-slate-50"
+          >
+            Prospects
+          </motion.h1>
+          <motion.p
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="text-slate-500 dark:text-slate-400 mt-1"
+          >
+            Gérez votre base de contacts et identifiez les meilleures opportunités.
+          </motion.p>
         </div>
 
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.2 }}
+          className="flex items-center gap-3"
+        >
+          <button className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-sm">
+            <Download className="w-4 h-4" />
+            <span className="hidden sm:inline">Exporter</span>
+          </button>
+          <button className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-500/20 transition-colors">
+            <Plus className="w-4 h-4" />
+            Nouveau prospect
+          </button>
+        </motion.div>
+      </div>
+
+      {/* Main Content Area */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-[2rem] shadow-sm flex flex-col overflow-hidden"
+      >
+        {/* Toolbar (Search & Filters) */}
+        <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="relative w-full sm:w-96">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(1) }}
+              placeholder="Rechercher un nom, email, véhicule..."
+              className="w-full bg-slate-50 dark:bg-slate-950 border-none rounded-2xl pl-12 pr-6 py-3 text-sm focus:ring-2 focus:ring-indigo-500/20 dark:text-slate-100 placeholder:text-slate-400"
+            />
+            <Search className="absolute left-4 top-3.5 text-slate-400 w-5 h-5 pointer-events-none" />
+          </div>
+
+          <button className="flex items-center gap-2 px-6 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800 rounded-2xl text-sm font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors w-full sm:w-auto justify-center">
+            <Filter className="w-4 h-4" />
+            Filtres
+          </button>
+        </div>
+
+        {/* Table */}
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="text-left border-b border-border">
-                <th className="px-6 py-3 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">Prospect</th>
-                <th className="px-6 py-3 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">Téléphone</th>
-                <th className="px-6 py-3 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">Wilaya</th>
-                <th className="px-6 py-3 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">Source</th>
-                <th className="px-6 py-3 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">Statut</th>
-                <th className="px-6 py-3 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">Date</th>
-                <th className="px-6 py-3" />
+              <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50">
+                <th className="pb-4 pt-4 px-6 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Contact</th>
+                <th className="pb-4 pt-4 px-6 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Véhicule & Source</th>
+                <th className="pb-4 pt-4 px-6 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Statut</th>
+                <th className="pb-4 pt-4 px-6 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Date</th>
+                <th className="pb-4 pt-4 px-6 text-right"></th>
               </tr>
             </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center">
-                    <div className="flex justify-center">
-                      <div className="w-6 h-6 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
-                    </div>
-                  </td>
-                </tr>
-              ) : filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-6 py-12">
-                    <div className="flex flex-col items-center justify-center text-center gap-3 rounded-lg border-2 border-dashed border-border py-10 px-6 mx-auto max-w-md">
-                      <Inbox className="w-10 h-10 text-muted-foreground/60" />
-                      <div>
-                        <p className="text-sm font-medium text-foreground">Aucun prospect</p>
-                        <p className="text-xs text-muted-foreground mt-1">Aucun résultat ne correspond à vos filtres.</p>
-                      </div>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                pageRows.map(lead => (
-                  <tr key={lead.id} className="group border-b border-border/60 hover:bg-muted/40 transition-colors">
-                    <td className="px-6 py-3.5">
-                      <p dir="auto" className="font-medium text-foreground leading-tight">{lead.full_name}</p>
-                      {lead.email && <p className="text-xs text-muted-foreground mt-0.5">{lead.email}</p>}
-                    </td>
-                    <td className="px-6 py-3.5 text-muted-foreground">{lead.phone ?? '—'}</td>
-                    <td className="px-6 py-3.5 text-muted-foreground">{lead.wilaya ?? '—'}</td>
-                    <td className="px-6 py-3.5">
-                      <div className="w-8 h-8 rounded-full bg-muted/50 flex items-center justify-center">
-                        <SourceIcon source={lead.source} />
-                      </div>
-                    </td>
-                    <td className="px-6 py-3.5">
-                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusPill(lead.status)}`}>
-                        {LEAD_STATUS_LABELS[lead.status]}
-                      </span>
-                    </td>
-                    <td className="px-6 py-3.5 text-muted-foreground text-xs">
-                      {format(new Date(lead.created_at), 'dd/MM/yyyy', { locale: fr })}
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <div className="hidden group-hover:flex gap-2 justify-end">
-                        {lead.phone && (
-                          <a
-                            href={`tel:${lead.phone}`}
-                            className="w-8 h-8 rounded-full border border-border bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground flex items-center justify-center transition-colors"
-                            title="Appeler"
-                          >
-                            <Phone className="w-3.5 h-3.5" />
-                          </a>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
+              {pageRows.map((prospect, idx) => (
+                <motion.tr
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.4 + (idx * 0.05) }}
+                  key={prospect.id}
+                  className="group hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-colors"
+                >
+                  <td className="py-4 px-6">
+                    <div className="flex items-center gap-4">
+                      <div className="relative">
+                        <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-black text-slate-600 dark:text-slate-300">
+                          {prospect.name.split(' ').map(n => n[0]).join('')}
+                        </div>
+                        {prospect.isVip && (
+                          <div className="absolute -top-1 -right-1 w-4 h-4 bg-amber-400 rounded-full flex items-center justify-center border-2 border-white dark:border-slate-900">
+                            <Star className="w-2.5 h-2.5 text-white fill-white" />
+                          </div>
                         )}
-                        <button
-                          className="w-8 h-8 rounded-full border border-border bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground flex items-center justify-center transition-colors"
-                          title="Message"
-                          type="button"
-                        >
-                          <MessageSquare className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          className="w-8 h-8 rounded-full border border-border bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground flex items-center justify-center transition-colors"
-                          title="Voir"
-                          type="button"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                        </button>
                       </div>
-                    </td>
-                  </tr>
-                ))
+                      <div>
+                        <div className="text-sm font-bold text-slate-900 dark:text-slate-100">{prospect.name}</div>
+                        <div className="flex items-center gap-3 mt-1">
+                          <div className="flex items-center gap-1 text-slate-500" title={prospect.email}>
+                            <Mail className="w-3 h-3" />
+                            <span className="text-xs truncate max-w-[120px]">{prospect.email}</span>
+                          </div>
+                          <div className="flex items-center gap-1 text-slate-500">
+                            <Phone className="w-3 h-3" />
+                            <span className="text-xs">{prospect.phone}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="py-4 px-6">
+                    <div className="text-sm font-bold text-slate-900 dark:text-slate-100">{prospect.car}</div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">{prospect.source}</div>
+                  </td>
+                  <td className="py-4 px-6">
+                    <span className={cn(
+                      "px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest border",
+                      statusStyles[prospect.status as keyof typeof statusStyles]
+                    )}>
+                      {prospect.status}
+                    </span>
+                  </td>
+                  <td className="py-4 px-6 text-sm font-bold text-slate-500 dark:text-slate-400">
+                    {prospect.date}
+                  </td>
+                  <td className="py-4 px-6 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <button className="p-2 text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 rounded-xl transition-colors shadow-sm" title="Appeler">
+                        <Phone className="w-4 h-4" />
+                      </button>
+                      <button className="p-2 text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-500/20 rounded-xl transition-colors shadow-sm" title="Message">
+                        <MessageSquare className="w-4 h-4" />
+                      </button>
+                      <button className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                        <MoreHorizontal className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </td>
+                </motion.tr>
+              ))}
+              {!loading && pageRows.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-12 px-6 text-center text-sm font-bold text-slate-500">
+                    Aucun prospect trouvé.
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>
         </div>
 
-        {/* Pagination */}
-        {!loading && filtered.length > 0 && (
-          <div className="flex items-center justify-between px-6 py-4 border-t border-border flex-wrap gap-3">
-            <p className="text-xs text-muted-foreground">
-              Affichage de {start + 1} à {end} sur {filtered.length} prospects
-            </p>
-            <div className="flex items-center gap-1">
-              {pageNumbers().map((n, i) => n === 'gap' ? (
-                <span key={`g${i}`} className="px-2 text-muted-foreground text-xs">…</span>
-              ) : (
+        {/* Pagination placeholder */}
+        <div className="p-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50">
+          <span className="text-xs font-bold text-slate-500">
+            Affichage de {fromLabel} à {toLabel} sur {total}
+          </span>
+          <div className="flex gap-1">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={safePage === 1}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-400 hover:text-slate-600 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
+            >
+              Précédent
+            </button>
+            {Array.from({ length: totalPages }).slice(0, 3).map((_, i) => {
+              const n = i + 1
+              const isActive = n === safePage
+              return (
                 <button
                   key={n}
                   onClick={() => setPage(n)}
-                  className={`w-8 h-8 rounded-md text-xs font-medium transition-colors ${
-                    safePage === n
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                  }`}
+                  className={cn(
+                    'px-3 py-1.5 rounded-lg text-xs font-bold transition-colors',
+                    isActive
+                      ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm border border-slate-200 dark:border-slate-700'
+                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'
+                  )}
                 >
                   {n}
                 </button>
-              ))}
-            </div>
+              )
+            })}
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={safePage === totalPages}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
+            >
+              Suivant
+            </button>
           </div>
-        )}
-      </div>
-
-      <AddLeadModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        onSaved={fetchLeads}
-      />
+        </div>
+      </motion.div>
     </div>
   )
 }
