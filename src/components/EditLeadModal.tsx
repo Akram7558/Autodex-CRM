@@ -5,6 +5,7 @@ import { X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import {
   type Lead,
+  type Vehicle,
   LEAD_STATUS_LABELS,
   WILAYAS_58,
 } from '@/lib/types'
@@ -23,6 +24,20 @@ type EditForm = {
   source: string
   status: Lead['status']
   notes: string
+  vehicle_id: string
+}
+
+// Statuses that require linking a specific vehicle (for accounting / reports).
+const VEHICLE_LINK_STATUSES: Lead['status'][] = ['proposal', 'won']
+
+function vehicleLabel(v: Vehicle): string {
+  const parts = [v.brand, v.model, v.year ? String(v.year) : ''].filter(Boolean)
+  const head = parts.join(' ')
+  if (v.price_dzd != null) {
+    const price = new Intl.NumberFormat('fr-DZ', { maximumFractionDigits: 0 }).format(v.price_dzd)
+    return `${head} · ${price} DZD`
+  }
+  return head
 }
 
 const STATUS_OPTIONS: Lead['status'][] = [
@@ -41,6 +56,7 @@ export function EditLeadModal({
   const [form, setForm] = useState<EditForm | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [vehicles, setVehicles] = useState<Vehicle[]>([])
 
   useEffect(() => {
     if (!lead) { setForm(null); return }
@@ -53,8 +69,21 @@ export function EditLeadModal({
       source:       lead.source,
       status:       lead.status,
       notes:        lead.notes ?? '',
+      vehicle_id:   lead.vehicle_id ?? '',
     })
     setError('')
+  }, [lead])
+
+  // Lazy-load the vehicle list the first time the user opens the modal.
+  useEffect(() => {
+    if (!lead) return
+    if (vehicles.length > 0) return
+    supabase
+      .from('vehicles')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .then(({ data }) => setVehicles((data ?? []) as Vehicle[]))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lead])
 
   function set<K extends keyof EditForm>(k: K, v: EditForm[K]) {
@@ -65,16 +94,25 @@ export function EditLeadModal({
     e.preventDefault()
     if (!lead || !form) return
     if (!form.full_name.trim()) { setError('Le nom complet est requis.'); return }
+
+    const needsVehicle = VEHICLE_LINK_STATUSES.includes(form.status)
+    if (needsVehicle && !form.vehicle_id) {
+      setError('Sélectionnez le véhicule concerné par cette offre / vente.')
+      return
+    }
     setSaving(true); setError('')
 
+    const linkedVehicleId = needsVehicle ? form.vehicle_id : null
+
     const payload: Record<string, unknown> = {
-      full_name: form.full_name.trim(),
-      phone:     form.phone.trim() || null,
-      email:     form.email.trim() || null,
-      wilaya:    form.wilaya || null,
-      source:    form.source,
-      status:    form.status,
-      notes:     form.notes.trim() || null,
+      full_name:  form.full_name.trim(),
+      phone:      form.phone.trim() || null,
+      email:      form.email.trim() || null,
+      wilaya:     form.wilaya || null,
+      source:     form.source,
+      status:     form.status,
+      notes:      form.notes.trim() || null,
+      vehicle_id: linkedVehicleId,
     }
     // Optional kanban field — only send when present so we don't fail on legacy schemas.
     if (form.model_wanted.trim()) payload.model_wanted = form.model_wanted.trim()
@@ -89,9 +127,36 @@ export function EditLeadModal({
       const retry = await supabase.from('leads').update(stripped).eq('id', lead.id)
       err = retry.error
     }
+    // Fallback: legacy schema (no vehicle_id column — pre migration_06).
+    if (err && /vehicle_id/i.test(err.message)) {
+      const { vehicle_id: _omit, ...stripped } = payload
+      void _omit
+      const retry = await supabase.from('leads').update(stripped).eq('id', lead.id)
+      err = retry.error
+      if (!err) {
+        setSaving(false)
+        setError('Lead mis à jour — exécutez migration_06_leads_vehicle_id.sql pour activer le lien véhicule.')
+        setTimeout(() => { onSaved(); onClose() }, 2500)
+        return
+      }
+    }
+
+    if (err) { setSaving(false); setError(err.message); return }
+
+    // Cascade: a confirmed sale flips the linked vehicle's status to 'sold'.
+    // For 'proposal' (offre faite) we keep the vehicle as-is — the dedicated
+    // reservation flow on the vehicles page handles the 'reserved' transition.
+    if (linkedVehicleId && form.status === 'won') {
+      const { error: vErr } = await supabase
+        .from('vehicles')
+        .update({ status: 'sold' })
+        .eq('id', linkedVehicleId)
+      if (vErr) {
+        console.warn('[EditLeadModal] failed to mark vehicle sold:', vErr.message)
+      }
+    }
 
     setSaving(false)
-    if (err) { setError(err.message); return }
     onSaved()
     onClose()
   }
@@ -147,6 +212,30 @@ export function EditLeadModal({
               ))}
             </select>
           </div>
+
+          {/* Véhicule concerné — only for "Offre faite" / "Vendu" */}
+          {VEHICLE_LINK_STATUSES.includes(form.status) && (
+            <div>
+              <label className="block text-xs font-medium text-foreground mb-1">
+                Véhicule concerné *
+              </label>
+              <select
+                value={form.vehicle_id}
+                onChange={(e) => set('vehicle_id', e.target.value)}
+                className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 transition"
+              >
+                <option value="">— Sélectionner un véhicule —</option>
+                {vehicles.map((v) => (
+                  <option key={v.id} value={v.id}>{vehicleLabel(v)}</option>
+                ))}
+              </select>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                {form.status === 'won'
+                  ? 'Le véhicule sera automatiquement marqué comme « Vendu ».'
+                  : 'Le véhicule conservera son statut actuel.'}
+              </p>
+            </div>
+          )}
 
           {/* Name */}
           <div>

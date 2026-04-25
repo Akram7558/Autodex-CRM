@@ -19,7 +19,12 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
-import { LEAD_SOURCE_LABELS, LEAD_STATUS_LABELS, type Lead } from '@/lib/types'
+import {
+  LEAD_SOURCE_LABELS,
+  LEAD_STATUS_LABELS,
+  type Lead,
+  type Vehicle,
+} from '@/lib/types'
 import { format, isToday, isYesterday } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { AddLeadModal } from '@/components/AddLeadModal'
@@ -94,6 +99,7 @@ export function ProspectsView() {
     { id: string; kind: 'call' | 'msg' } | null
   >(null)
   const [editingLead, setEditingLead] = useState<Lead | null>(null)
+  const [vehiclesById, setVehiclesById] = useState<Record<string, Vehicle>>({})
 
   async function fetchLeads() {
     const { data } = await supabase
@@ -103,7 +109,14 @@ export function ProspectsView() {
     setLeads((data ?? []) as Lead[])
   }
 
-  useEffect(() => { fetchLeads() }, [])
+  async function fetchVehicles() {
+    const { data } = await supabase.from('vehicles').select('*')
+    const map: Record<string, Vehicle> = {}
+    for (const v of (data ?? []) as Vehicle[]) map[v.id] = v
+    setVehiclesById(map)
+  }
+
+  useEffect(() => { fetchLeads(); fetchVehicles() }, [])
 
   // Close kebab menu / contact popover on outside click / escape
   useEffect(() => {
@@ -178,20 +191,30 @@ export function ProspectsView() {
           (l.model_wanted ?? '').toLowerCase().includes(term)
         )
       })
-      .map((l) => ({
-        id: l.id,
-        rawPhone: l.phone,
-        rawEmail: l.email,
-        name: l.full_name,
-        email: l.email ?? '—',
-        phone: l.phone ?? '—',
-        car: l.model_wanted ?? '—',
-        status: toDisplayStatus(l.status),
-        source: LEAD_SOURCE_LABELS[l.source] ?? l.source,
-        date: formatDate(l.created_at),
-        isVip: !!(l.budget_dzd && l.budget_dzd >= VIP_BUDGET_THRESHOLD),
-      }))
-  }, [leads, search, statusFilter, sourceFilter])
+      .map((l) => {
+        // Resolve the linked vehicle (if any) to a human label.
+        const linked = l.vehicle_id ? vehiclesById[l.vehicle_id] : undefined
+        const linkedLabel = linked
+          ? [linked.brand, linked.model, linked.year ? String(linked.year) : '']
+              .filter(Boolean)
+              .join(' ')
+          : null
+        return {
+          id: l.id,
+          rawPhone: l.phone,
+          rawEmail: l.email,
+          name: l.full_name,
+          email: l.email ?? '—',
+          phone: l.phone ?? '—',
+          car: linkedLabel ?? l.model_wanted ?? '—',
+          isLinked: !!linkedLabel,
+          status: toDisplayStatus(l.status),
+          source: LEAD_SOURCE_LABELS[l.source] ?? l.source,
+          date: formatDate(l.created_at),
+          isVip: !!(l.budget_dzd && l.budget_dzd >= VIP_BUDGET_THRESHOLD),
+        }
+      })
+  }, [leads, search, statusFilter, sourceFilter, vehiclesById])
 
   const total = prospectsData.length
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
@@ -396,7 +419,14 @@ export function ProspectsView() {
                     </div>
                   </td>
                   <td className="py-4 px-6">
-                    <div className="text-sm font-bold text-slate-900 dark:text-slate-100">{prospect.car}</div>
+                    <div className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                      <span className="truncate">{prospect.car}</span>
+                      {prospect.isLinked && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-500/20 shrink-0">
+                          Lié
+                        </span>
+                      )}
+                    </div>
                     <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">{prospect.source}</div>
                   </td>
                   <td className="py-4 px-6">
@@ -600,7 +630,7 @@ export function ProspectsView() {
       <EditLeadModal
         lead={editingLead}
         onClose={() => setEditingLead(null)}
-        onSaved={fetchLeads}
+        onSaved={() => { fetchLeads(); fetchVehicles() }}
       />
     </div>
   )
