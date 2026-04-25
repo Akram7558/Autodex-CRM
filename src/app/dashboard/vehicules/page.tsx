@@ -4,7 +4,10 @@ import { useEffect, useState, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { VEHICLE_STATUS_LABELS, type Vehicle } from '@/lib/types'
 import { ALGERIA_BRANDS, MODELS_BY_BRAND, YEARS, type Brand } from '@/lib/vehicle-catalog'
-import { Car, Plus, MoreVertical, Loader2, Search, User } from 'lucide-react'
+import {
+  Car, Plus, MoreVertical, Loader2, Search, User,
+  Pencil, Camera, ClipboardList, Trash2,
+} from 'lucide-react'
 
 type LeadLite = { id: string; full_name: string; phone: string | null; wilaya?: string | null }
 
@@ -12,6 +15,16 @@ type LeadLite = { id: string; full_name: string; phone: string | null; wilaya?: 
 function formatPrice(p: number | null) {
   if (!p) return '—'
   return new Intl.NumberFormat('fr-DZ', { style: 'decimal', maximumFractionDigits: 0 }).format(p) + ' DZD'
+}
+
+function formatDateFr(iso: string | null | undefined) {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return '—'
+  return new Intl.DateTimeFormat('fr-FR', {
+    day: '2-digit', month: 'long', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  }).format(d)
 }
 
 function stockPill(status: Vehicle['status']) {
@@ -32,22 +45,57 @@ function isMissingColumnError(err: unknown): boolean {
   return msg.includes('image_url') || msg.includes('reserved_by_lead_id') || msg.includes('column') && msg.includes('does not exist')
 }
 
-// ── Add Vehicle Modal ────────────────────────────────────────
+// ── Add / Edit Vehicle Modal ─────────────────────────────────
 function AddVehicleModal({
-  open, onClose, onSaved,
-}: { open: boolean; onClose: () => void; onSaved: () => void }) {
+  open, onClose, onSaved, initial,
+}: {
+  open: boolean
+  onClose: () => void
+  onSaved: () => void
+  initial?: Vehicle
+}) {
+  const isEdit = !!initial
   const currentYear = new Date().getFullYear()
   const defaultYear = (YEARS as readonly number[]).includes(currentYear) ? currentYear : YEARS[0]
-  const [form, setForm] = useState({
-    brand: 'Renault' as Brand,
-    model: MODELS_BY_BRAND['Renault'][0],
-    year: String(defaultYear),
-    color: '',
-    price_dzd: '',
-    status: 'available' as Vehicle['status'],
-  })
+
+  const seedForm = () => {
+    if (initial) {
+      const brand = (ALGERIA_BRANDS as readonly string[]).includes(initial.brand)
+        ? (initial.brand as Brand)
+        : ('Renault' as Brand)
+      const models = MODELS_BY_BRAND[brand] ?? ['Autre']
+      const model = models.includes(initial.model) ? initial.model : models[0]
+      return {
+        brand,
+        model,
+        year: String(initial.year ?? defaultYear),
+        color: initial.color ?? '',
+        price_dzd: initial.price_dzd != null ? String(initial.price_dzd) : '',
+        status: initial.status,
+      }
+    }
+    return {
+      brand: 'Renault' as Brand,
+      model: MODELS_BY_BRAND['Renault'][0],
+      year: String(defaultYear),
+      color: '',
+      price_dzd: '',
+      status: 'available' as Vehicle['status'],
+    }
+  }
+
+  const [form, setForm] = useState(seedForm)
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState('')
+
+  // Reseed when opened with a different vehicle
+  useEffect(() => {
+    if (open) {
+      setForm(seedForm())
+      setError('')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initial?.id])
 
   const modelOptions = MODELS_BY_BRAND[form.brand] ?? ['Autre']
 
@@ -62,26 +110,36 @@ function AddVehicleModal({
       color:     form.color || null,
       price_dzd: form.price_dzd ? parseFloat(form.price_dzd.replace(/\s/g, '')) : null,
       status:    form.status,
-      reserved_by_lead_id: null,
     }
-    let { error: err } = await supabase.from('vehicles').insert([payload])
-    if (err && isMissingColumnError(err)) {
-      // retry without the new column
-      const { reserved_by_lead_id: _omit, ...stripped } = payload
-      void _omit
-      const retry = await supabase.from('vehicles').insert([stripped])
-      err = retry.error
+
+    let err: { message: string } | null = null
+    if (isEdit && initial) {
+      const res = await supabase.from('vehicles').update(payload).eq('id', initial.id)
+      err = res.error
+    } else {
+      payload.reserved_by_lead_id = null
+      const res = await supabase.from('vehicles').insert([payload])
+      err = res.error
+      if (err && isMissingColumnError(err)) {
+        const { reserved_by_lead_id: _omit, ...stripped } = payload
+        void _omit
+        const retry = await supabase.from('vehicles').insert([stripped])
+        err = retry.error
+      }
     }
+
     setSaving(false)
     if (err) { setError(err.message); return }
-    setForm({
-      brand: 'Renault',
-      model: MODELS_BY_BRAND['Renault'][0],
-      year: String(defaultYear),
-      color: '',
-      price_dzd: '',
-      status: 'available',
-    })
+    if (!isEdit) {
+      setForm({
+        brand: 'Renault',
+        model: MODELS_BY_BRAND['Renault'][0],
+        year: String(defaultYear),
+        color: '',
+        price_dzd: '',
+        status: 'available',
+      })
+    }
     setError('')
     onSaved()
     onClose()
@@ -92,7 +150,9 @@ function AddVehicleModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm p-4">
       <div className="rounded-2xl bg-card border border-border shadow-2xl w-full max-w-md">
         <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-border">
-          <h2 className="text-base font-semibold text-foreground">Ajouter un véhicule</h2>
+          <h2 className="text-base font-semibold text-foreground">
+            {isEdit ? 'Modifier le véhicule' : 'Ajouter un véhicule'}
+          </h2>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground text-xl leading-none">&times;</button>
         </div>
         <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
@@ -166,7 +226,7 @@ function AddVehicleModal({
           <div className="flex justify-end gap-2 pt-1">
             <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted transition">Annuler</button>
             <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg text-sm bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition disabled:opacity-60">
-              {saving ? 'Enregistrement…' : 'Ajouter'}
+              {saving ? 'Enregistrement…' : (isEdit ? 'Enregistrer' : 'Ajouter')}
             </button>
           </div>
         </form>
@@ -313,15 +373,265 @@ function ReservedByModal({
   )
 }
 
+// ── Vehicle Details Modal ────────────────────────────────────
+function VehicleDetailsModal({
+  vehicle, lead, onClose,
+}: {
+  vehicle: Vehicle
+  lead: LeadLite | null
+  onClose: () => void
+}) {
+  const stock = stockPill(vehicle.status)
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm p-4">
+      <div className="rounded-2xl bg-card border border-border shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-border">
+          <h2 className="text-base font-semibold text-foreground">
+            {vehicle.brand} {vehicle.model}{vehicle.year ? ` ${vehicle.year}` : ''}
+          </h2>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground text-xl leading-none">&times;</button>
+        </div>
+
+        <div className="overflow-y-auto px-6 py-5 space-y-5">
+          <div className="aspect-video rounded-xl overflow-hidden bg-gradient-to-br from-muted/60 to-muted/20 flex items-center justify-center">
+            {vehicle.image_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={vehicle.image_url} alt={`${vehicle.brand} ${vehicle.model}`} className="w-full h-full object-cover" />
+            ) : (
+              <Car className="w-16 h-16 text-muted-foreground/40" />
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+            <DetailField label="Marque" value={vehicle.brand} />
+            <DetailField label="Modèle" value={vehicle.model} />
+            <DetailField label="Année" value={vehicle.year ? String(vehicle.year) : '—'} />
+            <DetailField label="Couleur" value={vehicle.color ?? '—'} />
+            <DetailField label="VIN" value={vehicle.vin ?? '—'} />
+            <DetailField label="Prix" value={formatPrice(vehicle.price_dzd)} />
+            <div>
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Statut</p>
+              <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${stock.cls}`}>
+                {stock.label}
+              </span>
+            </div>
+            <DetailField label="Créé le" value={formatDateFr(vehicle.created_at)} />
+          </div>
+
+          {vehicle.status === 'reserved' && lead && (
+            <div className="rounded-lg border border-border bg-muted/30 p-4">
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Réservé par</p>
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-primary/15 text-primary flex items-center justify-center text-xs font-semibold flex-shrink-0">
+                  {initialsOf(lead.full_name) || '?'}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">{lead.full_name}</p>
+                  <p className="text-xs text-muted-foreground truncate">{lead.phone ?? '—'}</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="px-6 py-4 border-t border-border flex justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg text-sm bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition"
+          >
+            Fermer
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DetailField({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">{label}</p>
+      <p className="text-sm text-foreground break-words">{value}</p>
+    </div>
+  )
+}
+
+// ── Confirm delete dialog ────────────────────────────────────
+function ConfirmDeleteDialog({
+  vehicle, onConfirm, onCancel, busy,
+}: {
+  vehicle: Vehicle
+  onConfirm: () => void
+  onCancel: () => void
+  busy: boolean
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm p-4">
+      <div className="rounded-2xl bg-card border border-border shadow-2xl w-full max-w-sm">
+        <div className="px-6 pt-6 pb-4 border-b border-border">
+          <h2 className="text-base font-semibold text-foreground">Supprimer ce véhicule ?</h2>
+          <p className="text-xs text-muted-foreground mt-1">
+            {vehicle.brand} {vehicle.model} {vehicle.year ?? ''}
+          </p>
+        </div>
+        <div className="px-6 py-4">
+          <p className="text-sm text-muted-foreground">Cette action est irréversible.</p>
+        </div>
+        <div className="px-6 py-4 border-t border-border flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted transition disabled:opacity-60"
+          >
+            Annuler
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={busy}
+            className="px-4 py-2 rounded-lg text-sm bg-red-600 hover:bg-red-700 text-white font-semibold transition disabled:opacity-60 inline-flex items-center gap-2"
+          >
+            {busy && <Loader2 className="w-4 h-4 animate-spin" />}
+            {busy ? 'Suppression…' : 'Supprimer'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Vehicle Card Menu ────────────────────────────────────────
+function VehicleCardMenu({
+  vehicle: _vehicle,
+  isOpen,
+  onOpenChange,
+  onEdit,
+  onChangePhoto,
+  onViewDetails,
+  onDelete,
+}: {
+  vehicle: Vehicle
+  isOpen: boolean
+  onOpenChange: (open: boolean) => void
+  onEdit: () => void
+  onChangePhoto: () => void
+  onViewDetails: () => void
+  onDelete: () => void
+}) {
+  void _vehicle
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const menuRef = useRef<HTMLDivElement | null>(null)
+  const [openUp, setOpenUp] = useState(false)
+
+  useEffect(() => {
+    if (!isOpen) return
+    const rect = triggerRef.current?.getBoundingClientRect()
+    if (rect && typeof window !== 'undefined') {
+      setOpenUp(window.innerHeight - rect.bottom < 240)
+    }
+  }, [isOpen])
+
+  useEffect(() => {
+    if (!isOpen) return
+    function handleMouseDown(e: MouseEvent) {
+      const t = e.target as Node | null
+      if (!t) return
+      if (menuRef.current?.contains(t)) return
+      if (triggerRef.current?.contains(t)) return
+      onOpenChange(false)
+    }
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onOpenChange(false)
+    }
+    document.addEventListener('mousedown', handleMouseDown)
+    document.addEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDown)
+      document.removeEventListener('keydown', handleKey)
+    }
+  }, [isOpen, onOpenChange])
+
+  const itemCls = 'flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-muted w-full text-left'
+
+  return (
+    <div className="relative flex-shrink-0">
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => onOpenChange(!isOpen)}
+        className="w-8 h-8 rounded-md hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+        aria-label="Options"
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
+      >
+        <MoreVertical className="w-4 h-4" />
+      </button>
+      {isOpen && (
+        <div
+          ref={menuRef}
+          role="menu"
+          className={`absolute z-20 w-52 right-0 rounded-lg border border-border bg-card shadow-xl py-1 ${openUp ? 'bottom-full mb-1' : 'top-full mt-1'}`}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className={itemCls}
+            onClick={() => { onOpenChange(false); onEdit() }}
+          >
+            <Pencil className="w-4 h-4" />
+            Modifier
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className={itemCls}
+            onClick={() => { onOpenChange(false); onChangePhoto() }}
+          >
+            <Camera className="w-4 h-4" />
+            Changer la photo
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className={itemCls}
+            onClick={() => { onOpenChange(false); onViewDetails() }}
+          >
+            <ClipboardList className="w-4 h-4" />
+            Voir les détails
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="flex items-center gap-2.5 px-3 py-2 text-sm text-red-500 hover:bg-red-500/10 w-full text-left"
+            onClick={() => { onOpenChange(false); onDelete() }}
+          >
+            <Trash2 className="w-4 h-4" />
+            Supprimer
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Vehicle card (extracted to keep hooks clean) ─────────────
 function VehicleCard({
-  v, lead, onImageUpdated, onStatusChangeRequest, onImmediateStatusChange,
+  v, lead, menuOpenId, setMenuOpenId,
+  onImageUpdated, onStatusChangeRequest, onImmediateStatusChange,
+  onEdit, onViewDetails, onDelete,
 }: {
   v: Vehicle
   lead: LeadLite | null
+  menuOpenId: string | null
+  setMenuOpenId: (id: string | null) => void
   onImageUpdated: (id: string, url: string) => void
   onStatusChangeRequest: (v: Vehicle, next: Vehicle['status']) => void
   onImmediateStatusChange: (v: Vehicle, next: Vehicle['status']) => Promise<void>
+  onEdit: (v: Vehicle) => void
+  onViewDetails: (v: Vehicle) => void
+  onDelete: (v: Vehicle) => void
 }) {
   const stock = stockPill(v.status)
   const fileRef = useRef<HTMLInputElement | null>(null)
@@ -374,6 +684,8 @@ function VehicleCard({
 
     setUploading(false)
   }
+
+  const isMenuOpen = menuOpenId === v.id
 
   return (
     <div className="rounded-xl overflow-hidden bg-card border border-border hover:border-primary/40 transition-all duration-150 flex flex-col">
@@ -430,13 +742,15 @@ function VehicleCard({
             </h3>
             <p className="text-sm font-bold text-foreground mt-1">{formatPrice(v.price_dzd)}</p>
           </div>
-          <button
-            type="button"
-            className="w-8 h-8 rounded-md hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
-            aria-label="Options"
-          >
-            <MoreVertical className="w-4 h-4" />
-          </button>
+          <VehicleCardMenu
+            vehicle={v}
+            isOpen={isMenuOpen}
+            onOpenChange={(open) => setMenuOpenId(open ? v.id : null)}
+            onEdit={() => onEdit(v)}
+            onChangePhoto={() => fileRef.current?.click()}
+            onViewDetails={() => onViewDetails(v)}
+            onDelete={() => onDelete(v)}
+          />
         </div>
 
         <div className="mt-2 space-y-0.5">
@@ -495,6 +809,11 @@ export default function VehiculesPage() {
   const [modalOpen,  setModalOpen]  = useState(false)
   const [leadsById,  setLeadsById]  = useState<Record<string, LeadLite>>({})
   const [pendingReserve, setPendingReserve] = useState<Vehicle | null>(null)
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
+  const [editing, setEditing] = useState<Vehicle | null>(null)
+  const [viewing, setViewing] = useState<Vehicle | null>(null)
+  const [deleting, setDeleting] = useState<Vehicle | null>(null)
+  const [deletingBusy, setDeletingBusy] = useState(false)
 
   async function fetchVehicles() {
     const { data } = await supabase
@@ -588,6 +907,37 @@ export default function VehiculesPage() {
     setPendingReserve(null)
   }
 
+  async function handleConfirmDelete() {
+    if (!deleting) return
+    setDeletingBusy(true)
+    // Best-effort storage cleanup
+    if (deleting.image_url) {
+      try {
+        const url = deleting.image_url
+        const marker = '/storage/v1/object/public/vehicules/'
+        const idx = url.indexOf(marker)
+        if (idx >= 0) {
+          const path = decodeURIComponent(url.slice(idx + marker.length).split('?')[0])
+          await supabase.storage.from('vehicules').remove([path])
+        }
+      } catch {
+        // ignore
+      }
+    }
+    const { error: err } = await supabase.from('vehicles').delete().eq('id', deleting.id)
+    setDeletingBusy(false)
+    if (err) {
+      alert(`Erreur : ${err.message}`)
+      return
+    }
+    setDeleting(null)
+    await fetchVehicles()
+  }
+
+  const viewingLead = viewing && viewing.reserved_by_lead_id
+    ? (leadsById[viewing.reserved_by_lead_id] ?? null)
+    : null
+
   return (
     <div className="p-6 space-y-6">
       {/* Hero */}
@@ -676,9 +1026,14 @@ export default function VehiculesPage() {
               key={v.id}
               v={v}
               lead={v.reserved_by_lead_id ? (leadsById[v.reserved_by_lead_id] ?? null) : null}
+              menuOpenId={menuOpenId}
+              setMenuOpenId={setMenuOpenId}
               onImageUpdated={handleImageUpdated}
               onStatusChangeRequest={(veh) => setPendingReserve(veh)}
               onImmediateStatusChange={handleImmediateStatusChange}
+              onEdit={(veh) => setEditing(veh)}
+              onViewDetails={(veh) => setViewing(veh)}
+              onDelete={(veh) => setDeleting(veh)}
             />
           ))}
         </div>
@@ -686,11 +1041,35 @@ export default function VehiculesPage() {
 
       <AddVehicleModal open={modalOpen} onClose={() => setModalOpen(false)} onSaved={fetchVehicles} />
 
+      <AddVehicleModal
+        open={!!editing}
+        initial={editing ?? undefined}
+        onClose={() => setEditing(null)}
+        onSaved={fetchVehicles}
+      />
+
       {pendingReserve && (
         <ReservedByModal
           vehicle={pendingReserve}
           onCancel={() => setPendingReserve(null)}
           onConfirm={(lead) => handleConfirmReservation(pendingReserve, lead)}
+        />
+      )}
+
+      {viewing && (
+        <VehicleDetailsModal
+          vehicle={viewing}
+          lead={viewingLead}
+          onClose={() => setViewing(null)}
+        />
+      )}
+
+      {deleting && (
+        <ConfirmDeleteDialog
+          vehicle={deleting}
+          busy={deletingBusy}
+          onCancel={() => { if (!deletingBusy) setDeleting(null) }}
+          onConfirm={handleConfirmDelete}
         />
       )}
     </div>
