@@ -23,6 +23,7 @@ import { LEAD_SOURCE_LABELS, LEAD_STATUS_LABELS, type Lead } from '@/lib/types'
 import { format, isToday, isYesterday } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { AddLeadModal } from '@/components/AddLeadModal'
+import { EditLeadModal } from '@/components/EditLeadModal'
 
 // ── Map real Lead.status (DB enum) → display label used by the design ──
 type DisplayStatus = 'Chaud' | 'En cours' | 'Nouveau' | 'Froid' | 'Contacté'
@@ -92,6 +93,7 @@ export function ProspectsView() {
   const [contactPopover, setContactPopover] = useState<
     { id: string; kind: 'call' | 'msg' } | null
   >(null)
+  const [editingLead, setEditingLead] = useState<Lead | null>(null)
 
   async function fetchLeads() {
     const { data } = await supabase
@@ -531,14 +533,18 @@ export function ProspectsView() {
                             role="menu"
                             className="absolute right-0 top-full mt-1 z-30 w-44 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl py-1 text-left"
                           >
-                            <a
-                              href={`/dashboard/prospects?lead=${prospect.id}`}
-                              className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
-                              onClick={() => setMenuOpenId(null)}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const full = leads.find((l) => l.id === prospect.id)
+                                if (full) setEditingLead(full)
+                                setMenuOpenId(null)
+                              }}
+                              className="flex items-center gap-2 px-3 py-2 text-sm w-full text-left text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
                             >
                               <Pencil className="w-4 h-4" />
                               Modifier
-                            </a>
+                            </button>
                             <button
                               type="button"
                               onClick={() => { setMenuOpenId(null); deleteLead(prospect.id) }}
@@ -588,6 +594,12 @@ export function ProspectsView() {
       <AddLeadModal
         open={addOpen}
         onClose={() => setAddOpen(false)}
+        onSaved={fetchLeads}
+      />
+
+      <EditLeadModal
+        lead={editingLead}
+        onClose={() => setEditingLead(null)}
         onSaved={fetchLeads}
       />
     </div>
