@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { motion } from 'motion/react'
 import {
   DndContext,
   DragEndEvent,
@@ -185,24 +186,37 @@ function LeadCardContent({ lead, ghost = false }: { lead: Lead; ghost?: boolean 
     <div
       style={borderStyle}
       className={[
-        'rounded-lg bg-background border border-border select-none',
+        'rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 select-none shadow-sm',
         ghost
-          ? 'shadow-xl ring-1 ring-indigo-500/30 rotate-1 opacity-95'
-          : 'hover:border-primary/40 hover:shadow-md cursor-grab active:cursor-grabbing transition-all duration-150 group',
+          ? 'shadow-2xl ring-1 ring-indigo-500/40 rotate-1 opacity-95'
+          : 'hover:border-indigo-300 dark:hover:border-zinc-700 hover:shadow-md hover:-translate-y-0.5 cursor-grab active:cursor-grabbing transition-all duration-200 group',
       ].join(' ')}
     >
-      <div className="p-3">
-        {/* Name + stale icon */}
-        <div className="flex items-start justify-between gap-2 mb-2">
-          <p dir="auto" className="font-semibold text-foreground text-sm leading-snug break-words">
-            {lead.full_name}
-          </p>
+      <div className="p-5">
+        {/* Source label + stale icon */}
+        <div className="flex items-start justify-between gap-2 mb-3">
+          <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-wider border ${
+            lead.source === 'whatsapp'
+              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20'
+              : lead.source === 'facebook'
+              ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20'
+              : lead.source === 'instagram'
+              ? 'bg-pink-50 text-pink-700 border-pink-200 dark:bg-pink-500/10 dark:text-pink-400 dark:border-pink-500/20'
+              : 'bg-zinc-100 text-zinc-700 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-700'
+          }`}>
+            {LEAD_SOURCE_LABELS[lead.source] ?? lead.source}
+          </span>
           {stale && (
             <span title="Sans contact depuis + 48h">
               <AlertCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0 mt-0.5" />
             </span>
           )}
         </div>
+
+        {/* Name */}
+        <p dir="auto" className="font-bold tracking-tight text-zinc-900 dark:text-white text-sm leading-snug break-words mb-3">
+          {lead.full_name}
+        </p>
 
         {/* Model badge */}
         {lead.model_wanted && (
@@ -217,30 +231,21 @@ function LeadCardContent({ lead, ghost = false }: { lead: Lead; ghost?: boolean 
           <p className="text-xs text-muted-foreground mb-2 line-clamp-1 italic">{lead.notes}</p>
         )}
 
-        {/* Wilaya + budget */}
-        <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
+        {/* Footer rows: wilaya, budget, time */}
+        <div className="flex flex-col gap-2 pt-3 border-t border-zinc-100 dark:border-zinc-800/80">
           {lead.wilaya && (
-            <span className="flex items-center gap-0.5">
+            <div className="flex items-center gap-2 text-[10px] text-zinc-500 font-bold uppercase tracking-widest">
               <MapPin className="w-3 h-3" /> {lead.wilaya}
-            </span>
+            </div>
           )}
           {lead.budget_dzd && (
-            <span className="flex items-center gap-0.5 text-emerald-600 font-medium">
+            <div className="flex items-center gap-2 text-[10px] text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-widest">
               <Banknote className="w-3 h-3" /> {formatDZD(lead.budget_dzd)}
-            </span>
+            </div>
           )}
-        </div>
-
-        {/* Source + time */}
-        <div className="flex items-center justify-between mt-2.5 pt-2.5 border-t border-border/60">
-          <span className="text-xs text-muted-foreground flex items-center gap-1">
-            <span>{SOURCE_ICONS[lead.source] ?? '📍'}</span>
-            {LEAD_SOURCE_LABELS[lead.source] ?? lead.source}
-          </span>
-          <span className="text-xs text-muted-foreground flex items-center gap-0.5">
-            <Clock className="w-3 h-3" />
-            {timeAgo(lead.created_at)}
-          </span>
+          <div className="flex items-center gap-2 text-[10px] text-zinc-500 font-bold uppercase tracking-widest">
+            <Clock className="w-3 h-3" /> {timeAgo(lead.created_at)}
+          </div>
         </div>
       </div>
     </div>
@@ -256,20 +261,23 @@ function LeadCard({ lead, onClick }: { lead: Lead; onClick: () => void }) {
     useDraggable({ id: lead.id })
 
   return (
-    <div
+    <motion.div
       ref={setNodeRef}
+      initial={{ opacity: 0, scale: 0.96, y: 8 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      transition={{ duration: 0.25, ease: 'easeOut' }}
+      whileHover={{ y: -4 }}
       style={{
         transform: CSS.Translate.toString(transform),
         // Hide original while overlay ghost is shown
-        opacity: isDragging ? 0 : 1,
-        transition: isDragging ? 'none' : 'opacity 150ms ease',
+        opacity: isDragging ? 0 : undefined,
       }}
       {...listeners}
       {...attributes}
       onClick={e => { e.stopPropagation(); onClick() }}
     >
       <LeadCardContent lead={lead} />
-    </div>
+    </motion.div>
   )
 }
 
@@ -297,7 +305,7 @@ function KanbanColumn({
   return (
     <div
       ref={setNodeRef}                           // ← full column is droppable
-      className="flex flex-col w-72 flex-shrink-0 rounded-xl overflow-hidden bg-card border border-border"
+      className="flex flex-col w-[300px] flex-shrink-0 rounded-[2rem] overflow-hidden bg-zinc-50/60 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800"
       style={{
         boxShadow: isOver
           ? `0 0 0 2px ${col.accent}66, 0 0 0 4px ${col.accent}22`
@@ -306,22 +314,22 @@ function KanbanColumn({
       }}
     >
       {/* Column header */}
-      <div className="flex items-center justify-between px-3.5 py-3 border-b border-border">
+      <div className="flex items-center justify-between px-5 py-4">
         <div className="flex items-center gap-2">
           <span className={`w-2 h-2 rounded-full flex-shrink-0 ${col.dotCls}`} />
-          <span className="text-sm font-semibold text-foreground">
+          <span className="text-xs font-black uppercase tracking-widest text-zinc-900 dark:text-white">
             {col.label}
           </span>
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+            {leads.length}
+          </span>
         </div>
-        <span className="rounded-full bg-muted/60 px-2 text-xs text-muted-foreground">
-          {leads.length}
-        </span>
       </div>
 
       {/* Cards area */}
       <div
         className={[
-          'flex-1 min-h-[480px] p-2 space-y-2 overflow-y-auto transition-colors duration-150',
+          'flex-1 min-h-[500px] px-3 pb-4 space-y-3 overflow-y-auto transition-colors duration-150',
           isOver ? 'bg-indigo-500/5' : '',
         ].join(' ')}
       >
@@ -1044,33 +1052,39 @@ export default function ProspectsPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden bg-background">
       {/* ── Top bar ── */}
-      <div className="flex items-center justify-between px-6 py-5 border-b border-border bg-background flex-shrink-0 gap-4 flex-wrap">
+      <div className="flex items-center justify-between px-10 py-6 bg-background flex-shrink-0 gap-4 flex-wrap">
         <div>
-          <h1 className="text-3xl md:text-4xl font-bold text-foreground tracking-tight">Pipeline</h1>
-          <div className="flex items-center gap-3 mt-1 flex-wrap">
-            <p className="text-sm text-muted-foreground">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-500 dark:text-indigo-400">
+              Pipeline de Ventes
+            </span>
+          </div>
+          <h1 className="text-3xl md:text-4xl font-black tracking-tighter text-zinc-900 dark:text-white">Prospects</h1>
+          <div className="flex items-center gap-3 mt-2 flex-wrap">
+            <p className="text-xs text-zinc-500 font-bold uppercase tracking-widest">
               {leads.length} lead{leads.length > 1 ? 's' : ''} au total
             </p>
             {staleCount > 0 && (
-              <span className="flex items-center gap-1 text-xs font-medium text-red-400 bg-red-500/15 border border-red-500/20 rounded-full px-2 py-0.5">
+              <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-full px-2.5 py-1">
                 <AlertCircle className="w-3 h-3" />
-                {staleCount} nouveau{staleCount > 1 ? 'x' : ''} sans contact +48h
+                {staleCount} sans contact +48h
               </span>
             )}
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <button onClick={() => fetchLeads(true)} disabled={refreshing}
             title={`Actualisé à ${format(lastRefresh, 'HH:mm:ss')}`}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:bg-muted transition border border-border disabled:opacity-60">
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest text-zinc-500 hover:text-zinc-900 dark:hover:text-white hover:border-zinc-300 dark:hover:border-zinc-700 transition border border-zinc-200 dark:border-zinc-800 disabled:opacity-60">
             <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
             {refreshing ? 'Actualisation…' : format(lastRefresh, 'HH:mm')}
           </button>
 
           <button onClick={() => setModalOpen(true)}
-            className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg px-4 py-2.5 font-semibold transition">
-            <Plus className="w-4 h-4" /> Nouveau
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl px-5 py-2.5 text-[10px] font-black uppercase tracking-widest transition shadow-lg shadow-indigo-600/20">
+            <Plus className="w-4 h-4" /> Nouveau Lead
           </button>
         </div>
       </div>
