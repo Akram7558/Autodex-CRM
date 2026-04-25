@@ -12,12 +12,16 @@ import {
   MessageSquare,
   Star,
   Download,
+  Pencil,
+  Trash2,
+  X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
-import { LEAD_SOURCE_LABELS, type Lead } from '@/lib/types'
+import { LEAD_SOURCE_LABELS, LEAD_STATUS_LABELS, type Lead } from '@/lib/types'
 import { format, isToday, isYesterday } from 'date-fns'
 import { fr } from 'date-fns/locale'
+import { AddLeadModal } from '@/components/AddLeadModal'
 
 // ── Map real Lead.status (DB enum) → display label used by the design ──
 type DisplayStatus = 'Chaud' | 'En cours' | 'Nouveau' | 'Froid' | 'Contacté'
@@ -57,29 +61,95 @@ export function ProspectsView() {
   const [leads, setLeads] = useState<Lead[]>([])
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
+  const [addOpen, setAddOpen] = useState(false)
+  const [filterOpen, setFilterOpen] = useState(false)
+  const [statusFilter, setStatusFilter] = useState<'all' | Lead['status']>('all')
+  const [sourceFilter, setSourceFilter] = useState<string>('all')
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
 
-  useEffect(() => {
-    supabase
+  async function fetchLeads() {
+    const { data } = await supabase
       .from('leads')
       .select('*')
       .order('created_at', { ascending: false })
-      .then(({ data }) => setLeads((data ?? []) as Lead[]))
-  }, [])
+    setLeads((data ?? []) as Lead[])
+  }
+
+  useEffect(() => { fetchLeads() }, [])
+
+  // Close kebab menu on outside click / escape
+  useEffect(() => {
+    if (!menuOpenId) return
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement | null
+      if (t && t.closest('[data-lead-menu]')) return
+      setMenuOpenId(null)
+    }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpenId(null) }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [menuOpenId])
+
+  async function deleteLead(id: string) {
+    if (!confirm('Supprimer ce prospect ? Cette action est irréversible.')) return
+    setLeads((prev) => prev.filter((l) => l.id !== id))
+    await supabase.from('leads').delete().eq('id', id)
+  }
+
+  function exportCsv() {
+    const header = ['Nom', 'Email', 'Téléphone', 'Wilaya', 'Modèle', 'Source', 'Statut', 'Créé le']
+    const rows = leads.map((l) => [
+      l.full_name,
+      l.email ?? '',
+      l.phone ?? '',
+      l.wilaya ?? '',
+      l.model_wanted ?? '',
+      LEAD_SOURCE_LABELS[l.source] ?? l.source,
+      LEAD_STATUS_LABELS[l.status],
+      l.created_at,
+    ])
+    const csv = [header, ...rows]
+      .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','))
+      .join('\n')
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `prospects-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  // Available sources discovered from the loaded data
+  const sourceOptions = useMemo(() => {
+    const set = new Set<string>()
+    for (const l of leads) if (l.source) set.add(l.source)
+    return Array.from(set)
+  }, [leads])
 
   // Real backend rows shaped for the design template — UI structure unchanged.
   const prospectsData = useMemo(() => {
     const term = search.trim().toLowerCase()
     return leads
       .filter((l) => {
+        if (statusFilter !== 'all' && l.status !== statusFilter) return false
+        if (sourceFilter !== 'all' && l.source !== sourceFilter) return false
         if (!term) return true
         return (
           l.full_name.toLowerCase().includes(term) ||
           (l.email ?? '').toLowerCase().includes(term) ||
+          (l.phone ?? '').toLowerCase().includes(term) ||
           (l.model_wanted ?? '').toLowerCase().includes(term)
         )
       })
       .map((l) => ({
         id: l.id,
+        rawPhone: l.phone,
+        rawEmail: l.email,
         name: l.full_name,
         email: l.email ?? '—',
         phone: l.phone ?? '—',
@@ -89,7 +159,7 @@ export function ProspectsView() {
         date: formatDate(l.created_at),
         isVip: !!(l.budget_dzd && l.budget_dzd >= VIP_BUDGET_THRESHOLD),
       }))
-  }, [leads, search])
+  }, [leads, search, statusFilter, sourceFilter])
 
   const total = prospectsData.length
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
@@ -127,11 +197,17 @@ export function ProspectsView() {
           transition={{ delay: 0.2 }}
           className="flex items-center gap-3"
         >
-          <button className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-sm">
+          <button
+            onClick={exportCsv}
+            className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-sm"
+          >
             <Download className="w-4 h-4" />
             <span className="hidden sm:inline">Exporter</span>
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-500/20 transition-colors">
+          <button
+            onClick={() => setAddOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-500/20 transition-colors"
+          >
             <Plus className="w-4 h-4" />
             Nouveau prospect
           </button>
@@ -158,11 +234,86 @@ export function ProspectsView() {
             <Search className="absolute left-4 top-3.5 text-slate-400 w-5 h-5 pointer-events-none" />
           </div>
 
-          <button className="flex items-center gap-2 px-6 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800 rounded-2xl text-sm font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors w-full sm:w-auto justify-center">
+          <button
+            onClick={() => setFilterOpen((v) => !v)}
+            className={cn(
+              "flex items-center gap-2 px-6 py-3 border rounded-2xl text-sm font-bold transition-colors w-full sm:w-auto justify-center",
+              filterOpen
+                ? "bg-indigo-50 dark:bg-indigo-500/10 border-indigo-200 dark:border-indigo-500/30 text-indigo-600 dark:text-indigo-400"
+                : "bg-slate-50 dark:bg-slate-950 border-slate-100 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+            )}
+          >
             <Filter className="w-4 h-4" />
             Filtres
+            {(statusFilter !== 'all' || sourceFilter !== 'all') && (
+              <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-indigo-600 text-white text-[10px] font-black">
+                {(statusFilter !== 'all' ? 1 : 0) + (sourceFilter !== 'all' ? 1 : 0)}
+              </span>
+            )}
           </button>
         </div>
+
+        {/* Filter panel */}
+        {filterOpen && (
+          <div className="px-6 pb-6 border-b border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row flex-wrap items-start sm:items-center gap-4">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Statut</span>
+              {(['all', 'new', 'contacted', 'qualified', 'proposal', 'won', 'lost'] as const).map((s) => (
+                <button
+                  key={s}
+                  onClick={() => { setStatusFilter(s); setPage(1) }}
+                  className={cn(
+                    "px-3 py-1.5 rounded-full text-xs font-bold transition-colors border",
+                    statusFilter === s
+                      ? "bg-indigo-600 text-white border-indigo-600"
+                      : "bg-white dark:bg-slate-950 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  )}
+                >
+                  {s === 'all' ? 'Tous' : LEAD_STATUS_LABELS[s]}
+                </button>
+              ))}
+            </div>
+            {sourceOptions.length > 0 && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Source</span>
+                <button
+                  onClick={() => { setSourceFilter('all'); setPage(1) }}
+                  className={cn(
+                    "px-3 py-1.5 rounded-full text-xs font-bold transition-colors border",
+                    sourceFilter === 'all'
+                      ? "bg-indigo-600 text-white border-indigo-600"
+                      : "bg-white dark:bg-slate-950 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  )}
+                >
+                  Toutes
+                </button>
+                {sourceOptions.map((src) => (
+                  <button
+                    key={src}
+                    onClick={() => { setSourceFilter(src); setPage(1) }}
+                    className={cn(
+                      "px-3 py-1.5 rounded-full text-xs font-bold transition-colors border",
+                      sourceFilter === src
+                        ? "bg-indigo-600 text-white border-indigo-600"
+                        : "bg-white dark:bg-slate-950 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800"
+                    )}
+                  >
+                    {LEAD_SOURCE_LABELS[src as Lead['source']] ?? src}
+                  </button>
+                ))}
+              </div>
+            )}
+            {(statusFilter !== 'all' || sourceFilter !== 'all') && (
+              <button
+                onClick={() => { setStatusFilter('all'); setSourceFilter('all'); setPage(1) }}
+                className="ml-auto inline-flex items-center gap-1 text-xs font-bold text-slate-500 hover:text-rose-500 dark:hover:text-rose-400 transition-colors"
+              >
+                <X className="w-3.5 h-3.5" />
+                Réinitialiser
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Table */}
         <div className="overflow-x-auto">
@@ -229,15 +380,76 @@ export function ProspectsView() {
                   </td>
                   <td className="py-4 px-6 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <button className="p-2 text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 rounded-xl transition-colors shadow-sm" title="Appeler">
+                      <a
+                        href={prospect.rawPhone ? `tel:${prospect.rawPhone}` : undefined}
+                        onClick={(e) => { if (!prospect.rawPhone) e.preventDefault() }}
+                        aria-disabled={!prospect.rawPhone}
+                        className={cn(
+                          "p-2 text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 rounded-xl transition-colors shadow-sm inline-flex items-center justify-center",
+                          !prospect.rawPhone && "opacity-40 cursor-not-allowed"
+                        )}
+                        title={prospect.rawPhone ? `Appeler ${prospect.rawPhone}` : 'Aucun numéro'}
+                      >
                         <Phone className="w-4 h-4" />
-                      </button>
-                      <button className="p-2 text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-500/20 rounded-xl transition-colors shadow-sm" title="Message">
+                      </a>
+                      <a
+                        href={
+                          prospect.rawEmail
+                            ? `mailto:${prospect.rawEmail}`
+                            : prospect.rawPhone
+                              ? `sms:${prospect.rawPhone}`
+                              : undefined
+                        }
+                        onClick={(e) => { if (!prospect.rawEmail && !prospect.rawPhone) e.preventDefault() }}
+                        aria-disabled={!prospect.rawEmail && !prospect.rawPhone}
+                        className={cn(
+                          "p-2 text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-500/20 rounded-xl transition-colors shadow-sm inline-flex items-center justify-center",
+                          !prospect.rawEmail && !prospect.rawPhone && "opacity-40 cursor-not-allowed"
+                        )}
+                        title={
+                          prospect.rawEmail
+                            ? `Email à ${prospect.rawEmail}`
+                            : prospect.rawPhone
+                              ? `SMS à ${prospect.rawPhone}`
+                              : 'Aucun contact'
+                        }
+                      >
                         <MessageSquare className="w-4 h-4" />
-                      </button>
-                      <button className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-                        <MoreHorizontal className="w-5 h-5" />
-                      </button>
+                      </a>
+                      <div className="relative" data-lead-menu>
+                        <button
+                          onClick={() => setMenuOpenId(menuOpenId === prospect.id ? null : prospect.id)}
+                          className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                          aria-label="Options"
+                          aria-haspopup="menu"
+                          aria-expanded={menuOpenId === prospect.id}
+                        >
+                          <MoreHorizontal className="w-5 h-5" />
+                        </button>
+                        {menuOpenId === prospect.id && (
+                          <div
+                            role="menu"
+                            className="absolute right-0 top-full mt-1 z-30 w-44 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl py-1 text-left"
+                          >
+                            <a
+                              href={`/dashboard/prospects?lead=${prospect.id}`}
+                              className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+                              onClick={() => setMenuOpenId(null)}
+                            >
+                              <Pencil className="w-4 h-4" />
+                              Modifier
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() => { setMenuOpenId(null); deleteLead(prospect.id) }}
+                              className="flex items-center gap-2 px-3 py-2 text-sm w-full text-left text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                              Supprimer
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </td>
                 </motion.tr>
@@ -272,6 +484,12 @@ export function ProspectsView() {
           </div>
         </div>
       </motion.div>
+
+      <AddLeadModal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        onSaved={fetchLeads}
+      />
     </div>
   )
 }
