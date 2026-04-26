@@ -150,6 +150,12 @@ export function EditLeadModal({
       void _omit
       const retry = await supabase.from('leads').update(stripped).eq('id', lead.id)
       err = retry.error
+      if (!err) {
+        setSaving(false)
+        setError('Lead mis à jour — exécutez migration_07_leads_suivi.sql pour activer le champ Suivi.')
+        setTimeout(() => { onSaved(); onClose() }, 2500)
+        return
+      }
     }
 
     // Fallback: legacy schema (no model_wanted column).

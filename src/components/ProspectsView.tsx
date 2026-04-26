@@ -148,6 +148,11 @@ export function ProspectsView() {
       .eq('id', id)
     if (err) {
       console.warn('[ProspectsView] failed to update suivi:', err.message)
+      if (/suivi/i.test(err.message)) {
+        alert(
+          "La colonne 'suivi' n'existe pas dans la base. Exécutez supabase/migration_07_leads_suivi.sql pour activer ce champ."
+        )
+      }
       // Rollback on failure.
       fetchLeads()
     }
@@ -321,7 +326,7 @@ export function ProspectsView() {
               <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50">
                 <th className="pb-4 pt-4 px-6 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Contact</th>
                 <th className="pb-4 pt-4 px-6 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Véhicule & Source</th>
-                <th className="pb-4 pt-4 px-6 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Statut</th>
+                <th className="pb-4 pt-4 px-6 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Suivi</th>
                 <th className="pb-4 pt-4 px-6 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Date</th>
                 <th className="pb-4 pt-4 px-6 text-right"></th>
               </tr>
@@ -390,7 +395,7 @@ export function ProspectsView() {
                             : "bg-slate-50 text-slate-400 border-slate-200 dark:bg-slate-800 dark:text-slate-500 dark:border-slate-700"
                         )}
                       >
-                        <option value="">— Aucun —</option>
+                        <option value="">—</option>
                         {LEAD_SUIVI_VALUES.map((s) => (
                           <option key={s} value={s}>{LEAD_SUIVI_LABELS[s]}</option>
                         ))}
