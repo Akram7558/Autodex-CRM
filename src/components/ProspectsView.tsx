@@ -437,7 +437,7 @@ export function ProspectsView() {
                         )}
                       >
                         <option value="">—</option>
-                        {LEAD_SUIVI_VALUES.map((s) => (
+                        {LEAD_SUIVI_VALUES.filter((s) => s !== 'vendu').map((s) => (
                           <option key={s} value={s}>{LEAD_SUIVI_LABELS[s]}</option>
                         ))}
                       </select>
