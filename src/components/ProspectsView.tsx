@@ -143,6 +143,9 @@ export function ProspectsView() {
 
   async function updateSuivi(id: string, suivi: LeadSuivi | null) {
     const previous = leads.find((l) => l.id === id)
+    if ((previous?.suivi ?? null) === suivi) return
+    const newLabel = suivi ? LEAD_SUIVI_LABELS[suivi] : 'Aucun'
+    if (!confirm(`Êtes-vous sûr de vouloir changer le suivi en ${newLabel} ?`)) return
     // Optimistic update so the badge color flips immediately.
     setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, suivi } : l)))
 

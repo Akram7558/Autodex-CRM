@@ -135,6 +135,14 @@ export function EditLeadModal({
       return
     }
 
+    // Global confirmation: any time suivi actually changes, ask the user.
+    const previousSuivi = (lead.suivi ?? null) as LeadSuivi | null
+    const nextSuivi     = (form.suivi || null) as LeadSuivi | null
+    if (previousSuivi !== nextSuivi) {
+      const newLabel = nextSuivi ? LEAD_SUIVI_LABELS[nextSuivi] : 'Aucun'
+      if (!confirm(`Êtes-vous sûr de vouloir changer le suivi en ${newLabel} ?`)) return
+    }
+
     // Block double-booking. A vehicle that's already reserved or sold by
     // another lead can never be picked here. (The dropdown also excludes
     // these — this is a defense-in-depth check.)

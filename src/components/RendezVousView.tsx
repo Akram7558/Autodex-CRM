@@ -58,6 +58,9 @@ const BADGE_LABEL: Record<RowState, string> = {
   overdue: 'En retard',
 }
 
+// Per-row action selector. "Réservé" is the default no-op.
+type RdvAction = 'reserve' | 'vendu' | 'annule' | 'reporter'
+
 export function RendezVousView() {
   const [leads, setLeads]       = useState<Lead[]>([])
   const [vehiclesById, setVbi]  = useState<Record<string, Vehicle>>({})
@@ -65,43 +68,125 @@ export function RendezVousView() {
   const [loading, setLoading]   = useState(true)
   const [migrationMissing, setMigrationMissing] = useState(false)
 
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      // Filter at the DB level: suivi='rdv_planifie' AND rdv_date NOT NULL.
-      const { data, error } = await supabase
-        .from('leads')
-        .select('*')
-        .eq('suivi', 'rdv_planifie')
-        .not('rdv_date', 'is', null)
-        .order('rdv_date', { ascending: true })
-      if (cancelled) return
-      if (error) {
-        if (/suivi|rdv_date/i.test(error.message)) {
-          setMigrationMissing(true)
-        } else {
-          console.warn('[RendezVousView] failed to load:', error.message)
-        }
-        setLeads([])
+  async function fetchAll() {
+    const { data, error } = await supabase
+      .from('leads')
+      .select('*')
+      .eq('suivi', 'rdv_planifie')
+      .not('rdv_date', 'is', null)
+      .order('rdv_date', { ascending: true })
+    if (error) {
+      if (/suivi|rdv_date/i.test(error.message)) {
+        setMigrationMissing(true)
       } else {
-        setLeads((data ?? []) as Lead[])
+        console.warn('[RendezVousView] failed to load:', error.message)
       }
-      setLoading(false)
+      setLeads([])
+    } else {
+      setLeads((data ?? []) as Lead[])
+    }
+    setLoading(false)
 
-      // Vehicles for label resolution.
-      const { data: vdata } = await supabase.from('vehicles').select('*')
-      if (cancelled) return
-      const map: Record<string, Vehicle> = {}
-      for (const v of (vdata ?? []) as Vehicle[]) map[v.id] = v
-      setVbi(map)
-    })()
-    return () => { cancelled = true }
-  }, [])
+    const { data: vdata } = await supabase.from('vehicles').select('*')
+    const map: Record<string, Vehicle> = {}
+    for (const v of (vdata ?? []) as Vehicle[]) map[v.id] = v
+    setVbi(map)
+  }
+
+  useEffect(() => { fetchAll() }, [])
+
+  // ── Action handlers ────────────────────────────────────────────────
+  async function handleAction(lead: Lead, action: RdvAction) {
+    const v = lead.vehicle_id ? vehiclesById[lead.vehicle_id] : null
+    const vehicleName = v
+      ? [v.brand, v.model, v.year ? String(v.year) : ''].filter(Boolean).join(' ')
+      : '—'
+
+    if (action === 'reserve') return // No-op default.
+
+    if (action === 'annule') {
+      if (!confirm('Êtes-vous sûr de vouloir annuler ce RDV ? Le prospect sera supprimé définitivement.')) return
+      // Release vehicle if reserved by this lead.
+      if (v && v.reserved_by_lead_id === lead.id &&
+          (v.status === 'reserved' || v.status === 'sold')) {
+        await supabase
+          .from('vehicles')
+          .update({ status: 'available', reserved_by_lead_id: null })
+          .eq('id', v.id)
+      }
+      const { error } = await supabase.from('leads').delete().eq('id', lead.id)
+      if (error) { alert(error.message); return }
+      fetchAll()
+      return
+    }
+
+    if (action === 'reporter') {
+      if (!confirm('Reporter ce RDV ? Le prospect sera marqué comme Reporter dans Prospects.')) return
+      // Release vehicle.
+      if (v && v.reserved_by_lead_id === lead.id &&
+          (v.status === 'reserved' || v.status === 'sold')) {
+        await supabase
+          .from('vehicles')
+          .update({ status: 'available', reserved_by_lead_id: null })
+          .eq('id', v.id)
+      }
+      const { error } = await supabase
+        .from('leads')
+        .update({ suivi: 'reporter', rdv_date: null })
+        .eq('id', lead.id)
+      if (error) { alert(error.message); return }
+      fetchAll()
+      return
+    }
+
+    if (action === 'vendu') {
+      if (!confirm(`Confirmer la vente de ${vehicleName} à ${lead.full_name} ?`)) return
+      // 1. Mark vehicle as sold.
+      if (v) {
+        await supabase
+          .from('vehicles')
+          .update({ status: 'sold', reserved_by_lead_id: lead.id })
+          .eq('id', v.id)
+      }
+      // 2. Update lead suivi to vendu (so it leaves the RDV page).
+      const { error: lErr } = await supabase
+        .from('leads')
+        .update({ suivi: 'vendu' })
+        .eq('id', lead.id)
+      if (lErr) { alert(lErr.message); return }
+      // 3. Insert into ventes ledger.
+      const { error: vErr } = await supabase.from('ventes').insert([{
+        lead_id:           lead.id,
+        vehicle_id:        v?.id ?? null,
+        client_name:       lead.full_name,
+        vehicle_name:      vehicleName,
+        vehicle_reference: v?.reference ?? null,
+        prix_vente:        v?.price_dzd ?? null,
+      }])
+      if (vErr) {
+        if (/ventes/i.test(vErr.message)) {
+          alert("La table 'ventes' n'existe pas. Exécutez supabase/migration_10_ventes.sql.")
+        } else {
+          alert(vErr.message)
+        }
+      }
+      // 4. Audit trail.
+      await supabase.from('activities').insert([{
+        lead_id: lead.id,
+        type:    'status_change',
+        title:   `Vente conclue : ${vehicleName}`,
+        body:    `${lead.full_name} · ${vehicleName}`,
+        done:    true,
+      }])
+      fetchAll()
+      return
+    }
+  }
 
   const rows = useMemo(() => {
     const term = search.trim().toLowerCase()
     return leads
-      .filter((l) => l.rdv_date) // safety
+      .filter((l) => l.rdv_date)
       .filter((l) => {
         if (!term) return true
         const v = l.vehicle_id ? vehiclesById[l.vehicle_id] : null
@@ -121,11 +206,11 @@ export function RendezVousView() {
         const date  = new Date(l.rdv_date!)
         return {
           id:       l.id,
+          lead:     l,
           name:     l.full_name,
           phone:    l.phone,
           carLabel,
           rdvDate:  date,
-          rdvIso:   l.rdv_date!,
           state,
         }
       })
@@ -206,6 +291,7 @@ export function RendezVousView() {
                 <th className="pb-4 pt-4 px-6 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Date &amp; heure</th>
                 <th className="pb-4 pt-4 px-6 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Client</th>
                 <th className="pb-4 pt-4 px-6 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Véhicule</th>
+                <th className="pb-4 pt-4 px-6 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Statut</th>
                 <th className="pb-4 pt-4 px-6 text-right"></th>
               </tr>
             </thead>
@@ -249,6 +335,23 @@ export function RendezVousView() {
                         <CarIcon className="w-4 h-4 text-slate-400" />
                         {r.carLabel}
                       </div>
+                    </td>
+                    <td className="py-4 px-6">
+                      <select
+                        defaultValue="reserve"
+                        onChange={(e) => {
+                          const action = e.target.value as RdvAction
+                          handleAction(r.lead, action)
+                          // Reset back to default so the same option can be re-selected later.
+                          e.target.value = 'reserve'
+                        }}
+                        className="appearance-none cursor-pointer pl-3 pr-7 py-1 rounded-full text-xs font-black uppercase tracking-widest border bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+                      >
+                        <option value="reserve">Réservé</option>
+                        <option value="vendu">Vendu</option>
+                        <option value="annule">Annulé</option>
+                        <option value="reporter">Reporter</option>
+                      </select>
                     </td>
                     <td className="py-4 px-6 text-right">
                       <div className="flex items-center justify-end gap-2">

@@ -108,6 +108,17 @@ export const LEAD_SUIVI_BADGE_CLASSES: Record<LeadSuivi, string> = {
   perdu:        'bg-slate-500 text-white border-slate-600 dark:bg-slate-600 dark:text-white dark:border-slate-700',
 }
 
+export type Vente = {
+  id: string
+  lead_id: string | null
+  vehicle_id: string | null
+  client_name: string | null
+  vehicle_name: string | null
+  vehicle_reference: string | null
+  prix_vente: number | null
+  date_vente: string
+}
+
 export type Activity = {
   id: string
   lead_id: string | null
