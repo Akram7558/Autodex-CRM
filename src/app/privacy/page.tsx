@@ -171,10 +171,10 @@ export default function PrivacyPage() {
               Pour toute question concernant cette politique ou le traitement
               de vos données, vous pouvez nous écrire à{' '}
               <a
-                href="mailto:contact@autodex.dz"
+                href="mailto:shytfcom@autodex.store"
                 className="text-indigo-600 dark:text-indigo-400 hover:underline"
               >
-                contact@autodex.dz
+                shytfcom@autodex.store
               </a>
               .
             </p>
