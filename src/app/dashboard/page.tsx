@@ -1,20 +1,22 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'motion/react'
 import {
   BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell,
 } from 'recharts'
-import { Users, Car, TrendingUp, Trophy, ArrowUpRight } from 'lucide-react'
+import { Users, Car, CalendarClock, BadgeDollarSign, ArrowUpRight } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { AlertBanner } from '@/components/alerts/alert-banner'
 import {
   LEAD_STATUS_LABELS, LEAD_SOURCE_LABELS,
-  type Lead, type Vehicle,
+  type Lead, type Vente,
 } from '@/lib/types'
-import { format, subDays, isAfter } from 'date-fns'
+import {
+  format, startOfWeek, startOfMonth, startOfYear, subMonths,
+} from 'date-fns'
 import { fr } from 'date-fns/locale'
 
 // ── Helpers ─────────────────────────────────────────────────
@@ -61,39 +63,88 @@ const SOURCE_COLORS: Record<string, string> = {
   social:    '#f59e0b',
 }
 
+// ── Date filter ─────────────────────────────────────────────
+type DateRange = 'all' | 'week' | 'month' | '3months' | 'year' | 'custom'
+
+function toDateInput(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+function formatDzd(n: number): string {
+  return new Intl.NumberFormat('fr-DZ', { maximumFractionDigits: 0 }).format(n)
+}
+
 // ── Component ───────────────────────────────────────────────
 
 export default function DashboardPage() {
   const [leads,    setLeads]    = useState<Lead[]>([])
-  const [vehicles, setVehicles] = useState<Vehicle[]>([])
+  const [ventes,   setVentes]   = useState<Vente[]>([])
+  const [vehiclesCount, setVehiclesCount] = useState(0)
   const [loading,  setLoading]  = useState(true)
+
+  // Default: Ce mois
+  const [dateRange, setDateRange] = useState<DateRange>('month')
+  const [customFrom, setCustomFrom] = useState('')
+  const [customTo, setCustomTo]     = useState('')
+  const [appliedFrom, setAppliedFrom] = useState('')
+  const [appliedTo, setAppliedTo]     = useState('')
 
   useEffect(() => {
     Promise.all([
       supabase.from('leads').select('*').order('created_at', { ascending: false }),
-      supabase.from('vehicles').select('*').order('created_at', { ascending: false }),
-    ]).then(([{ data: l }, { data: v }]) => {
+      supabase.from('vehicles').select('id'),
+      supabase.from('ventes').select('*').order('date_vente', { ascending: false }),
+    ]).then(([{ data: l }, { data: v }, { data: s }]) => {
       setLeads(   (l ?? []) as Lead[])
-      setVehicles((v ?? []) as Vehicle[])
+      setVehiclesCount((v ?? []).length)
+      // ventes table may not exist on older schemas — silently fall back to [].
+      setVentes(  (s ?? []) as Vente[])
       setLoading(false)
     })
   }, [])
 
-  // ── KPIs ──────────────────────────────────────────────────
-  const now        = new Date()
-  const monthStart = subDays(now, 30)
-  const leadsThisMonth  = leads.filter(l => isAfter(new Date(l.created_at), monthStart))
-  const wonLeads        = leads.filter(l => l.status === 'won')
-  const availableVehicles = vehicles.filter(v => v.status === 'available')
+  // Resolve [from, to] window from the dropdown.
+  const activeWindow = useMemo<{ from: Date | null; to: Date | null }>(() => {
+    const now = new Date()
+    switch (dateRange) {
+      case 'all':      return { from: null, to: null }
+      case 'week':     return { from: startOfWeek(now, { weekStartsOn: 1 }), to: null }
+      case 'month':    return { from: startOfMonth(now), to: null }
+      case '3months':  return { from: subMonths(now, 3), to: null }
+      case 'year':     return { from: startOfYear(now), to: null }
+      case 'custom': {
+        const from = appliedFrom ? new Date(appliedFrom + 'T00:00:00') : null
+        const to   = appliedTo   ? new Date(appliedTo   + 'T23:59:59.999') : null
+        return { from, to }
+      }
+    }
+  }, [dateRange, appliedFrom, appliedTo])
 
-  // ── Pipeline bar data ─────────────────────────────────────
+  function inWindow(iso: string | null | undefined): boolean {
+    if (!iso) return false
+    const d = new Date(iso)
+    if (activeWindow.from && d < activeWindow.from) return false
+    if (activeWindow.to   && d > activeWindow.to)   return false
+    return true
+  }
+
+  // ── Filtered datasets ─────────────────────────────────────
+  const filteredLeads  = useMemo(() => leads.filter(l => inWindow(l.created_at)), [leads, activeWindow])
+  const filteredVentes = useMemo(() => ventes.filter(v => inWindow(v.date_vente)),  [ventes, activeWindow])
+  const filteredRdv    = useMemo(
+    () => leads.filter(l => l.suivi === 'rdv_planifie' && inWindow(l.rdv_date)),
+    [leads, activeWindow]
+  )
+
+  // ── Pipeline bar data (filtered) ──────────────────────────
   const pipelineData = PIPELINE_ORDER.map(status => ({
     name: LEAD_STATUS_LABELS[status],
-    total: leads.filter(l => l.status === status).length,
+    total: filteredLeads.filter(l => l.status === status).length,
   }))
 
-  // ── Source pie data (real, derived from leads.source) ─────
-  const sourceCounts = leads.reduce<Record<string, number>>((acc, l) => {
+  // ── Source pie data (filtered) ────────────────────────────
+  const sourceCounts = filteredLeads.reduce<Record<string, number>>((acc, l) => {
     acc[l.source] = (acc[l.source] ?? 0) + 1
     return acc
   }, {})
@@ -107,35 +158,42 @@ export default function DashboardPage() {
       color: SOURCE_COLORS[key] ?? '#a1a1aa',
     }))
 
-  // ── Sales objective (won / total) ─────────────────────────
-  const salesPct = leads.length ? Math.round((wonLeads.length / leads.length) * 100) : 0
+  // ── KPIs ──────────────────────────────────────────────────
+  const totalLeads      = filteredLeads.length
+  const vehiculesVendus = filteredVentes.length
+  const chiffreAffaires = filteredVentes.reduce((acc, v) => acc + (v.prix_vente ?? 0), 0)
+  const rdvPlanifies    = filteredRdv.length
 
   const kpis = [
     {
-      label: 'Total prospects',
-      value: leads.length,
-      sub: `+${leadsThisMonth.length} ce mois`,
+      label: 'Total leads',
+      value: totalLeads.toString(),
+      sub: leads.length ? `sur ${leads.length} au total` : '—',
       icon: Users,
     },
     {
-      label: 'Prospects ce mois',
-      value: leadsThisMonth.length,
-      sub: `sur 30 jours glissants`,
-      icon: TrendingUp,
-    },
-    {
-      label: 'Véhicules disponibles',
-      value: availableVehicles.length,
-      sub: `sur ${vehicles.length} en stock`,
+      label: 'Véhicules vendus',
+      value: vehiculesVendus.toString(),
+      sub: `sur ${vehiclesCount} en stock`,
       icon: Car,
     },
     {
-      label: 'Ventes conclues',
-      value: wonLeads.length,
-      sub: `taux : ${salesPct}%`,
-      icon: Trophy,
+      label: 'Chiffre d\u2019affaires',
+      value: formatDzd(chiffreAffaires),
+      sub: 'DZD',
+      icon: BadgeDollarSign,
+    },
+    {
+      label: 'RDV planifiés',
+      value: rdvPlanifies.toString(),
+      sub: 'sur la période',
+      icon: CalendarClock,
     },
   ]
+
+  // Sales objective — share of "won" leads in the filtered window.
+  const wonInWindow = filteredLeads.filter(l => l.status === 'won').length
+  const salesPct    = filteredLeads.length ? Math.round((wonInWindow / filteredLeads.length) * 100) : 0
 
   if (loading) {
     return (
@@ -150,12 +208,75 @@ export default function DashboardPage() {
 
   return (
     <div className="p-10 pt-2 max-w-7xl space-y-8 pb-12">
-      {/* Live Insights pill */}
-      <div className="flex items-center gap-2">
-        <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
-        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-500 dark:text-indigo-400">
-          Live Insights · {format(now, "EEEE d MMMM", { locale: fr })}
-        </span>
+      {/* Header row: live insights pill + period filter */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-500 dark:text-indigo-400">
+            Live Insights · {format(new Date(), "EEEE d MMMM", { locale: fr })}
+          </span>
+        </div>
+
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500 dark:text-zinc-400 shrink-0">
+              Période
+            </span>
+            <select
+              value={dateRange}
+              onChange={(e) => {
+                const v = e.target.value as DateRange
+                setDateRange(v)
+                if (v === 'custom' && !customFrom && !customTo) {
+                  const today = toDateInput(new Date())
+                  setCustomFrom(today)
+                  setCustomTo(today)
+                }
+                if (v !== 'custom') {
+                  setAppliedFrom('')
+                  setAppliedTo('')
+                }
+              }}
+              className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl px-4 py-2.5 text-sm font-bold text-zinc-700 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm"
+            >
+              <option value="all">Tout</option>
+              <option value="week">Cette semaine</option>
+              <option value="month">Ce mois</option>
+              <option value="3months">3 derniers mois</option>
+              <option value="year">Cette année</option>
+              <option value="custom">Personnalisé</option>
+            </select>
+          </div>
+
+          {dateRange === 'custom' && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-bold text-zinc-500 dark:text-zinc-400">Du</span>
+              <input
+                type="date"
+                value={customFrom}
+                onChange={(e) => setCustomFrom(e.target.value)}
+                className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl px-3 py-2 text-sm font-bold text-zinc-700 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm"
+              />
+              <span className="text-xs font-bold text-zinc-500 dark:text-zinc-400">au</span>
+              <input
+                type="date"
+                value={customTo}
+                onChange={(e) => setCustomTo(e.target.value)}
+                className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl px-3 py-2 text-sm font-bold text-zinc-700 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setAppliedFrom(customFrom)
+                  setAppliedTo(customTo)
+                }}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-sm transition-colors"
+              >
+                Appliquer
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Red alert banner (leads ignored > 48h) — wrapped to match design */}
@@ -175,7 +296,7 @@ export default function DashboardPage() {
             >
               <div className="min-w-0">
                 <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-black">{kpi.label}</p>
-                <p className="text-4xl md:text-5xl font-black text-zinc-900 dark:text-white mt-3 leading-none tracking-tighter">{kpi.value}</p>
+                <p className="text-3xl md:text-4xl font-black text-zinc-900 dark:text-white mt-3 leading-none tracking-tighter break-all">{kpi.value}</p>
                 <p className="text-xs text-zinc-500 mt-3 font-medium">{kpi.sub}</p>
               </div>
               <div className="flex-shrink-0 w-11 h-11 rounded-2xl bg-indigo-50 border border-indigo-100 dark:bg-indigo-500/10 dark:border-indigo-500/20 flex items-center justify-center">
@@ -270,7 +391,7 @@ export default function DashboardPage() {
             <span className="text-[10px] font-black uppercase tracking-[0.2em] opacity-70 block mb-4">Objectif Ventes</span>
             <div className="text-6xl font-black tracking-tighter mb-4 leading-none">{salesPct}%</div>
             <p className="text-[11px] font-bold opacity-80 mb-5">
-              {wonLeads.length} vente{wonLeads.length > 1 ? 's' : ''} sur {leads.length} prospect{leads.length > 1 ? 's' : ''}
+              {wonInWindow} vente{wonInWindow > 1 ? 's' : ''} sur {filteredLeads.length} prospect{filteredLeads.length > 1 ? 's' : ''}
             </p>
             <a
               href="/dashboard/prospects"
@@ -283,7 +404,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Recent leads */}
+      {/* Recent leads — also filtered by period */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -311,7 +432,7 @@ export default function DashboardPage() {
               </tr>
             </thead>
             <tbody>
-              {leads.slice(0, 6).map((lead) => (
+              {filteredLeads.slice(0, 6).map((lead) => (
                 <tr key={lead.id} className="border-b border-zinc-100 dark:border-zinc-800/60 hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors">
                   <td className="px-8 py-4 font-bold text-zinc-900 dark:text-white">
                     <span dir="auto">{lead.full_name}</span>
@@ -332,10 +453,10 @@ export default function DashboardPage() {
                   </td>
                 </tr>
               ))}
-              {leads.length === 0 && (
+              {filteredLeads.length === 0 && (
                 <tr>
                   <td colSpan={5} className="px-6 py-12 text-center text-zinc-500 text-sm">
-                    Aucun prospect pour l&apos;instant.
+                    Aucun prospect sur cette période.
                   </td>
                 </tr>
               )}
