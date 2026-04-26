@@ -36,6 +36,8 @@ export type Vehicle = {
   finition: string | null
   carte_grise: string | null
   type_moteur: string | null
+  // field added by migration_09_vehicles_reference.sql — auto-generated code
+  reference: string | null
 }
 
 export type LeadSource =

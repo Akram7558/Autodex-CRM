@@ -30,7 +30,8 @@ type EditForm = {
 
 function vehicleLabel(v: Vehicle): string {
   const parts = [v.brand, v.model, v.year ? String(v.year) : ''].filter(Boolean)
-  const head = parts.join(' ')
+  let head = parts.join(' ')
+  if (v.reference) head = `${head} · ${v.reference}`
   if (v.price_dzd != null) {
     const price = new Intl.NumberFormat('fr-DZ', { maximumFractionDigits: 0 }).format(v.price_dzd)
     return `${head} · ${price} DZD`

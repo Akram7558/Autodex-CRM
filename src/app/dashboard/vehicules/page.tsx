@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { VEHICLE_STATUS_LABELS, type Vehicle } from '@/lib/types'
 import { ALGERIA_BRANDS, MODELS_BY_BRAND, YEARS, type Brand } from '@/lib/vehicle-catalog'
+import { generateUniqueVehicleReference } from '@/lib/vehicle-reference'
 // Brand kept for the modal's known-brand model dropdown; filter uses dynamic DB values.
 import {
   Car, Plus, MoreVertical, Loader2, Search, User,
@@ -51,6 +52,7 @@ function isMissingColumnError(err: unknown): boolean {
     msg.includes('finition') ||
     msg.includes('carte_grise') ||
     msg.includes('type_moteur') ||
+    msg.includes('reference') ||
     (msg.includes('column') && msg.includes('does not exist'))
   )
 }
@@ -177,11 +179,23 @@ function AddVehicleModal({
       }
     } else {
       payload.reserved_by_lead_id = null
+      // Auto-generate the reference on every new vehicle.
+      payload.reference = await generateUniqueVehicleReference(
+        form.brand,
+        form.year ? parseInt(form.year) : null
+      )
       const res = await supabase.from('vehicles').insert([payload])
       err = res.error
+      if (err && /reference/i.test(err.message)) {
+        // Column missing — retry without the reference field.
+        const { reference: _r, ...noRef } = payload
+        void _r
+        const retry = await supabase.from('vehicles').insert([noRef])
+        err = retry.error
+      }
       if (err && isMissingColumnError(err)) {
-        const { reserved_by_lead_id: _omit, ...rest } = payload
-        void _omit
+        const { reserved_by_lead_id: _omit, reference: _r, ...rest } = payload
+        void _omit; void _r
         const stripped = stripVehicleDetailKeys(rest)
         const retry = await supabase.from('vehicles').insert([stripped])
         err = retry.error
@@ -930,6 +944,11 @@ function VehicleCard({
             <h3 className="text-sm font-semibold text-foreground leading-tight truncate">
               {v.brand} {v.model}{v.year ? ` ${v.year}` : ''}
             </h3>
+            {v.reference && (
+              <p className="text-[11px] font-mono text-muted-foreground mt-0.5 tracking-wide">
+                {v.reference}
+              </p>
+            )}
             <p className="text-sm font-bold text-foreground mt-1">{formatPrice(v.price_dzd)}</p>
           </div>
           <VehicleCardMenu
@@ -999,6 +1018,7 @@ export default function VehiculesPage() {
   const [modele,     setModele]     = useState('')
   const [annee,      setAnnee]      = useState('')
   const [statusFilter, setStatusFilter] = useState<Vehicle['status'] | ''>('')
+  const [search, setSearch] = useState('')
   const [modalOpen,  setModalOpen]  = useState(false)
   const [leadsById,  setLeadsById]  = useState<Record<string, LeadLite>>({})
   const [pendingReserve, setPendingReserve] = useState<Vehicle | null>(null)
@@ -1030,6 +1050,33 @@ export default function VehiculesPage() {
       for (const l of (ldata ?? []) as LeadLite[]) map[l.id] = l
       setLeadsById(prev => ({ ...prev, ...map }))
     }
+
+    // Backfill: every existing vehicle without a reference gets one assigned.
+    const missing = rows.filter((v) => !v.reference)
+    if (missing.length > 0) {
+      const updates = await Promise.all(
+        missing.map(async (v) => {
+          const ref = await generateUniqueVehicleReference(v.brand, v.year)
+          const { error } = await supabase
+            .from('vehicles')
+            .update({ reference: ref })
+            .eq('id', v.id)
+          if (error) {
+            // Column missing or some other DB issue — abort backfill silently.
+            return null
+          }
+          return { id: v.id, reference: ref }
+        })
+      )
+      const ok = updates.filter((x): x is { id: string; reference: string } => !!x)
+      if (ok.length > 0) {
+        const byId: Record<string, string> = {}
+        for (const u of ok) byId[u.id] = u.reference
+        setVehicles((prev) =>
+          prev.map((v) => (byId[v.id] ? { ...v, reference: byId[v.id] } : v))
+        )
+      }
+    }
   }
 
   useEffect(() => { fetchVehicles() }, [])
@@ -1053,14 +1100,23 @@ export default function VehiculesPage() {
   }, [vehicles, marque])
 
   const filtered = useMemo(() => {
+    const term = search.trim().toLowerCase()
     return vehicles.filter(v => {
       if (statusFilter && v.status !== statusFilter) return false
       if (marque && v.brand !== marque) return false
       if (modele && v.model !== modele) return false
       if (annee  && String(v.year ?? '') !== annee) return false
+      if (term) {
+        const hay = [
+          v.reference, v.brand, v.model,
+          v.year != null ? String(v.year) : '',
+          v.color, v.finition,
+        ].filter(Boolean).join(' ').toLowerCase()
+        if (!hay.includes(term)) return false
+      }
       return true
     })
-  }, [vehicles, statusFilter, marque, modele, annee])
+  }, [vehicles, statusFilter, marque, modele, annee, search])
 
   function handleImageUpdated(id: string, url: string) {
     setVehicles(prev => prev.map(x => x.id === id ? { ...x, image_url: url || null } : x))
@@ -1203,6 +1259,18 @@ export default function VehiculesPage() {
         >
           <Plus className="w-4 h-4" /> Ajouter un véhicule
         </button>
+      </div>
+
+      {/* Search */}
+      <div className="relative">
+        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+        <input
+          type="text"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Rechercher par référence, marque, modèle, année…"
+          className="w-full bg-card border border-border rounded-lg pl-10 pr-4 py-2.5 text-sm text-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition"
+        />
       </div>
 
       {/* Filters */}
