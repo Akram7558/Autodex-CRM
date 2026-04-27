@@ -16,10 +16,6 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Autodex — Gestion automobile Algérie",
   description: "CRM commercial automobile pour showrooms en Algérie",
-  // Facebook domain verification (Meta Business Settings → Automobile CRM app).
-  other: {
-    "facebook-domain-verification": "0s8G6lzua3e16t40fb89245b2c7khj",
-  },
 };
 
 // Blocking inline script — sets `.dark` on <html> BEFORE hydration to avoid FOUC.
@@ -37,6 +33,7 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <head>
+        <meta name="facebook-domain-verification" content="0s8G6lzua3e16t40fb89245b2c7khj" />
         <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
       </head>
       <body className="h-full">
