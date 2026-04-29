@@ -1,9 +1,39 @@
 export type Showroom = {
   id: string
   name: string
-  city: string
-  address: string | null
-  phone: string | null
+  city?: string
+  address?: string | null
+  phone?: string | null
+  // Multi-tenant SaaS fields (migration_12_rbac.sql)
+  owner_email?: string | null
+  module_vente?: boolean
+  module_location?: boolean
+  active?: boolean
+  created_at: string
+}
+
+// ── RBAC roles (migration_12_rbac.sql) ──────────────────────────────
+export type AppRole =
+  | 'super_admin'
+  | 'owner'
+  | 'manager'
+  | 'closer'
+  | 'prospecteur'
+
+export type UserRole = {
+  id: string
+  user_id: string
+  showroom_id: string | null   // null for super_admin (global)
+  role: AppRole
+  created_at: string
+}
+
+export type LeadDistribution = {
+  id: string
+  showroom_id: string
+  user_id: string
+  percentage: number
+  leads_received: number
   created_at: string
 }
 
