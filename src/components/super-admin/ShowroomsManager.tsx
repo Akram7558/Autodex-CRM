@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { motion } from 'motion/react'
-import { Plus, Pencil, Trash2, Power, X, Building2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, Power, X, Building2, Copy, CheckCircle2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import type { Showroom } from '@/lib/types'
@@ -36,6 +36,9 @@ export function ShowroomsManager() {
   const [form, setForm] = useState<Form | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  // Success modal — shown after the API returns the temp password.
+  const [created, setCreated] = useState<{ email: string; password: string } | null>(null)
+  const [copied, setCopied]   = useState(false)
 
   async function fetchAll() {
     const { data, error } = await supabase
@@ -55,21 +58,65 @@ export function ShowroomsManager() {
     if (!form.name.trim()) { setError('Nom requis.'); return }
     if (!form.city)        { setError('Wilaya requise.'); return }
     setSaving(true); setError('')
-    const payload = {
-      name: form.name.trim(),
-      city: form.city,
-      owner_email: form.owner_email.trim() || null,
-      module_vente: form.module_vente,
-      module_location: form.module_location,
-      active: form.active,
+
+    // ── Edit flow: direct update, no auth user creation ───────────
+    if (form.id) {
+      const payload = {
+        name: form.name.trim(),
+        city: form.city,
+        owner_email: form.owner_email.trim() || null,
+        module_vente: form.module_vente,
+        module_location: form.module_location,
+        active: form.active,
+      }
+      const { error: err } = await supabase.from('showrooms').update(payload).eq('id', form.id)
+      setSaving(false)
+      if (err) { setError(err.message); return }
+      setForm(null)
+      fetchAll()
+      return
     }
-    const { error: err } = form.id
-      ? await supabase.from('showrooms').update(payload).eq('id', form.id)
-      : await supabase.from('showrooms').insert([payload])
+
+    // ── Create flow: API route does showroom + auth user + user_roles
+    if (!form.owner_email.trim()) {
+      setSaving(false)
+      setError('Email du propriétaire requis pour créer un compte.')
+      return
+    }
+    const res = await fetch('/api/admin/create-showroom', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name:            form.name.trim(),
+        city:            form.city,
+        owner_email:     form.owner_email.trim().toLowerCase(),
+        module_vente:    form.module_vente,
+        module_location: form.module_location,
+        active:          form.active,
+      }),
+    })
+    const json = await res.json().catch(() => ({}))
     setSaving(false)
-    if (err) { setError(err.message); return }
+    if (!res.ok) {
+      setError(json?.error ?? 'Erreur lors de la création du showroom.')
+      return
+    }
     setForm(null)
+    setCreated({ email: json.owner_email, password: json.temp_password })
     fetchAll()
+  }
+
+  async function copyCredentials() {
+    if (!created) return
+    const text = `Email : ${created.email}\nMot de passe temporaire : ${created.password}`
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Clipboard access denied or unavailable — fall back to a prompt.
+      window.prompt('Copiez ces identifiants :', text)
+    }
   }
 
   async function toggleActive(s: Showroom) {
@@ -245,14 +292,22 @@ export function ShowroomsManager() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-foreground mb-1">Email du propriétaire</label>
+                <label className="block text-xs font-medium text-foreground mb-1">
+                  Email du propriétaire {!form.id && '*'}
+                </label>
                 <input
                   type="email"
                   value={form.owner_email}
                   onChange={(e) => setForm({ ...form, owner_email: e.target.value })}
                   placeholder="proprietaire@autodex.store"
+                  required={!form.id}
                   className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20"
                 />
+                {!form.id && (
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Un compte sera créé automatiquement avec un mot de passe temporaire.
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -305,6 +360,85 @@ export function ShowroomsManager() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Success modal — shown after auto-provisioning a new owner */}
+      {created && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm p-4">
+          <div className="rounded-2xl bg-card border border-border shadow-2xl w-full max-w-md flex flex-col">
+            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-border">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                <h3 className="text-base font-semibold text-foreground">Showroom créé</h3>
+              </div>
+              <button
+                onClick={() => { setCreated(null); setCopied(false) }}
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="px-6 py-5 space-y-4">
+              <div className="space-y-1">
+                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                  Email du propriétaire
+                </p>
+                <p className="text-sm font-mono text-foreground bg-muted rounded-lg px-3 py-2 break-all select-all">
+                  {created.email}
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                  Mot de passe temporaire
+                </p>
+                <p className="text-sm font-mono text-foreground bg-muted rounded-lg px-3 py-2 break-all select-all">
+                  {created.password}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={copyCredentials}
+                className={cn(
+                  'flex items-center justify-center gap-2 w-full h-10 rounded-lg text-sm font-medium transition-colors',
+                  copied
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                )}
+              >
+                {copied ? (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" />
+                    Copié
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4" />
+                    Copier les identifiants
+                  </>
+                )}
+              </button>
+
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                Envoyez ces identifiants au propriétaire. Il pourra changer son
+                mot de passe après connexion. Ce mot de passe ne sera plus
+                affiché — copiez-le maintenant.
+              </p>
+
+              <div className="flex justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={() => { setCreated(null); setCopied(false) }}
+                  className="px-5 py-2 rounded-lg text-sm bg-zinc-100 dark:bg-zinc-800 text-foreground hover:bg-zinc-200 dark:hover:bg-zinc-700 font-medium"
+                >
+                  Fermer
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
