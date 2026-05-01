@@ -17,18 +17,25 @@ import type { AppRole } from '@/lib/types'
 const DEBUG = true
 
 // ── Inline ACL (mirrors src/lib/auth.ts) ─────────────────────────────
+// Sub-routes appear BEFORE their parent so longest prefix wins.
 const ROUTE_ACL: Array<{ prefix: string; allow: AppRole[] }> = [
-  { prefix: '/dashboard/super-admin',           allow: ['super_admin'] },
-  { prefix: '/dashboard/parametres',            allow: ['super_admin', 'owner', 'manager'] },
-  { prefix: '/dashboard/settings/integrations', allow: ['super_admin', 'owner', 'manager'] },
-  { prefix: '/dashboard/alerts',                allow: ['super_admin', 'owner', 'manager'] },
-  { prefix: '/dashboard/ventes',                allow: ['super_admin', 'owner', 'manager'] },
-  { prefix: '/dashboard/rendez-vous',           allow: ['super_admin', 'owner', 'manager', 'closer'] },
-  { prefix: '/dashboard/vehicules',             allow: ['super_admin', 'owner', 'manager', 'closer', 'prospecteur'] },
-  { prefix: '/dashboard/activites',             allow: ['super_admin', 'owner', 'manager', 'closer', 'prospecteur'] },
-  { prefix: '/dashboard/leads',                 allow: ['super_admin', 'owner', 'manager', 'closer', 'prospecteur'] },
-  { prefix: '/dashboard/prospects',             allow: ['super_admin', 'owner', 'manager', 'closer', 'prospecteur'] },
-  { prefix: '/dashboard',                       allow: ['super_admin', 'owner', 'manager', 'closer', 'prospecteur'] },
+  { prefix: '/dashboard/super-admin/utilisateurs', allow: ['super_admin'] },
+  { prefix: '/dashboard/super-admin/parametres',   allow: ['super_admin'] },
+  { prefix: '/dashboard/super-admin/logs',         allow: ['super_admin'] },
+  { prefix: '/dashboard/super-admin/showrooms',    allow: ['super_admin', 'commercial'] },
+  { prefix: '/dashboard/super-admin/rendez-vous',  allow: ['super_admin', 'commercial'] },
+  { prefix: '/dashboard/super-admin/prospects',    allow: ['super_admin', 'commercial', 'prospecteur_saas'] },
+  { prefix: '/dashboard/super-admin',              allow: ['super_admin', 'commercial', 'prospecteur_saas'] },
+  { prefix: '/dashboard/parametres',               allow: ['super_admin', 'owner', 'manager'] },
+  { prefix: '/dashboard/settings/integrations',    allow: ['super_admin', 'owner', 'manager'] },
+  { prefix: '/dashboard/alerts',                   allow: ['super_admin', 'owner', 'manager'] },
+  { prefix: '/dashboard/ventes',                   allow: ['super_admin', 'owner', 'manager'] },
+  { prefix: '/dashboard/rendez-vous',              allow: ['super_admin', 'owner', 'manager', 'closer'] },
+  { prefix: '/dashboard/vehicules',                allow: ['super_admin', 'owner', 'manager', 'closer', 'prospecteur'] },
+  { prefix: '/dashboard/activites',                allow: ['super_admin', 'owner', 'manager', 'closer', 'prospecteur'] },
+  { prefix: '/dashboard/leads',                    allow: ['super_admin', 'owner', 'manager', 'closer', 'prospecteur'] },
+  { prefix: '/dashboard/prospects',                allow: ['super_admin', 'owner', 'manager', 'closer', 'prospecteur'] },
+  { prefix: '/dashboard',                          allow: ['super_admin', 'owner', 'manager', 'closer', 'prospecteur'] },
 ]
 
 function isRoleAllowed(pathname: string, role: AppRole): boolean {
@@ -42,11 +49,13 @@ function isRoleAllowed(pathname: string, role: AppRole): boolean {
 
 function defaultDashboardForRole(role: AppRole): string {
   switch (role) {
-    case 'super_admin': return '/dashboard/super-admin'
-    case 'owner':       return '/dashboard'
-    case 'manager':     return '/dashboard'
-    case 'closer':      return '/dashboard/rendez-vous'
-    case 'prospecteur': return '/dashboard/leads'
+    case 'super_admin':       return '/dashboard/super-admin'
+    case 'commercial':        return '/dashboard/super-admin'
+    case 'prospecteur_saas':  return '/dashboard/super-admin/prospects'
+    case 'owner':             return '/dashboard'
+    case 'manager':           return '/dashboard'
+    case 'closer':            return '/dashboard/rendez-vous'
+    case 'prospecteur':       return '/dashboard/leads'
   }
 }
 

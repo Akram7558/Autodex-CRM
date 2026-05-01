@@ -77,6 +77,31 @@ export async function getCurrentShowroomId(): Promise<string | null> {
   return (data.showroom_id as string | null) ?? null
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// Capability helpers (UI guards)
+// ─────────────────────────────────────────────────────────────────────
+
+/** Member of the AutoDex internal SaaS team (vs. a showroom employee). */
+export function isInternalTeamRole(role: AppRole | null): boolean {
+  return role === 'super_admin'
+      || role === 'commercial'
+      || role === 'prospecteur_saas'
+}
+
+/** Allowed to see money figures (revenue, sales totals, prices in CA cards). */
+export function canSeeFinancials(role: AppRole | null): boolean {
+  return role === 'super_admin'
+}
+
+/** Allowed to view the showrooms list / open showroom details. */
+export function canManageShowrooms(role: AppRole | null): boolean {
+  return role === 'super_admin' || role === 'commercial'
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Default landing + route ACL
+// ─────────────────────────────────────────────────────────────────────
+
 /**
  * Default landing dashboard for a given role. Used by the middleware to
  * route users to the right UI after login and to redirect away from
@@ -84,11 +109,13 @@ export async function getCurrentShowroomId(): Promise<string | null> {
  */
 export function defaultDashboardForRole(role: AppRole): string {
   switch (role) {
-    case 'super_admin': return '/dashboard/super-admin'
-    case 'owner':       return '/dashboard'
-    case 'manager':     return '/dashboard'
-    case 'closer':      return '/dashboard/rendez-vous'
-    case 'prospecteur': return '/dashboard/leads'
+    case 'super_admin':       return '/dashboard/super-admin'
+    case 'commercial':        return '/dashboard/super-admin'
+    case 'prospecteur_saas':  return '/dashboard/super-admin/prospects'
+    case 'owner':             return '/dashboard'
+    case 'manager':           return '/dashboard'
+    case 'closer':            return '/dashboard/rendez-vous'
+    case 'prospecteur':       return '/dashboard/leads'
   }
 }
 
@@ -98,26 +125,35 @@ export function defaultDashboardForRole(role: AppRole): string {
  * page under /dashboard. If the role isn't in the list, we redirect
  * them to their default dashboard.
  *
- * Order matters — the first matching prefix wins.
+ * Order matters — the first matching prefix wins. Sub-routes appear
+ * BEFORE their parent so /dashboard/super-admin/prospects matches its
+ * own rule, not the broader /dashboard/super-admin rule.
  */
 const ROUTE_ACL: Array<{ prefix: string; allow: AppRole[] }> = [
-  // Super-admin only — global tenant management.
-  { prefix: '/dashboard/super-admin', allow: ['super_admin'] },
+  // ── Super-admin section: per-page ACL ──────────────────────────────
+  { prefix: '/dashboard/super-admin/utilisateurs',  allow: ['super_admin'] },
+  { prefix: '/dashboard/super-admin/parametres',    allow: ['super_admin'] },
+  { prefix: '/dashboard/super-admin/logs',          allow: ['super_admin'] },
+  { prefix: '/dashboard/super-admin/showrooms',     allow: ['super_admin', 'commercial'] },
+  { prefix: '/dashboard/super-admin/rendez-vous',   allow: ['super_admin', 'commercial'] },
+  { prefix: '/dashboard/super-admin/prospects',     allow: ['super_admin', 'commercial', 'prospecteur_saas'] },
+  // Super-admin home (Tableau de bord)
+  { prefix: '/dashboard/super-admin',               allow: ['super_admin', 'commercial', 'prospecteur_saas'] },
 
-  // Owner / manager surfaces.
+  // ── Showroom section ──────────────────────────────────────────────
   { prefix: '/dashboard/parametres',             allow: ['super_admin', 'owner', 'manager'] },
   { prefix: '/dashboard/settings/integrations',  allow: ['super_admin', 'owner', 'manager'] },
   { prefix: '/dashboard/alerts',                 allow: ['super_admin', 'owner', 'manager'] },
   { prefix: '/dashboard/ventes',                 allow: ['super_admin', 'owner', 'manager'] },
 
-  // Day-to-day commercial pages — accessible to everyone with a role.
   { prefix: '/dashboard/rendez-vous', allow: ['super_admin', 'owner', 'manager', 'closer'] },
   { prefix: '/dashboard/vehicules',   allow: ['super_admin', 'owner', 'manager', 'closer', 'prospecteur'] },
   { prefix: '/dashboard/activites',   allow: ['super_admin', 'owner', 'manager', 'closer', 'prospecteur'] },
   { prefix: '/dashboard/leads',       allow: ['super_admin', 'owner', 'manager', 'closer', 'prospecteur'] },
   { prefix: '/dashboard/prospects',   allow: ['super_admin', 'owner', 'manager', 'closer', 'prospecteur'] },
 
-  // Root dashboard — KPIs / overview.
+  // Root dashboard — KPIs / overview. Internal team members are bounced
+  // to their /dashboard/super-admin home instead.
   { prefix: '/dashboard', allow: ['super_admin', 'owner', 'manager', 'closer', 'prospecteur'] },
 ]
 

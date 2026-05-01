@@ -26,6 +26,7 @@ import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
 import { NotificationBell } from '@/components/alerts/notification-bell'
 import { ThemeToggle } from '@/components/theme-toggle'
+import type { AppRole } from '@/lib/types'
 
 const navItems = [
   { href: '/dashboard',             label: 'Tableau de bord', icon: LayoutDashboard },
@@ -38,14 +39,41 @@ const navItems = [
   { href: '/dashboard/alerts',      label: 'Alertes',         icon: BellRing },
 ]
 
-// Sidebar shown when the signed-in user has role = 'super_admin'.
+// ── Super-admin sidebar ────────────────────────────────────────────
+// Full sidebar with all internal sections.
 const superAdminNavItems = [
   { href: '/dashboard/super-admin',              label: 'Tableau de bord', icon: Shield },
   { href: '/dashboard/super-admin/showrooms',    label: 'Showrooms',       icon: Building2 },
+  { href: '/dashboard/super-admin/prospects',    label: 'Prospects SaaS',  icon: Users },
+  { href: '/dashboard/super-admin/rendez-vous',  label: 'RDV SaaS',        icon: CalendarClock },
   { href: '/dashboard/super-admin/utilisateurs', label: 'Utilisateurs',    icon: Users },
   { href: '/dashboard/super-admin/logs',         label: 'Logs',            icon: ScrollText },
   { href: '/dashboard/super-admin/parametres',   label: 'Paramètres',      icon: Settings },
 ]
+
+// ── Commercial sidebar ─────────────────────────────────────────────
+// Same as super-admin minus Logs / Paramètres / Utilisateurs.
+const commercialNavItems = [
+  { href: '/dashboard/super-admin',              label: 'Tableau de bord', icon: Shield },
+  { href: '/dashboard/super-admin/showrooms',    label: 'Showrooms',       icon: Building2 },
+  { href: '/dashboard/super-admin/prospects',    label: 'Prospects SaaS',  icon: Users },
+  { href: '/dashboard/super-admin/rendez-vous',  label: 'RDV SaaS',        icon: CalendarClock },
+]
+
+// ── prospecteur_saas sidebar ───────────────────────────────────────
+// Only the SaaS prospects page.
+const prospecteurSaasNavItems = [
+  { href: '/dashboard/super-admin/prospects',    label: 'Prospects SaaS',  icon: Users },
+]
+
+function navItemsForRole(role: AppRole | null) {
+  switch (role) {
+    case 'super_admin':       return superAdminNavItems
+    case 'commercial':        return commercialNavItems
+    case 'prospecteur_saas':  return prospecteurSaasNavItems
+    default:                  return navItems
+  }
+}
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
@@ -53,7 +81,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [userName, setUserName] = useState('Utilisateur')
   const [userInitial, setUserInitial] = useState('U')
   const [userId, setUserId] = useState<string | null>(null)
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
+  const [userRole, setUserRole] = useState<AppRole | null>(null)
   const [mobileOpen, setMobileOpen] = useState(false)
 
   useEffect(() => {
@@ -76,11 +104,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         .select('role')
         .eq('user_id', data.user.id)
         .maybeSingle()
-      setIsSuperAdmin(roleRow?.role === 'super_admin')
+      setUserRole((roleRow?.role as AppRole | undefined) ?? null)
     })
   }, [router])
 
-  const activeNavItems = isSuperAdmin ? superAdminNavItems : navItems
+  const activeNavItems = navItemsForRole(userRole)
 
   // Close the mobile drawer whenever the route changes.
   useEffect(() => {

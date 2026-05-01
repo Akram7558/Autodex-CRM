@@ -1,17 +1,27 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { motion } from 'motion/react'
 import { StatsCards } from '@/components/super-admin/StatsCards'
 import { ShowroomsManager } from '@/components/super-admin/ShowroomsManager'
 import { UsersManager } from '@/components/super-admin/UsersManager'
+import { getCurrentUserRole } from '@/lib/auth'
+import type { AppRole } from '@/lib/types'
 
 export default function SuperAdminDashboardPage() {
+  const [role, setRole] = useState<AppRole | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    getCurrentUserRole().then((cur) => { if (!cancelled) setRole(cur?.role ?? null) })
+    return () => { cancelled = true }
+  }, [])
+
   return (
     <div className="p-10 pt-2 max-w-7xl space-y-8 pb-12">
       <div className="flex items-center gap-2">
         <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
         <span className="text-[10px] font-black uppercase tracking-[0.2em] text-rose-500">
-          Super Admin · Vue globale
+          {role === 'commercial' ? 'Commercial · Vue globale' : 'Super Admin · Vue globale'}
         </span>
       </div>
 
@@ -29,7 +39,9 @@ export default function SuperAdminDashboardPage() {
 
       <StatsCards />
       <ShowroomsManager />
-      <UsersManager />
+      {/* User management is super_admin-only — commercial / prospecteur_saas
+          users see a stats overview but cannot manage roles. */}
+      {role === 'super_admin' && <UsersManager />}
     </div>
   )
 }

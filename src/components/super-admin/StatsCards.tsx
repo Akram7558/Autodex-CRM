@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import { motion } from 'motion/react'
 import { Building2, Users, Megaphone, BadgeDollarSign } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { canSeeFinancials, getCurrentUserRole } from '@/lib/auth'
+import type { AppRole } from '@/lib/types'
 
 function formatDzd(n: number): string {
   return new Intl.NumberFormat('fr-DZ', { maximumFractionDigits: 0 }).format(n)
@@ -16,22 +18,32 @@ export function StatsCards() {
     leads: 0,
     revenue: 0,
   })
+  const [role, setRole] = useState<AppRole | null>(null)
 
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      const [{ count: srCount }, { count: urCount }, { count: ldCount }, { data: ventes }] =
-        await Promise.all([
-          supabase.from('showrooms').select('*', { count: 'exact', head: true }).eq('active', true),
-          supabase.from('user_roles').select('*', { count: 'exact', head: true }),
-          supabase.from('leads').select('*', { count: 'exact', head: true }),
-          supabase.from('ventes').select('prix_vente'),
-        ])
+      const cur = await getCurrentUserRole()
+      if (!cancelled) setRole(cur?.role ?? null)
+      const showFinancials = canSeeFinancials(cur?.role ?? null)
+
+      // Skip the ventes fetch entirely for non-financial roles — keeps
+      // a money-shaped payload off the wire even though RLS would let it
+      // through.
+      const [{ count: srCount }, { count: urCount }, { count: ldCount }] = await Promise.all([
+        supabase.from('showrooms').select('*', { count: 'exact', head: true }).eq('active', true),
+        supabase.from('user_roles').select('*', { count: 'exact', head: true }),
+        supabase.from('leads').select('*', { count: 'exact', head: true }),
+      ])
+      let revenue = 0
+      if (showFinancials) {
+        const { data: ventes } = await supabase.from('ventes').select('prix_vente')
+        revenue = (ventes ?? []).reduce(
+          (acc: number, v: { prix_vente: number | null }) => acc + (v.prix_vente ?? 0),
+          0,
+        )
+      }
       if (cancelled) return
-      const revenue = (ventes ?? []).reduce(
-        (acc: number, v: { prix_vente: number | null }) => acc + (v.prix_vente ?? 0),
-        0,
-      )
       setStats({
         showrooms: srCount ?? 0,
         users:     urCount ?? 0,
@@ -42,15 +54,24 @@ export function StatsCards() {
     return () => { cancelled = true }
   }, [])
 
-  const cards = [
+  const baseCards = [
     { label: 'Showrooms actifs',    value: String(stats.showrooms), icon: Building2 },
     { label: 'Utilisateurs',        value: String(stats.users),     icon: Users },
     { label: 'Total prospects',     value: String(stats.leads),     icon: Megaphone },
-    { label: 'Chiffre d’affaires', value: `${formatDzd(stats.revenue)} DZD`, icon: BadgeDollarSign },
   ]
+  // Financial card is super_admin-only. Commercial / prospecteur_saas
+  // see counts but never money.
+  const financialCard = canSeeFinancials(role)
+    ? { label: 'Chiffre d’affaires', value: `${formatDzd(stats.revenue)} DZD`, icon: BadgeDollarSign }
+    : null
+  const cards = financialCard ? [...baseCards, financialCard] : baseCards
+
+  // Use a 3-up grid when the financial card is hidden so cards don't
+  // grow to fill the freed slot.
+  const gridCols = cards.length === 4 ? 'xl:grid-cols-4' : 'xl:grid-cols-3'
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
+    <div className={`grid grid-cols-1 sm:grid-cols-2 ${gridCols} gap-6`}>
       {cards.map((kpi, i) => {
         const Icon = kpi.icon
         return (

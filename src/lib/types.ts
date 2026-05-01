@@ -12,9 +12,15 @@ export type Showroom = {
   created_at: string
 }
 
-// ── RBAC roles (migration_12_rbac.sql) ──────────────────────────────
+// ── RBAC roles (migration_12_rbac.sql + migration_15_internal_roles.sql)
+// Internal AutoDex team:  super_admin, commercial, prospecteur_saas
+//                         (showroom_id is null)
+// Showroom team:          owner, manager, closer, prospecteur
+//                         (showroom_id is required)
 export type AppRole =
   | 'super_admin'
+  | 'commercial'
+  | 'prospecteur_saas'
   | 'owner'
   | 'manager'
   | 'closer'
