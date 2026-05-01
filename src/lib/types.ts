@@ -157,10 +157,10 @@ export type SaasSuivi =
   | 'tentative_3'
   | 'reporter'
   | 'rdv_planifie'
-  | 'perdu'
+  | 'annule'
 
 export const SAAS_SUIVI_VALUES: SaasSuivi[] = [
-  'nouveau','tentative_1','tentative_2','tentative_3','reporter','rdv_planifie','perdu',
+  'nouveau','tentative_1','tentative_2','tentative_3','reporter','rdv_planifie','annule',
 ]
 
 export const SAAS_SUIVI_LABELS: Record<SaasSuivi, string> = {
@@ -170,9 +170,12 @@ export const SAAS_SUIVI_LABELS: Record<SaasSuivi, string> = {
   tentative_3:  'Tentative 3',
   reporter:     'Reporter',
   rdv_planifie: 'RDV planifié',
-  perdu:        'Perdu',
+  annule:       'Annulé',
 }
 
+// Mirrors LEAD_SUIVI_BADGE_CLASSES on the showroom leads page so the
+// SaaS pipeline reads at a glance for anyone used to the showroom UI.
+// `annule` reuses the rose/red palette historically used for "perdu".
 export const SAAS_SUIVI_BADGE: Record<SaasSuivi, string> = {
   nouveau:      'bg-indigo-100 text-indigo-700 border-indigo-200 dark:bg-indigo-500/20 dark:text-indigo-300 dark:border-indigo-500/30',
   tentative_1:  'bg-yellow-300 text-yellow-900 border-yellow-400 dark:bg-yellow-400 dark:text-yellow-950 dark:border-yellow-500',
@@ -180,8 +183,37 @@ export const SAAS_SUIVI_BADGE: Record<SaasSuivi, string> = {
   tentative_3:  'bg-red-600 text-white border-red-700 dark:bg-red-600 dark:text-white dark:border-red-700',
   reporter:     'bg-orange-700 text-white border-orange-800 dark:bg-orange-700 dark:text-white dark:border-orange-800',
   rdv_planifie: 'bg-emerald-600 text-white border-emerald-700 dark:bg-emerald-600 dark:text-white dark:border-emerald-700',
-  perdu:        'bg-slate-500 text-white border-slate-600 dark:bg-slate-600 dark:text-white dark:border-slate-700',
+  annule:       'bg-rose-600 text-white border-rose-700 dark:bg-rose-600 dark:text-white dark:border-rose-700',
 }
+
+// ── Cancellation reasons ────────────────────────────────────────────
+// Used by the cancellation modal AND by the PATCH route's server-side
+// enum check — keep the value list in sync.
+export type SaasCancellationReason =
+  | 'prix_trop_eleve'
+  | 'pas_interesse'
+  | 'autre_solution'
+  | 'pas_le_bon_moment'
+  | 'injoignable'
+  | 'autre'
+
+export const SAAS_CANCELLATION_REASON_VALUES: SaasCancellationReason[] = [
+  'prix_trop_eleve','pas_interesse','autre_solution','pas_le_bon_moment','injoignable','autre',
+]
+
+export const SAAS_CANCELLATION_REASONS: { value: SaasCancellationReason; label: string }[] = [
+  { value: 'prix_trop_eleve',   label: 'Prix trop élevé' },
+  { value: 'pas_interesse',     label: 'Pas intéressé' },
+  { value: 'autre_solution',    label: "A trouvé une autre solution" },
+  { value: 'pas_le_bon_moment', label: 'Pas le bon moment' },
+  { value: 'injoignable',       label: 'Injoignable' },
+  { value: 'autre',             label: 'Autre' },
+]
+
+export const SAAS_CANCELLATION_REASON_LABELS: Record<SaasCancellationReason, string> =
+  Object.fromEntries(
+    SAAS_CANCELLATION_REASONS.map((r) => [r.value, r.label]),
+  ) as Record<SaasCancellationReason, string>
 
 export type SaasSource =
   | 'facebook_ads'
@@ -227,6 +259,11 @@ export type SaasProspect = {
   created_by: string | null
   created_at: string
   updated_at: string
+  // Cancellation tracking (migration_17_prospect_cancellation.sql).
+  cancellation_reason?:  SaasCancellationReason | null
+  cancellation_comment?: string | null
+  cancelled_at?:         string | null
+  cancelled_by?:         string | null
 }
 
 export type SaasRdvStatus = 'planifie' | 'converti' | 'essai_gratuit' | 'reporter' | 'annule'

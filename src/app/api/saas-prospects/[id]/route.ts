@@ -9,7 +9,9 @@ import { requireInternalUser, requireSuperAdmin, errorResponse } from '@/lib/api
 import { normalizePhone, PhoneNormalizeError } from '@/lib/phone'
 import {
   SAAS_SUIVI_VALUES, SAAS_SOURCE_VALUES, SAAS_SIZE_VALUES,
+  SAAS_CANCELLATION_REASON_VALUES,
   type SaasSuivi, type SaasSource, type SaasShowroomSize,
+  type SaasCancellationReason,
 } from '@/lib/types'
 
 export const runtime = 'nodejs'
@@ -68,6 +70,46 @@ export async function PATCH(req: NextRequest, { params }: RouteCtx) {
         return NextResponse.json({ error: 'Suivi invalide.' }, { status: 400 })
       }
       updates.suivi = v
+    }
+
+    // ── Cancellation fields ────────────────────────────────────────
+    // Only meaningful when suivi === 'annule'. We require the reason
+    // server-side; comment is optional. When the client also sends
+    // these for a non-annule transition, we silently drop them — the
+    // BEFORE UPDATE trigger clears them anyway.
+    const goingToAnnule =
+      updates.suivi === 'annule'
+      || (body.cancellation_reason !== undefined && updates.suivi === undefined)
+
+    if (updates.suivi === 'annule') {
+      const reason = body.cancellation_reason ? String(body.cancellation_reason) : ''
+      if (!reason) {
+        return NextResponse.json(
+          { error: "La raison d'annulation est obligatoire." },
+          { status: 400 },
+        )
+      }
+      if (!SAAS_CANCELLATION_REASON_VALUES.includes(reason as SaasCancellationReason)) {
+        return NextResponse.json(
+          { error: "Raison d'annulation invalide." },
+          { status: 400 },
+        )
+      }
+      updates.cancellation_reason = reason
+
+      if (body.cancellation_comment !== undefined) {
+        const comment = body.cancellation_comment ? String(body.cancellation_comment) : null
+        if (comment && comment.length > 1000) {
+          return NextResponse.json(
+            { error: 'Le commentaire ne peut pas dépasser 1000 caractères.' },
+            { status: 400 },
+          )
+        }
+        updates.cancellation_comment = comment
+      }
+    } else if (!goingToAnnule) {
+      // For non-annule transitions, ignore any cancellation fields the
+      // client mistakenly sent. The trigger will clear stale values.
     }
 
     if (body.assigned_to !== undefined) {

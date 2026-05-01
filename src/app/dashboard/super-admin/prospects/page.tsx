@@ -14,8 +14,10 @@ import {
   SAAS_SUIVI_VALUES, SAAS_SUIVI_LABELS, SAAS_SUIVI_BADGE,
   SAAS_SOURCE_VALUES, SAAS_SOURCE_LABELS,
   SAAS_SIZE_VALUES,   SAAS_SIZE_LABELS,
+  SAAS_CANCELLATION_REASON_LABELS,
   type AppRole,
 } from '@/lib/types'
+import { CancelProspectModal } from '@/components/saas/CancelProspectModal'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 
@@ -125,6 +127,9 @@ export default function SuperAdminProspectsPage() {
     setToast(msg); setTimeout(() => setToast(null), 2500)
   }
 
+  // Cancellation modal — opened when the inline suivi dropdown picks 'annule'.
+  const [cancelTarget, setCancelTarget] = useState<SaasProspect | null>(null)
+
   // ── Load me + role + internal users (for assignee picker) ──────────
   useEffect(() => {
     (async () => {
@@ -207,6 +212,45 @@ export default function SuperAdminProspectsPage() {
     for (const u of internalUsers) m[u.user_id] = u
     return m
   }, [internalUsers])
+
+  // ── Inline suivi update from the table dropdown ────────────────────
+  // For non-annule transitions we PATCH optimistically. For 'annule' we
+  // open the cancellation modal (which does its own PATCH with the
+  // mandatory reason) — never send a half-baked annule update from here.
+  async function updateSuiviInline(p: SaasProspect, next: SaasSuivi) {
+    if (next === p.suivi) return
+    if (next === 'annule') {
+      setCancelTarget(p)
+      return
+    }
+    // Optimistic update.
+    const prevSuivi = p.suivi
+    setProspects((cur) => cur.map((row) => row.id === p.id ? { ...row, suivi: next } : row))
+    if (detail?.id === p.id) setDetail((d) => d ? { ...d, suivi: next } : d)
+
+    const res = await fetch(`/api/saas-prospects/${p.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ suivi: next }),
+    })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      // Revert on error.
+      setProspects((cur) => cur.map((row) => row.id === p.id ? { ...row, suivi: prevSuivi } : row))
+      if (detail?.id === p.id) setDetail((d) => d ? { ...d, suivi: prevSuivi } : d)
+      const msg = res.status === 403
+        ? "Vous n'avez pas accès à ce prospect."
+        : (json?.error ?? 'Erreur lors de la mise à jour.')
+      flashToast(msg)
+      return
+    }
+    // Replace with the server-canonical row (in case triggers added fields).
+    if (json.prospect) {
+      setProspects((cur) => cur.map((row) => row.id === p.id ? json.prospect : row))
+      if (detail?.id === p.id) setDetail(json.prospect)
+    }
+    flashToast('Suivi mis à jour')
+  }
 
   // ── Submit (create or edit) ────────────────────────────────────────
   async function submit(e: React.FormEvent) {
@@ -434,10 +478,33 @@ export default function SuperAdminProspectsPage() {
                     </td>
                     <td className="px-6 py-4 text-xs text-zinc-500">{p.city ?? '—'}</td>
                     <td className="px-6 py-4 text-xs text-zinc-500">{SAAS_SOURCE_LABELS[p.source]}</td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${SAAS_SUIVI_BADGE[p.suivi]}`}>
-                        {SAAS_SUIVI_LABELS[p.suivi]}
-                      </span>
+                    <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                      {canEditThis(p) ? (
+                        <div className="relative inline-block">
+                          <select
+                            value={p.suivi}
+                            onChange={(e) => updateSuiviInline(p, e.target.value as SaasSuivi)}
+                            className={cn(
+                              'appearance-none cursor-pointer pl-3 pr-7 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border focus:outline-none focus:ring-2 focus:ring-indigo-500/30',
+                              SAAS_SUIVI_BADGE[p.suivi],
+                            )}
+                          >
+                            {SAAS_SUIVI_VALUES.map((s) => (
+                              <option key={s} value={s}>{SAAS_SUIVI_LABELS[s]}</option>
+                            ))}
+                          </select>
+                          <svg
+                            className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 opacity-70"
+                            viewBox="0 0 20 20" fill="currentColor"
+                          >
+                            <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                          </svg>
+                        </div>
+                      ) : (
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${SAAS_SUIVI_BADGE[p.suivi]}`}>
+                          {SAAS_SUIVI_LABELS[p.suivi]}
+                        </span>
+                      )}
                     </td>
                     <td className="px-6 py-4 text-xs text-zinc-500">
                       {assigned?.email ?? <span className="italic">—</span>}
@@ -742,6 +809,47 @@ export default function SuperAdminProspectsPage() {
                 )}
               </div>
 
+              {/* Cancellation block (read-only) */}
+              {detail.suivi === 'annule' && (
+                <div className="border-l-4 border-rose-500 bg-rose-50/60 dark:bg-rose-500/10 rounded-r-xl p-4 space-y-1">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-rose-700 dark:text-rose-300">
+                    Annulation
+                  </p>
+                  <div className="text-sm text-foreground space-y-0.5">
+                    <p>
+                      <span className="text-muted-foreground">Raison : </span>
+                      <span className="font-medium">
+                        {detail.cancellation_reason
+                          ? SAAS_CANCELLATION_REASON_LABELS[detail.cancellation_reason]
+                          : '—'}
+                      </span>
+                    </p>
+                    <p>
+                      <span className="text-muted-foreground">Commentaire : </span>
+                      <span className="whitespace-pre-wrap">
+                        {detail.cancellation_comment ?? '—'}
+                      </span>
+                    </p>
+                    {detail.cancelled_at && (
+                      <p>
+                        <span className="text-muted-foreground">Annulé le : </span>
+                        <span className="font-medium">
+                          {format(new Date(detail.cancelled_at), "d MMM yyyy 'à' HH:mm", { locale: fr })}
+                        </span>
+                      </p>
+                    )}
+                    {detail.cancelled_by && (
+                      <p>
+                        <span className="text-muted-foreground">Annulé par : </span>
+                        <span className="font-medium">
+                          {userById[detail.cancelled_by]?.email ?? '—'}
+                        </span>
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Activity timeline */}
               <div className="border-t border-border pt-4">
                 <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-black mb-3">
@@ -770,6 +878,20 @@ export default function SuperAdminProspectsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Cancellation modal (triggered by inline suivi dropdown) ─ */}
+      {cancelTarget && (
+        <CancelProspectModal
+          open={true}
+          prospect={cancelTarget}
+          onClose={() => setCancelTarget(null)}
+          onConfirmed={(updated) => {
+            setProspects((cur) => cur.map((row) => row.id === updated.id ? updated : row))
+            if (detail?.id === updated.id) setDetail(updated)
+            flashToast('Prospect annulé')
+          }}
+        />
       )}
 
       {/* ── RDV creation modal (from detail panel) ────────────────── */}
