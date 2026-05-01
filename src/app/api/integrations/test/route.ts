@@ -1,19 +1,34 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server'
 import { isAllowedProvider, type AllowedProvider } from '@/lib/integrations-utils'
 import { processIncomingMessage } from '@/lib/webhook-utils'
+import { requireShowroomMember, errorResponse } from '@/lib/api-auth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 // POST /api/integrations/test
-// Body: { provider: 'whatsapp' | 'messenger' | 'instagram' }
+// Body: { provider: 'whatsapp' | 'messenger' | 'instagram', showroom_id?: string }
 //
-// Sends a synthetic message through the same pipeline that real
-// webhooks use, so the showroom can see that a test lead shows up
-// in their pipeline.
-export async function POST(req: Request) {
+// Sends a synthetic message through the same pipeline that real webhooks
+// use, scoped to the caller's showroom. Tenants always test against their
+// own showroom (the body's showroom_id is ignored / cross-checked); super
+// admins must pass an explicit showroom_id to choose a target.
+export async function POST(req: NextRequest) {
   let body: Record<string, unknown> = {}
   try { body = await req.json() } catch { /* ignore */ }
+
+  const requested = typeof body.showroom_id === 'string' ? body.showroom_id : undefined
+
+  let ctx
+  try {
+    ctx = await requireShowroomMember(req, requested)
+  } catch (err) {
+    return errorResponse(err)
+  }
+
+  if (!ctx.showroomId) {
+    return NextResponse.json({ error: 'showroom_id required' }, { status: 400 })
+  }
 
   const provider = typeof body.provider === 'string' ? body.provider : 'whatsapp'
   if (!isAllowedProvider(provider)) {
@@ -40,6 +55,7 @@ export async function POST(req: Request) {
     messageText: sampleText[provider],
     senderName: `Test ${tag}`,
     platformPhone: provider === 'whatsapp' ? phone.replace('+', '') : null,
+    showroomId: ctx.showroomId,
   })
 
   return NextResponse.json(result)

@@ -60,6 +60,15 @@ export type ProcessMessageArgs = {
   messageText: string
   senderName?: string | null
   platformPhone?: string | null  // WhatsApp gives us the sender phone directly
+  /**
+   * When provided, all showroom-scoped lookups (de-dupe, agent picking,
+   * lead insertion) are restricted to this showroom. Required by callers
+   * that have already authenticated the target showroom (e.g. the
+   * /api/integrations/test endpoint). Webhook routes still leave this
+   * unset for now — they need a separate refactor to map incoming Meta
+   * IDs back to a showroom via the `integrations` table.
+   */
+  showroomId?: string
 }
 
 export type ProcessResult = {
@@ -78,7 +87,7 @@ export type ProcessResult = {
 // 5. Find first active agent in the showroom to assign
 // 6. Insert the lead + a system activity
 export async function processIncomingMessage(args: ProcessMessageArgs): Promise<ProcessResult> {
-  const { platform, messageText, senderName, platformPhone } = args
+  const { platform, messageText, senderName, platformPhone, showroomId } = args
   const text = (messageText ?? '').trim()
   if (!text) return { ok: true, skipped: 'empty_message', extracted: {
     phone: null, name: null, wilaya: null, model_wanted: null, budget_dzd: null,
@@ -94,41 +103,46 @@ export async function processIncomingMessage(args: ProcessMessageArgs): Promise<
 
   const sb = supaServer()
 
-  // De-dupe by phone
-  const existing = await sb
-    .from('leads')
-    .select('id')
-    .eq('phone', phone)
-    .limit(1)
-    .maybeSingle()
+  // De-dupe by phone — scoped to the target showroom when provided so
+  // tenant phone collisions don't accidentally cross-link leads.
+  let dupeQuery = sb.from('leads').select('id').eq('phone', phone)
+  if (showroomId) dupeQuery = dupeQuery.eq('showroom_id', showroomId)
+  const existing = await dupeQuery.limit(1).maybeSingle()
 
   if (existing.data?.id) {
     return { ok: true, leadId: existing.data.id, created: false, skipped: 'duplicate', extracted }
   }
 
-  // Pick first active agent (fall back to any active user) to own the lead
-  const agent = await sb
+  // Pick first active agent (fall back to any active user) to own the
+  // lead. Scoped to the showroom when one is provided so tests/webhooks
+  // can't accidentally route leads into another tenant.
+  let agentQuery = sb
     .from('users')
     .select('id, showroom_id, role, is_active')
     .eq('is_active', true)
     .eq('role', 'agent')
-    .limit(1)
-    .maybeSingle()
+  if (showroomId) agentQuery = agentQuery.eq('showroom_id', showroomId)
+  const agent = await agentQuery.limit(1).maybeSingle()
 
-  const assignee = agent.data
-    ? agent.data
-    : (await sb
-        .from('users')
-        .select('id, showroom_id, role, is_active')
-        .eq('is_active', true)
-        .limit(1)
-        .maybeSingle()).data
+  let assignee = agent.data
+  if (!assignee) {
+    let anyUserQuery = sb
+      .from('users')
+      .select('id, showroom_id, role, is_active')
+      .eq('is_active', true)
+    if (showroomId) anyUserQuery = anyUserQuery.eq('showroom_id', showroomId)
+    assignee = (await anyUserQuery.limit(1).maybeSingle()).data
+  }
 
   const fullName = extracted.name?.trim() || senderName?.trim() || 'Prospect ' + platform
 
   const source: LeadSource = platform === 'whatsapp'
     ? 'whatsapp'
     : platform === 'facebook' ? 'facebook' : 'instagram'
+
+  // Prefer the explicit showroomId from the caller (authoritative) over
+  // the assignee's showroom_id (incidental).
+  const finalShowroomId = showroomId ?? assignee?.showroom_id ?? null
 
   const insertPayload: Record<string, unknown> = {
     full_name:   fullName,
@@ -138,7 +152,7 @@ export async function processIncomingMessage(args: ProcessMessageArgs): Promise<
     status:      'new',
     notes:       text.length > 1000 ? text.slice(0, 1000) + '…' : text,
     assigned_to: assignee?.id ?? null,
-    showroom_id: assignee?.showroom_id ?? null,
+    showroom_id: finalShowroomId,
   }
   if (extracted.model_wanted) insertPayload.model_wanted = extracted.model_wanted
   if (extracted.budget_dzd != null) insertPayload.budget_dzd = extracted.budget_dzd
@@ -178,7 +192,7 @@ export async function processIncomingMessage(args: ProcessMessageArgs): Promise<
 
   // Log a system activity so the lead timeline shows the origin message
   await sb.from('activities').insert([{
-    showroom_id: assignee?.showroom_id ?? null,
+    showroom_id: finalShowroomId,
     lead_id:     ins.data.id,
     user_id:     assignee?.id ?? null,
     type:        'note',

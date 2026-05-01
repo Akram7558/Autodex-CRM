@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { requireUser, errorResponse } from '@/lib/api-auth'
 
 // ─────────────────────────────────────────────────────────────
 // POST /api/check-alerts
@@ -64,7 +65,19 @@ function dayBucket(ts: Date) {
   return Math.floor(ts.getTime() / DAYS)
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  // Authentication only — the alert engine intentionally scans across
+  // all showrooms (each notification carries its own showroom_id), so
+  // we don't enforce showroom membership here. But we still require the
+  // caller to be a logged-in user, since this route uses the service
+  // role and could otherwise be invoked anonymously to spam the
+  // notifications table.
+  try {
+    await requireUser(req)
+  } catch (err) {
+    return errorResponse(err)
+  }
+
   let userId: string | null = null
   try {
     const body = await req.json().catch(() => ({}))

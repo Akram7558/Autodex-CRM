@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server'
 import { supaServer, isAllowedProvider } from '@/lib/integrations-utils'
+import { requireShowroomMember, errorResponse } from '@/lib/api-auth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -258,11 +259,23 @@ async function handleMockFlow(body: {
 
 // ── Entry ────────────────────────────────────────────────────
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   let body: Record<string, unknown> = {}
   try { body = await req.json() } catch { /* ignore */ }
 
-  const showroomId = typeof body.showroom_id === 'string' ? body.showroom_id : null
+  const requested = typeof body.showroom_id === 'string' ? body.showroom_id : undefined
+
+  let ctx
+  try {
+    ctx = await requireShowroomMember(req, requested)
+  } catch (err) {
+    return errorResponse(err)
+  }
+
+  // Tenant users get `ctx.showroomId` bound to their own showroom (the
+  // request body's value is ignored / cross-checked); super admins must
+  // pass an explicit showroom_id to choose a target.
+  const showroomId = ctx.showroomId
   if (!showroomId) return NextResponse.json({ error: 'showroom_id required' }, { status: 400 })
 
   // Real flow: a Meta access token was provided by the client after FB.login.

@@ -48,9 +48,12 @@ export async function POST(req: Request) {
   const sig = req.headers.get('x-hub-signature-256')
 
   // Dev bypass: lets us POST test payloads without a valid Meta signature.
-  // Real Meta requests never set this header, so production security is
-  // unchanged as long as the token stays private.
-  const testMode = req.headers.get('x-test-mode') === 'autodex-dev-2024'
+  // Only honored when TEST_WEBHOOK_TOKEN is configured server-side AND
+  // the request supplies the matching value in the x-test-mode header.
+  // Production deploys leave TEST_WEBHOOK_TOKEN unset, which forces real
+  // Meta signature verification on every request.
+  const expectedToken = process.env.TEST_WEBHOOK_TOKEN
+  const testMode = !!expectedToken && req.headers.get('x-test-mode') === expectedToken
 
   if (!testMode && !verifyMetaSignature(raw, sig)) {
     return NextResponse.json({ error: 'invalid signature' }, { status: 401 })
