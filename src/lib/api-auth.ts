@@ -87,6 +87,32 @@ export async function requireSuperAdmin(req: NextRequest): Promise<AuthContext> 
   return ctx
 }
 
+export type InternalRole = 'super_admin' | 'commercial' | 'prospecteur_saas'
+export type InternalAuthContext = AuthContext & { role: InternalRole }
+const INTERNAL_ROLES: InternalRole[] = ['super_admin', 'commercial', 'prospecteur_saas']
+
+/**
+ * Verifies the caller is a member of the AutoDex internal team
+ * (super_admin / commercial / prospecteur_saas). Server-derived role —
+ * never trust client input. Throws 401/403 on failure.
+ */
+export async function requireInternalUser(
+  req: NextRequest,
+): Promise<InternalAuthContext> {
+  const ctx = await requireUser(req)
+  const { data: roleRow, error } = await ctx.authSb
+    .from('user_roles')
+    .select('role')
+    .eq('user_id', ctx.user.id)
+    .maybeSingle()
+  if (error) throw new ApiError(500, error.message)
+  const role = roleRow?.role as InternalRole | undefined
+  if (!role || !INTERNAL_ROLES.includes(role)) {
+    throw new ApiError(403, 'Accès refusé.')
+  }
+  return { ...ctx, role }
+}
+
 export type ShowroomContext = AuthContext & {
   role: string
   /**

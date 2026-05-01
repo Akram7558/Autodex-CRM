@@ -146,6 +146,134 @@ export const LEAD_SUIVI_BADGE_CLASSES: Record<LeadSuivi, string> = {
   perdu:        'bg-slate-500 text-white border-slate-600 dark:bg-slate-600 dark:text-white dark:border-slate-700',
 }
 
+// ── SaaS pipeline (migration_16_saas_prospects.sql) ─────────────────
+// Internal AutoDex team uses these tables to track potential showroom
+// clients (NOT the showrooms' own customers).
+
+export type SaasSuivi =
+  | 'nouveau'
+  | 'tentative_1'
+  | 'tentative_2'
+  | 'tentative_3'
+  | 'reporter'
+  | 'rdv_planifie'
+  | 'perdu'
+
+export const SAAS_SUIVI_VALUES: SaasSuivi[] = [
+  'nouveau','tentative_1','tentative_2','tentative_3','reporter','rdv_planifie','perdu',
+]
+
+export const SAAS_SUIVI_LABELS: Record<SaasSuivi, string> = {
+  nouveau:      'Nouveau',
+  tentative_1:  'Tentative 1',
+  tentative_2:  'Tentative 2',
+  tentative_3:  'Tentative 3',
+  reporter:     'Reporter',
+  rdv_planifie: 'RDV planifié',
+  perdu:        'Perdu',
+}
+
+export const SAAS_SUIVI_BADGE: Record<SaasSuivi, string> = {
+  nouveau:      'bg-indigo-100 text-indigo-700 border-indigo-200 dark:bg-indigo-500/20 dark:text-indigo-300 dark:border-indigo-500/30',
+  tentative_1:  'bg-yellow-300 text-yellow-900 border-yellow-400 dark:bg-yellow-400 dark:text-yellow-950 dark:border-yellow-500',
+  tentative_2:  'bg-orange-500 text-white border-orange-600 dark:bg-orange-500 dark:text-white dark:border-orange-600',
+  tentative_3:  'bg-red-600 text-white border-red-700 dark:bg-red-600 dark:text-white dark:border-red-700',
+  reporter:     'bg-orange-700 text-white border-orange-800 dark:bg-orange-700 dark:text-white dark:border-orange-800',
+  rdv_planifie: 'bg-emerald-600 text-white border-emerald-700 dark:bg-emerald-600 dark:text-white dark:border-emerald-700',
+  perdu:        'bg-slate-500 text-white border-slate-600 dark:bg-slate-600 dark:text-white dark:border-slate-700',
+}
+
+export type SaasSource =
+  | 'facebook_ads'
+  | 'tiktok_ads'
+  | 'landing_page'
+  | 'manuel'
+  | 'reference'
+  | 'autre'
+
+export const SAAS_SOURCE_VALUES: SaasSource[] = [
+  'facebook_ads','tiktok_ads','landing_page','manuel','reference','autre',
+]
+
+export const SAAS_SOURCE_LABELS: Record<SaasSource, string> = {
+  facebook_ads: 'Facebook Ads',
+  tiktok_ads:   'TikTok Ads',
+  landing_page: 'Landing Page',
+  manuel:       'Manuel',
+  reference:    'Référence',
+  autre:        'Autre',
+}
+
+export type SaasShowroomSize = 'petit' | 'moyen' | 'grand'
+export const SAAS_SIZE_VALUES: SaasShowroomSize[] = ['petit', 'moyen', 'grand']
+export const SAAS_SIZE_LABELS: Record<SaasShowroomSize, string> = {
+  petit: 'Petit (< 50)',
+  moyen: 'Moyen (50–150)',
+  grand: 'Grand (150+)',
+}
+
+export type SaasProspect = {
+  id: string
+  full_name: string
+  phone: string
+  city: string | null
+  showroom_name: string
+  showroom_size: SaasShowroomSize | null
+  email: string | null
+  notes: string | null
+  suivi: SaasSuivi
+  source: SaasSource
+  assigned_to: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type SaasRdvStatus = 'planifie' | 'converti' | 'essai_gratuit' | 'reporter' | 'annule'
+
+export const SAAS_RDV_STATUS_VALUES: SaasRdvStatus[] = [
+  'planifie','converti','essai_gratuit','reporter','annule',
+]
+
+export const SAAS_RDV_STATUS_LABELS: Record<SaasRdvStatus, string> = {
+  planifie:       'Planifié',
+  converti:       'Converti',
+  essai_gratuit:  'Essai gratuit',
+  reporter:       'Reporter',
+  annule:         'Annulé',
+}
+
+export const SAAS_RDV_STATUS_BADGE: Record<SaasRdvStatus, string> = {
+  planifie:       'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30',
+  converti:       'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-500/30',
+  essai_gratuit:  'bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-500/20 dark:text-violet-300 dark:border-violet-500/30',
+  reporter:       'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-500/30',
+  annule:         'bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-500/20 dark:text-rose-300 dark:border-rose-500/30',
+}
+
+export type SaasRdv = {
+  id: string
+  prospect_id: string
+  scheduled_at: string
+  status: SaasRdvStatus
+  notes: string | null
+  assigned_to: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type SaasActivity = {
+  id: string
+  prospect_id: string | null
+  rdv_id: string | null
+  type: string
+  description: string
+  metadata: Record<string, unknown> | null
+  user_id: string | null
+  created_at: string
+}
+
 export type Vente = {
   id: string
   lead_id: string | null
