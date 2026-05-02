@@ -85,49 +85,35 @@ export function DistributionManager() {
     fetchAll()
   }
 
-  async function addCommercial() {
+  // ── Add a commercial to the LOCAL list only ────────────────────────
+  // Persistence happens on Save (PUT). Until then the row sits in local
+  // state at 0% / inactive so the 100% total stays valid; user can then
+  // adjust percentages and toggle active before clicking Enregistrer.
+  // Pending rows are tagged with `pending-<user_id>` ids so we can
+  // re-merge them on top of refetched server data without losing them.
+  function addCommercial() {
     if (!canEdit || !pickedToAdd) return
-    // Optimistic add at 0% / inactive so the 100% sum constraint isn't broken.
     const candidate = available.find(a => a.user_id === pickedToAdd)
     if (!candidate) return
-    setEntries((cur) => [
-      ...cur,
-      {
-        id:               'pending-' + candidate.user_id,
-        user_id:          candidate.user_id,
-        email:            candidate.email,
-        percentage:       0,
-        active:           false,
-        last_assigned_at: null,
-        rdv_count_total:  0,
-        rdv_count_30days: 0,
-      },
-    ])
+    setEntries((cur) => {
+      // Don't double-add if user clicks twice.
+      if (cur.some(e => e.user_id === candidate.user_id)) return cur
+      return [
+        ...cur,
+        {
+          id:               'pending-' + candidate.user_id,
+          user_id:          candidate.user_id,
+          email:            candidate.email,
+          percentage:       0,
+          active:           false,
+          last_assigned_at: null,
+          rdv_count_total:  0,
+          rdv_count_30days: 0,
+        },
+      ]
+    })
     setAvailable((cur) => cur.filter(a => a.user_id !== candidate.user_id))
     setPickedToAdd('')
-    // Persist immediately as 0%/inactive so the row exists server-side.
-    const next = [
-      ...entries,
-      { user_id: candidate.user_id, percentage: 0, active: false },
-    ]
-    const res = await fetch('/api/saas-distribution', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        entries: next.map(e => ({
-          user_id:    e.user_id,
-          percentage: Number(e.percentage),
-          active:     e.active,
-        })),
-      }),
-    })
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}))
-      flashToast(j?.error ?? "Erreur lors de l'ajout.")
-      fetchAll()
-      return
-    }
-    fetchAll()
   }
 
   async function removeEntry(e: SaasDistributionEntry) {
