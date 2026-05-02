@@ -59,19 +59,79 @@ function isMissingColumnError(err: unknown): boolean {
   )
 }
 
-const VEHICLE_DETAIL_KEYS = [
-  'kilometrage',
-  'etat_carrosserie',
-  'finition',
-  'carte_grise',
-  'type_moteur',
-  'motorisation',
-] as const
+// The old blanket-strip retry path (`stripVehicleDetailKeys` +
+// `VEHICLE_DETAIL_KEYS`) used to drop EVERY detail column on a single
+// missing-column error, silently destroying the user's edits to
+// kilometrage / etat_carrosserie / motorisation / etc. Replaced by
+// `updateVehicleResilient` / `insertVehicleResilient` below, which strip
+// only the offending column at each retry iteration.
 
-function stripVehicleDetailKeys(p: Record<string, unknown>) {
-  const out = { ...p }
-  for (const k of VEHICLE_DETAIL_KEYS) delete out[k]
-  return out
+// ── Column-precise retry helpers ────────────────────────────────────
+// PostgREST returns a missing-column error of the form:
+//   "Could not find the 'foo' column of 'vehicles' in the schema cache"
+// When that fires for a single column (e.g. `motorisation` in a stale
+// schema cache), we want to drop ONLY that column and retry with the
+// rest of the payload intact — not strip every detail key, which silently
+// destroys the user's edits to kilometrage / etat_carrosserie / etc.
+function extractMissingColumn(msg: string | undefined): string | null {
+  if (!msg) return null
+  // PGRST204 / similar — single-quoted column name.
+  let m = msg.match(/Could not find the '([^']+)' column/i)
+  if (m) return m[1]
+  // Postgres native: column "foo" of relation "bar" does not exist
+  m = msg.match(/column "([^"]+)" of relation/i)
+  if (m) return m[1]
+  // Postgres alt: column "foo" does not exist
+  m = msg.match(/column "([^"]+)" does not exist/i)
+  if (m) return m[1]
+  return null
+}
+
+/**
+ * Update vehicles row, dropping unknown columns one at a time on
+ * missing-column errors. Returns the final error (or null on success)
+ * and the list of columns that had to be stripped, so the caller can
+ * surface a clear warning.
+ */
+async function updateVehicleResilient(
+  id: string,
+  payload: Record<string, unknown>,
+): Promise<{ error: { message: string } | null; stripped: string[] }> {
+  const stripped: string[] = []
+  const working = { ...payload }
+  // Cap retries so a perpetual error never spins forever.
+  for (let i = 0; i < 8; i++) {
+    const res = await supabase.from('vehicles').update(working).eq('id', id)
+    if (!res.error) return { error: null, stripped }
+    const col = extractMissingColumn(res.error.message)
+    if (!col || !(col in working)) {
+      // Not a column-missing case (or we can't identify which one).
+      return { error: res.error, stripped }
+    }
+    delete working[col]
+    stripped.push(col)
+    console.warn(`[vehicles] column "${col}" missing in DB; retrying without it`)
+  }
+  return { error: { message: 'Trop de colonnes manquantes — vérifiez la migration.' }, stripped }
+}
+
+async function insertVehicleResilient(
+  payload: Record<string, unknown>,
+): Promise<{ error: { message: string } | null; stripped: string[] }> {
+  const stripped: string[] = []
+  const working = { ...payload }
+  for (let i = 0; i < 8; i++) {
+    const res = await supabase.from('vehicles').insert([working])
+    if (!res.error) return { error: null, stripped }
+    const col = extractMissingColumn(res.error.message)
+    if (!col || !(col in working)) {
+      return { error: res.error, stripped }
+    }
+    delete working[col]
+    stripped.push(col)
+    console.warn(`[vehicles] column "${col}" missing in DB; retrying without it`)
+  }
+  return { error: { message: 'Trop de colonnes manquantes — vérifiez la migration.' }, stripped }
 }
 
 // ── Add / Edit Vehicle Modal ─────────────────────────────────
@@ -176,13 +236,13 @@ function AddVehicleModal({
     }
 
     let err: { message: string } | null = null
+    let stripped: string[] = []
     if (isEdit && initial) {
-      const res = await supabase.from('vehicles').update(payload).eq('id', initial.id)
+      // Column-precise retry: drops only the SPECIFIC missing column at
+      // each iteration so the rest of the user's edits go through.
+      const res = await updateVehicleResilient(initial.id, payload)
       err = res.error
-      if (err && isMissingColumnError(err)) {
-        const retry = await supabase.from('vehicles').update(stripVehicleDetailKeys(payload)).eq('id', initial.id)
-        err = retry.error
-      }
+      stripped = res.stripped
     } else {
       // Multi-tenant: stamp showroom_id on every new vehicle.
       const showroomId = await getCurrentShowroomId()
@@ -198,26 +258,29 @@ function AddVehicleModal({
         form.brand,
         form.year ? parseInt(form.year) : null
       )
-      const res = await supabase.from('vehicles').insert([payload])
+      const res = await insertVehicleResilient(payload)
       err = res.error
-      if (err && /reference/i.test(err.message)) {
-        // Column missing — retry without the reference field.
-        const { reference: _r, ...noRef } = payload
-        void _r
-        const retry = await supabase.from('vehicles').insert([noRef])
-        err = retry.error
-      }
-      if (err && isMissingColumnError(err)) {
-        const { reserved_by_lead_id: _omit, reference: _r, ...rest } = payload
-        void _omit; void _r
-        const stripped = stripVehicleDetailKeys(rest)
-        const retry = await supabase.from('vehicles').insert([stripped])
-        err = retry.error
-      }
+      stripped = res.stripped
     }
 
     setSaving(false)
     if (err) { setError(err.message); return }
+
+    // If we had to strip columns to succeed, surface a non-blocking warning
+    // so the operator knows their DB schema is behind and can run the
+    // pending migration. The save itself succeeded.
+    if (stripped.length > 0) {
+      const ignorable = new Set(['reserved_by_lead_id', 'reference'])
+      const meaningful = stripped.filter(c => !ignorable.has(c))
+      if (meaningful.length > 0) {
+        console.warn(
+          '[vehicles] saved without these columns (DB schema out of date):',
+          meaningful.join(', '),
+        )
+        // Not throwing — the save succeeded for everything else. The console
+        // warning + the missing field on reload makes the issue visible.
+      }
+    }
     if (!isEdit) {
       setForm({
         brand: '',

@@ -77,6 +77,9 @@ export function EditLeadModal({
   const [form, setForm] = useState<EditForm | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  // Inline error rendered under the Véhicule concerné dropdown when the
+  // user tries to save a RDV planifié without picking a vehicle.
+  const [vehicleError, setVehicleError] = useState('')
   const [vehicles, setVehicles] = useState<Vehicle[]>([])
   const [leadsById, setLeadsById] = useState<Record<string, { id: string; full_name: string }>>({})
 
@@ -94,6 +97,7 @@ export function EditLeadModal({
       rdv_date:   isoToLocalInput(lead.rdv_date ?? null),
     })
     setError('')
+    setVehicleError('')
   }, [lead])
 
   // Lazy-load the vehicle list and a quick lead-name index used by the
@@ -142,9 +146,19 @@ export function EditLeadModal({
     const needsVehicle = isRdv || isVendu
 
     if (needsVehicle && !form.vehicle_id) {
-      setError(isRdv
-        ? 'Sélectionnez le véhicule concerné par le RDV.'
-        : 'Sélectionnez le véhicule vendu.')
+      // RDV planifié → render the error INLINE under the vehicle picker
+      // and scroll it into view; vente flow keeps the existing top-level
+      // error path.
+      if (isRdv) {
+        setVehicleError('Veuillez sélectionner un véhicule pour le RDV.')
+        if (typeof document !== 'undefined') {
+          const el = document.getElementById('rdv-vehicle-picker')
+          el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          el?.focus({ preventScroll: true })
+        }
+      } else {
+        setError('Sélectionnez le véhicule vendu.')
+      }
       return
     }
     if (isRdv && !form.rdv_date) {
@@ -415,15 +429,25 @@ export function EditLeadModal({
                     Véhicule concerné *
                   </label>
                   <select
+                    id="rdv-vehicle-picker"
                     value={form.vehicle_id}
-                    onChange={(e) => set('vehicle_id', e.target.value)}
-                    className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 transition"
+                    onChange={(e) => { set('vehicle_id', e.target.value); setVehicleError('') }}
+                    className={`w-full h-10 px-3 rounded-lg border bg-background text-foreground text-sm outline-none focus:ring-2 transition ${
+                      vehicleError
+                        ? 'border-rose-400 focus:border-rose-400 focus:ring-rose-500/20'
+                        : 'border-border focus:border-indigo-400 focus:ring-indigo-500/20'
+                    }`}
                   >
                     <option value="">— Sélectionner un véhicule —</option>
                     {selectableVehicles.map((v) => (
                       <option key={v.id} value={v.id}>{vehicleLabel(v)}</option>
                     ))}
                   </select>
+                  {vehicleError && (
+                    <p className="mt-1.5 text-[11px] font-bold text-rose-600 dark:text-rose-400">
+                      {vehicleError}
+                    </p>
+                  )}
                   {blockedByOther && picked && (
                     <p className="mt-1.5 text-[11px] font-bold text-rose-600 dark:text-rose-400">
                       {picked.status === 'reserved'
