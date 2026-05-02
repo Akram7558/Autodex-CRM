@@ -89,49 +89,76 @@ function extractMissingColumn(msg: string | undefined): string | null {
 
 /**
  * Update vehicles row, dropping unknown columns one at a time on
- * missing-column errors. Returns the final error (or null on success)
- * and the list of columns that had to be stripped, so the caller can
- * surface a clear warning.
+ * missing-column errors. Returns:
+ *   - the updated row (canonical, post-trigger) on success
+ *   - the final error if retries exhausted
+ *   - the list of stripped columns (for warnings)
+ *
+ * IMPORTANT: we add `.select('*').single()` so the response actually
+ * reports the persisted row. Without it, an UPDATE that's filtered
+ * out by RLS returns `{ error: null }` with zero rows changed — which
+ * looks like success even though nothing was written. With `.single()`
+ * we get a PostgREST PGRST116 error in that case ("no rows returned")
+ * and surface it as a real failure.
  */
 async function updateVehicleResilient(
   id: string,
   payload: Record<string, unknown>,
-): Promise<{ error: { message: string } | null; stripped: string[] }> {
+): Promise<{ data: Vehicle | null; error: { message: string } | null; stripped: string[] }> {
   const stripped: string[] = []
   const working = { ...payload }
-  // Cap retries so a perpetual error never spins forever.
   for (let i = 0; i < 8; i++) {
-    const res = await supabase.from('vehicles').update(working).eq('id', id)
-    if (!res.error) return { error: null, stripped }
+    const res = await supabase
+      .from('vehicles')
+      .update(working)
+      .eq('id', id)
+      .select('*')
+      .single()
+    if (!res.error) {
+      return { data: (res.data as Vehicle | null) ?? null, error: null, stripped }
+    }
     const col = extractMissingColumn(res.error.message)
     if (!col || !(col in working)) {
-      // Not a column-missing case (or we can't identify which one).
-      return { error: res.error, stripped }
+      return { data: null, error: res.error, stripped }
     }
     delete working[col]
     stripped.push(col)
     console.warn(`[vehicles] column "${col}" missing in DB; retrying without it`)
   }
-  return { error: { message: 'Trop de colonnes manquantes — vérifiez la migration.' }, stripped }
+  return {
+    data: null,
+    error: { message: 'Trop de colonnes manquantes — vérifiez la migration.' },
+    stripped,
+  }
 }
 
 async function insertVehicleResilient(
   payload: Record<string, unknown>,
-): Promise<{ error: { message: string } | null; stripped: string[] }> {
+): Promise<{ data: Vehicle | null; error: { message: string } | null; stripped: string[] }> {
   const stripped: string[] = []
   const working = { ...payload }
   for (let i = 0; i < 8; i++) {
-    const res = await supabase.from('vehicles').insert([working])
-    if (!res.error) return { error: null, stripped }
+    const res = await supabase
+      .from('vehicles')
+      .insert([working])
+      .select('*')
+      .single()
+    if (!res.error) {
+      return { data: (res.data as Vehicle | null) ?? null, error: null, stripped }
+    }
     const col = extractMissingColumn(res.error.message)
     if (!col || !(col in working)) {
-      return { error: res.error, stripped }
+      return { data: null, error: res.error, stripped }
     }
     delete working[col]
     stripped.push(col)
     console.warn(`[vehicles] column "${col}" missing in DB; retrying without it`)
   }
-  return { error: { message: 'Trop de colonnes manquantes — vérifiez la migration.' }, stripped }
+  return {
+    data: null,
+    error: { message: 'Trop de colonnes manquantes — vérifiez la migration.' },
+    stripped,
+  }
 }
 
 // ── Add / Edit Vehicle Modal ─────────────────────────────────
@@ -140,7 +167,7 @@ function AddVehicleModal({
 }: {
   open: boolean
   onClose: () => void
-  onSaved: () => void
+  onSaved: (savedRow?: Vehicle) => void
   initial?: Vehicle
 }) {
   const isEdit = !!initial
@@ -237,12 +264,16 @@ function AddVehicleModal({
 
     let err: { message: string } | null = null
     let stripped: string[] = []
+    let savedRow: Vehicle | null = null
     if (isEdit && initial) {
       // Column-precise retry: drops only the SPECIFIC missing column at
-      // each iteration so the rest of the user's edits go through.
+      // each iteration so the rest of the user's edits go through. The
+      // returned `.select('*').single()` ensures we detect 0-rows-affected
+      // (RLS rejection or row gone).
       const res = await updateVehicleResilient(initial.id, payload)
       err = res.error
       stripped = res.stripped
+      savedRow = res.data
     } else {
       // Multi-tenant: stamp showroom_id on every new vehicle.
       const showroomId = await getCurrentShowroomId()
@@ -261,14 +292,16 @@ function AddVehicleModal({
       const res = await insertVehicleResilient(payload)
       err = res.error
       stripped = res.stripped
+      savedRow = res.data
     }
 
     setSaving(false)
     if (err) { setError(err.message); return }
 
-    // If we had to strip columns to succeed, surface a non-blocking warning
-    // so the operator knows their DB schema is behind and can run the
-    // pending migration. The save itself succeeded.
+    // If columns had to be stripped to succeed, surface a visible warning so
+    // the operator knows their DB schema is behind and the user's edit to
+    // that field was NOT persisted. Reference / reserved_by_lead_id are
+    // expected when running on an older DB and don't matter for the user.
     if (stripped.length > 0) {
       const ignorable = new Set(['reserved_by_lead_id', 'reference'])
       const meaningful = stripped.filter(c => !ignorable.has(c))
@@ -277,10 +310,14 @@ function AddVehicleModal({
           '[vehicles] saved without these columns (DB schema out of date):',
           meaningful.join(', '),
         )
-        // Not throwing — the save succeeded for everything else. The console
-        // warning + the missing field on reload makes the issue visible.
+        alert(
+          'Champs ignorés (la migration n\'est pas encore exécutée en base) : ' +
+          meaningful.join(', ') + '. Exécutez les migrations en attente dans Supabase.'
+        )
       }
     }
+
+    // (canonical row will be passed below via onSaved)
     if (!isEdit) {
       setForm({
         brand: '',
@@ -300,7 +337,12 @@ function AddVehicleModal({
       setCustomModelMode(false)
     }
     setError('')
-    onSaved()
+    // Hand the canonical (post-trigger) row back to the parent so it can
+    // update its list directly without waiting for a refetch (which can
+    // race with stale PostgREST caches and make the user think their
+    // edit was lost).
+    if (savedRow) onSaved(savedRow)
+    else onSaved()
     onClose()
   }
 
@@ -914,6 +956,7 @@ function VehicleCard({
   v, lead, menuOpenId, setMenuOpenId,
   onImageUpdated, onStatusChangeRequest, onImmediateStatusChange,
   onEdit, onViewDetails, onDelete,
+  isExpanded, onToggleExpand,
 }: {
   v: Vehicle
   lead: LeadLite | null
@@ -925,6 +968,8 @@ function VehicleCard({
   onEdit: (v: Vehicle) => void
   onViewDetails: (v: Vehicle) => void
   onDelete: (v: Vehicle) => void
+  isExpanded: boolean
+  onToggleExpand: () => void
 }) {
   const stock = stockPill(v.status)
   const fileRef = useRef<HTMLInputElement | null>(null)
@@ -980,8 +1025,18 @@ function VehicleCard({
 
   const isMenuOpen = menuOpenId === v.id
 
+  // Subtle elevation + scale lift while expanded so the active card pops
+  // out of the grid. The body itself becomes a button-like region for
+  // the toggle (minus the image / menu, which retain their own clicks).
   return (
-    <div className="rounded-xl overflow-hidden bg-card border border-border hover:border-primary/40 transition-all duration-150 flex flex-col">
+    <div
+      className={
+        'rounded-xl overflow-hidden bg-card border transition-all duration-300 flex flex-col ' +
+        (isExpanded
+          ? 'border-primary/60 shadow-xl shadow-primary/10 scale-[1.01] z-10 relative'
+          : 'border-border hover:border-primary/40')
+      }
+    >
       {/* Image area (click to upload) */}
       <button
         type="button"
@@ -1026,8 +1081,22 @@ function VehicleCard({
         <p className="px-4 pt-2 text-[11px] text-red-500">{imgError}</p>
       )}
 
-      {/* Body */}
-      <div className="p-4 flex-1 flex flex-col">
+      {/* Body. Click anywhere here (except interactive children) toggles
+          the expanded view. Buttons / selects inside stop propagation so
+          they don't accidentally toggle. */}
+      <div
+        className="p-4 flex-1 flex flex-col cursor-pointer"
+        role="button"
+        tabIndex={0}
+        aria-expanded={isExpanded}
+        onClick={onToggleExpand}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onToggleExpand()
+          }
+        }}
+      >
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <h3 className="text-sm font-semibold text-foreground leading-tight truncate">
@@ -1040,15 +1109,17 @@ function VehicleCard({
             )}
             <p className="text-sm font-bold text-foreground mt-1">{formatPrice(v.price_dzd)}</p>
           </div>
-          <VehicleCardMenu
-            vehicle={v}
-            isOpen={isMenuOpen}
-            onOpenChange={(open) => setMenuOpenId(open ? v.id : null)}
-            onEdit={() => onEdit(v)}
-            onChangePhoto={() => fileRef.current?.click()}
-            onViewDetails={() => onViewDetails(v)}
-            onDelete={() => onDelete(v)}
-          />
+          <div onClick={(e) => e.stopPropagation()}>
+            <VehicleCardMenu
+              vehicle={v}
+              isOpen={isMenuOpen}
+              onOpenChange={(open) => setMenuOpenId(open ? v.id : null)}
+              onEdit={() => onEdit(v)}
+              onChangePhoto={() => fileRef.current?.click()}
+              onViewDetails={() => onViewDetails(v)}
+              onDelete={() => onDelete(v)}
+            />
+          </div>
         </div>
 
         <div className="mt-2 space-y-0.5">
@@ -1094,6 +1165,80 @@ function VehicleCard({
             Géré par le suivi du prospect
           </span>
         </div>
+
+        {/* ── Expanded details section ──────────────────────────────
+            Animated reveal: collapses with a max-height + opacity
+            transition. The thin accent line at the top fades-in
+            after a short delay so the eye lands on the new content.
+            All extra fields render only when filled — except when
+            EVERY extra field is empty, in which case we show a
+            single muted note so the user understands there's
+            nothing more to see. */}
+        {(() => {
+          const extras: Array<{ label: string; value: string | null | undefined }> = [
+            { label: 'Motorisation',    value: v.motorisation },
+            { label: 'Type moteur',     value: v.type_moteur },
+            { label: 'Carrosserie',     value: v.etat_carrosserie },
+            { label: 'Finition',        value: v.finition },
+            { label: 'Carte grise',     value: v.carte_grise },
+          ]
+          const filled = extras.filter(e => e.value && String(e.value).trim().length > 0)
+          return (
+            <div
+              className="overflow-hidden transition-[max-height,opacity,transform] motion-reduce:transition-none ease-[cubic-bezier(0.4,0,0.2,1)]"
+              style={{
+                maxHeight: isExpanded ? 480 : 0,
+                opacity:   isExpanded ? 1 : 0,
+                transform: isExpanded
+                  ? 'scaleY(1) translateY(0)'
+                  : 'scaleY(0.95) translateY(-8px)',
+                transformOrigin: 'top',
+                transitionDuration: isExpanded ? '350ms' : '250ms',
+              }}
+              aria-hidden={!isExpanded}
+            >
+              {/* Animated accent line — width grows after a short delay
+                  so it reads as a separator that "draws itself in". */}
+              <div className="mt-3 relative h-[2px] w-full bg-transparent">
+                <div
+                  className="absolute inset-y-0 left-0 bg-primary transition-[width] ease-out"
+                  style={{
+                    width: isExpanded ? '100%' : '0%',
+                    transitionDuration: '400ms',
+                    transitionDelay: isExpanded ? '150ms' : '0ms',
+                  }}
+                />
+              </div>
+
+              <div className="pt-3 grid grid-cols-2 gap-x-4 gap-y-2">
+                {filled.length === 0 ? (
+                  <p className="col-span-2 text-[11px] text-muted-foreground italic">
+                    Aucun détail supplémentaire renseigné.
+                  </p>
+                ) : (
+                  filled.map((f) => (
+                    <div key={f.label} className="min-w-0">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                        {f.label}
+                      </p>
+                      <p className="text-xs text-foreground truncate" title={f.value ?? ''}>
+                        {f.value}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onToggleExpand() }}
+                className="mt-3 text-[11px] font-bold uppercase tracking-wider text-primary hover:text-primary/80 transition-colors inline-flex items-center gap-1"
+              >
+                Réduire <span aria-hidden="true">▲</span>
+              </button>
+            </div>
+          )
+        })()}
       </div>
     </div>
   )
@@ -1112,6 +1257,10 @@ export default function VehiculesPage() {
   const [leadsById,  setLeadsById]  = useState<Record<string, LeadLite>>({})
   const [pendingReserve, setPendingReserve] = useState<Vehicle | null>(null)
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
+  // Only one card can be expanded at a time. Clicking another card auto-
+  // collapses the current one. Expanding/collapsing is animated via CSS
+  // max-height + opacity transitions inside VehicleCard.
+  const [expandedCardId, setExpandedCardId] = useState<string | null>(null)
   const [editing, setEditing] = useState<Vehicle | null>(null)
   const [viewing, setViewing] = useState<Vehicle | null>(null)
   const [deleting, setDeleting] = useState<Vehicle | null>(null)
@@ -1448,18 +1597,42 @@ export default function VehiculesPage() {
               onEdit={(veh) => setEditing(veh)}
               onViewDetails={(veh) => setViewing(veh)}
               onDelete={(veh) => setDeleting(veh)}
+              isExpanded={expandedCardId === v.id}
+              onToggleExpand={() =>
+                setExpandedCardId((cur) => (cur === v.id ? null : v.id))
+              }
             />
           ))}
         </div>
       )}
 
-      <AddVehicleModal open={modalOpen} onClose={() => setModalOpen(false)} onSaved={fetchVehicles} />
+      {/* Saving via the modals: when the modal hands us the canonical row,
+          we merge it into local state immediately (avoids any refetch race
+          where a stale PostgREST cache would re-overwrite our values). On
+          insert, the row is appended; on update, replaced in-place. We
+          ALWAYS also fire fetchVehicles in the background so other derived
+          fields (image cache busting, etc.) stay fresh. */}
+      <AddVehicleModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onSaved={(saved) => {
+          if (saved) {
+            setVehicles(prev => [saved, ...prev.filter(v => v.id !== saved.id)])
+          }
+          fetchVehicles()
+        }}
+      />
 
       <AddVehicleModal
         open={!!editing}
         initial={editing ?? undefined}
         onClose={() => setEditing(null)}
-        onSaved={fetchVehicles}
+        onSaved={(saved) => {
+          if (saved) {
+            setVehicles(prev => prev.map(v => v.id === saved.id ? saved : v))
+          }
+          fetchVehicles()
+        }}
       />
 
       {pendingReserve && (
