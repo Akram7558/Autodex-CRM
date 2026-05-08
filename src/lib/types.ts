@@ -9,6 +9,12 @@ export type Showroom = {
   module_vente?: boolean
   module_location?: boolean
   active?: boolean
+  // Trial tracking (migration_22_trial_system.sql)
+  is_trial?: boolean
+  trial_ends_at?: string | null
+  trial_converted_at?: string | null
+  trial_contract_amount?: number | null
+  trial_converted_by?: string | null
   created_at: string
 }
 
@@ -304,6 +310,8 @@ export type SaasRdv = {
   created_by: string | null
   created_at: string
   updated_at: string
+  // Set when the RDV converted to a trial via /api/admin/start-trial.
+  linked_showroom_id?: string | null
 }
 
 // ── SaaS RDV distribution (migration_18) ────────────────────────────
