@@ -5,6 +5,8 @@ import { motion } from 'motion/react'
 import { Plus, Pencil, Trash2, Power, X, Building2, Copy, CheckCircle2, Crown } from 'lucide-react'
 import { TrialBadge } from '@/components/shared/TrialBadge'
 import { ConvertTrialModal } from '@/components/saas/ConvertTrialModal'
+import { PlanPicker, type PlanPickerValue } from '@/components/saas/PlanPicker'
+import type { SaasPlan } from '@/lib/types'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import type { Showroom } from '@/lib/types'
@@ -22,6 +24,14 @@ type Form = {
   module_vente: boolean
   module_location: boolean
   active: boolean
+  // ── Plan selection (creation only — ignored on edit) ─────────────
+  // 'none'   → no plan, free showroom (default for creation)
+  // <uuid>   → a plan id from saas_plans
+  plan_pick: PlanPickerValue
+  // Resolved fields used when plan_pick is a plan id. Pre-filled from
+  // the plan and editable.
+  contract_amount: string
+  expires_at: string  // YYYY-MM-DD (HTML date input)
 }
 
 const empty: Form = {
@@ -34,6 +44,9 @@ const empty: Form = {
   module_vente: true,
   module_location: false,
   active: true,
+  plan_pick: 'none',
+  contract_amount: '',
+  expires_at: '',
 }
 
 // Returns 0 (none/weak), 1 (weak), 2 (medium), 3 (strong) for the password.
@@ -130,6 +143,25 @@ export function ShowroomsManager() {
       setError('Les deux mots de passe ne correspondent pas.')
       return
     }
+    // Resolve plan-related fields when the user picked a plan card.
+    // 'none' → no plan, free showroom (legacy behaviour).
+    // <uuid> → paid showroom from day 1.
+    const planPayload: Record<string, unknown> = {}
+    if (form.plan_pick !== 'none' && form.plan_pick !== 'custom') {
+      planPayload.plan_id = form.plan_pick
+      const amount = Number(form.contract_amount)
+      if (!Number.isFinite(amount) || amount < 0) {
+        setSaving(false)
+        setError('Montant du contrat invalide.')
+        return
+      }
+      planPayload.contract_amount = amount
+      if (form.expires_at) {
+        planPayload.expires_at =
+          new Date(form.expires_at + 'T23:59:59').toISOString()
+      }
+    }
+
     const res = await fetch('/api/admin/create-showroom', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -141,6 +173,7 @@ export function ShowroomsManager() {
         module_vente:    form.module_vente,
         module_location: form.module_location,
         active:          form.active,
+        ...planPayload,
       }),
     })
     const json = await res.json().catch(() => ({}))
@@ -303,6 +336,11 @@ export function ShowroomsManager() {
                         module_vente: !!s.module_vente,
                         module_location: !!s.module_location,
                         active: !!s.active,
+                        // Plan fields aren't editable from this modal —
+                        // conversions go through ConvertTrialModal.
+                        plan_pick:       'none',
+                        contract_amount: '',
+                        expires_at:      '',
                       })}
                       title="Modifier"
                       className="p-2 rounded-lg text-zinc-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 transition-colors"
@@ -471,6 +509,73 @@ export function ShowroomsManager() {
                   />
                 </label>
               </div>
+
+              {/* ── Plan d'abonnement (creation only) ─────────────── */}
+              {!form.id && (
+                <div className="space-y-3 rounded-xl border border-border p-4 bg-muted/20">
+                  <p className="text-xs font-medium text-foreground">Plan d&apos;abonnement (optionnel)</p>
+                  <PlanPicker
+                    value={form.plan_pick}
+                    label=""
+                    allowNone
+                    onChange={(next: PlanPickerValue, plan: SaasPlan | null) => {
+                      // When a plan card is picked, pre-fill price + expiry
+                      // (today + duration_months). User can override either.
+                      if (plan) {
+                        const ends = new Date()
+                        ends.setMonth(ends.getMonth() + plan.duration_months)
+                        const pad = (n: number) => String(n).padStart(2, '0')
+                        const dateStr =
+                          `${ends.getFullYear()}-${pad(ends.getMonth() + 1)}-${pad(ends.getDate())}`
+                        setForm({
+                          ...form,
+                          plan_pick:       next,
+                          contract_amount: String(plan.price),
+                          expires_at:      dateStr,
+                        })
+                      } else {
+                        // 'none' or 'custom' — clear the derived fields.
+                        setForm({
+                          ...form,
+                          plan_pick:       next,
+                          contract_amount: '',
+                          expires_at:      '',
+                        })
+                      }
+                    }}
+                  />
+                  {form.plan_pick !== 'none' && form.plan_pick !== 'custom' && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-foreground mb-1">Montant du contrat (DZD) *</label>
+                        <input
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={form.contract_amount}
+                          onChange={(e) => setForm({ ...form, contract_amount: e.target.value })}
+                          className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-foreground mb-1">Date d&apos;expiration *</label>
+                        <input
+                          type="date"
+                          value={form.expires_at}
+                          onChange={(e) => setForm({ ...form, expires_at: e.target.value })}
+                          className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20"
+                        />
+                        <p className="mt-1 text-[11px] text-muted-foreground">Calculée depuis le plan · modifiable</p>
+                      </div>
+                    </div>
+                  )}
+                  <p className="text-[11px] text-muted-foreground">
+                    {form.plan_pick === 'none'
+                      ? 'Aucun plan — showroom créé sans abonnement.'
+                      : 'Le showroom sera créé en mode payant dès le départ.'}
+                  </p>
+                </div>
+              )}
 
               {error && <p className="text-xs text-rose-600 bg-rose-50 dark:bg-rose-500/10 rounded-lg px-3 py-2">{error}</p>}
 

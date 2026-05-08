@@ -15,7 +15,10 @@ import {
 import { Sparkles, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { StartTrialModal, type StartTrialRdv } from '@/components/saas/StartTrialModal'
+import { ConvertTrialModal } from '@/components/saas/ConvertTrialModal'
+import { DirectConvertModal, type DirectConvertRdv } from '@/components/saas/DirectConvertModal'
 import { TrialBadge } from '@/components/shared/TrialBadge'
+import type { Showroom } from '@/lib/types'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 
@@ -93,6 +96,11 @@ export default function SuperAdminRendezVousSaasPage() {
 
   // StartTrialModal state — opens when status is set to 'essai_gratuit'.
   const [startTrialRdv, setStartTrialRdv] = useState<StartTrialRdv | null>(null)
+  // 'converti' branches:
+  //   trial in flight (linked_showroom_id) → ConvertTrialModal (upgrade)
+  //   no trial yet                          → DirectConvertModal (paid from day 1)
+  const [convertTrialShowroom, setConvertTrialShowroom] = useState<Showroom | null>(null)
+  const [directConvertRdv,     setDirectConvertRdv]     = useState<DirectConvertRdv | null>(null)
 
   const [currentRole, setCurrentRole] = useState<AppRole | null>(null)
   const [toast, setToast] = useState<string | null>(null)
@@ -191,6 +199,33 @@ export default function SuperAdminRendezVousSaasPage() {
         if (!original) { setError('RDV introuvable.'); return }
         setForm(null)
         setStartTrialRdv(original as StartTrialRdv)
+        return
+      }
+      // 'converti' branches by trial state:
+      //   trial linked → upgrade flow (ConvertTrialModal on the existing showroom)
+      //   no trial     → direct-convert flow (creates showroom + owner + RDV link)
+      if (form.status === 'converti' && original?.status !== 'converti') {
+        if (!original) { setError('RDV introuvable.'); return }
+        setForm(null)
+        if (original.linked_showroom_id && original.linked_showroom) {
+          // Synthesize a Showroom-shaped object for the ConvertTrialModal
+          // from the joined fields we already loaded. We only use the
+          // fields the modal reads (`id`, `name`, etc.).
+          const fauxShowroom: Showroom = {
+            id:            original.linked_showroom.id,
+            name:          original.linked_showroom.name,
+            owner_email:   null,
+            module_vente:  true,
+            module_location: false,
+            active:        original.linked_showroom.active,
+            created_at:    new Date().toISOString(),
+            is_trial:      original.linked_showroom.is_trial,
+            trial_ends_at: original.linked_showroom.trial_ends_at,
+          } as unknown as Showroom
+          setConvertTrialShowroom(fauxShowroom)
+        } else {
+          setDirectConvertRdv(original as DirectConvertRdv)
+        }
         return
       }
 
@@ -700,6 +735,38 @@ export default function SuperAdminRendezVousSaasPage() {
             info.emailSent
               ? `Essai démarré — email envoyé à ${info.owner_email}`
               : `Essai démarré — envoyez les identifiants à ${info.owner_email}`,
+          )
+          fetchRdv()
+        }}
+      />
+
+      {/* Trial-upgrade flow: opens when 'converti' is picked on an RDV
+          whose linked showroom is still on a trial. */}
+      <ConvertTrialModal
+        open={!!convertTrialShowroom}
+        showroom={convertTrialShowroom}
+        onClose={() => setConvertTrialShowroom(null)}
+        onConverted={() => {
+          setConvertTrialShowroom(null)
+          flashToast('Showroom converti en abonnement')
+          fetchRdv()
+        }}
+      />
+
+      {/* Direct-convert flow: opens when 'converti' is picked on an RDV
+          that has NO trial — creates the showroom + owner + plan in
+          one atomic call. */}
+      <DirectConvertModal
+        open={!!directConvertRdv}
+        rdv={directConvertRdv}
+        onClose={() => setDirectConvertRdv(null)}
+        onConverted={(info) => {
+          setDirectConvertRdv(null)
+          const planSuffix = info.planName ? ` — Plan ${info.planName}` : ''
+          flashToast(
+            info.emailSent
+              ? `Client converti — email envoyé à ${info.owner_email}${planSuffix}`
+              : `Client converti — identifiants à transmettre à ${info.owner_email}${planSuffix}`,
           )
           fetchRdv()
         }}

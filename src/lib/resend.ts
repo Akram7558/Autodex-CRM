@@ -220,7 +220,69 @@ L'équipe AutoDex`
   return { subject, text, html }
 }
 
+// ── Welcome email for paid-from-day-1 customers ─────────────────────
+// Same structure as welcomeTrialEmail but the wording reflects an
+// active subscription (no "essai gratuit" framing).
+export function welcomePaidEmail(args: {
+  ownerName:    string
+  showroomName: string
+  ownerEmail:   string
+  ownerPassword:string
+  planName:     string
+  expiresAtFr:  string  // dd/MM/yyyy
+}): { subject: string; text: string; html: string } {
+  const owner    = ESC_QUOTE(args.ownerName)
+  const showroom = ESC_QUOTE(args.showroomName)
+  const subject = 'Bienvenue sur AutoDex !'
+
+  const text =
+`Bonjour ${args.ownerName},
+
+Votre showroom ${args.showroomName} est maintenant configuré sur AutoDex avec un compte actif.
+
+Plan : ${args.planName}
+Compte actif jusqu'au ${args.expiresAtFr}.
+
+Vos identifiants de connexion :
+Email : ${args.ownerEmail}
+Mot de passe : ${args.ownerPassword}
+
+Connectez-vous : ${SITE_URL}
+
+Pour toute question, contactez-nous sur WhatsApp.
+
+L'équipe AutoDex`
+
+  const html = shellHtml(`
+    <p style="margin:0 0 12px 0;">Bonjour <strong>${owner}</strong>,</p>
+    <p style="margin:0 0 12px 0;">Votre showroom <strong>${showroom}</strong> est maintenant configuré sur AutoDex avec un <strong>compte actif</strong>.</p>
+    <p style="margin:0 0 12px 0;">Plan : <strong>${ESC_QUOTE(args.planName)}</strong> · Compte actif jusqu'au <strong>${args.expiresAtFr}</strong>.</p>
+    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:16px 0;background:#fafafa;border:1px solid #e4e4e7;border-radius:10px;width:100%;">
+      <tr><td style="padding:14px 16px;font-family:ui-monospace,Menlo,monospace;font-size:13px;color:#18181b;">
+        Email : <strong>${ESC_QUOTE(args.ownerEmail)}</strong><br/>
+        Mot de passe : <strong>${ESC_QUOTE(args.ownerPassword)}</strong>
+      </td></tr>
+    </table>
+    ${ctaButton('Accéder à mon dashboard', SITE_URL)}
+    <p style="margin:0 0 0 0;color:#52525b;">Pour toute question, contactez-nous sur WhatsApp.</p>
+  `)
+
+  return { subject, text, html }
+}
+
 // ── Internal notifications (plain text only) ────────────────────────
+export function internalDirectConvertEmail(args: {
+  showroomName:    string
+  planName:        string
+  contractAmount:  string
+  expiresAtFr:     string
+}): { subject: string; text: string } {
+  return {
+    subject: `[AutoDex] Nouveau client converti — ${args.showroomName}`,
+    text: `Nouveau client converti : ${args.showroomName} — Plan: ${args.planName} — ${args.contractAmount} DZD — expire le ${args.expiresAtFr}`,
+  }
+}
+
 export function internalTrialStartedEmail(args: {
   showroomName: string
   endsAtFr:     string

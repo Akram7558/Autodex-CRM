@@ -91,6 +91,15 @@ export async function POST(req: NextRequest) {
     const module_location = body.module_location === true    // default false
     const active          = body.active          !== false   // default true
 
+    // ── Optional paid-from-day-1 fields ─────────────────────────────
+    // When the super_admin picks a plan in the creation form, the
+    // showroom is provisioned as a paying customer (is_trial=false)
+    // with the plan's price + duration as defaults; the form may also
+    // override either value.
+    const plan_id           = body.plan_id           ? String(body.plan_id) : null
+    const contractRaw       = body.contract_amount
+    const expiresRaw        = body.expires_at        ? String(body.expires_at).trim() : ''
+
     if (!name)        return NextResponse.json({ error: 'Nom requis.' },          { status: 400 })
     if (!city)        return NextResponse.json({ error: 'Wilaya requise.' },      { status: 400 })
     if (!owner_email) return NextResponse.json({ error: 'Email propriétaire requis.' }, { status: 400 })
@@ -139,6 +148,51 @@ export async function POST(req: NextRequest) {
       { auth: { autoRefreshToken: false, persistSession: false } },
     )
 
+    // ── Resolve plan defaults (only when plan_id supplied) ───────────
+    // Plan price / duration become the defaults; the body can still
+    // override either via contract_amount / expires_at.
+    let resolvedAmount: number | null = null
+    let resolvedExpires: Date | null = null
+    if (plan_id) {
+      const { data: plan, error: planErr } = await admin
+        .from('saas_plans')
+        .select('id, price, duration_months')
+        .eq('id', plan_id)
+        .maybeSingle()
+      if (planErr) return NextResponse.json({ error: planErr.message }, { status: 500 })
+      if (!plan)   return NextResponse.json({ error: 'Plan introuvable.' }, { status: 404 })
+      resolvedAmount = Number(plan.price)
+      const ends = new Date()
+      ends.setMonth(ends.getMonth() + Number(plan.duration_months))
+      resolvedExpires = ends
+    }
+
+    const bodyAmount = Number(contractRaw)
+    const contract_amount: number | null =
+      contractRaw !== undefined && Number.isFinite(bodyAmount)
+        ? bodyAmount
+        : resolvedAmount
+    if (contract_amount !== null && contract_amount < 0) {
+      return NextResponse.json({ error: 'Montant du contrat invalide.' }, { status: 400 })
+    }
+
+    let expires: Date | null = null
+    if (expiresRaw) {
+      const parsed = new Date(expiresRaw)
+      if (Number.isNaN(parsed.getTime())) {
+        return NextResponse.json({ error: 'Date d\'expiration invalide.' }, { status: 400 })
+      }
+      expires = parsed
+    } else if (resolvedExpires) {
+      expires = resolvedExpires
+    }
+    // Plan must come with an expiry — server falls back to plan-derived
+    // when the body doesn't provide one. If neither, we keep showroom
+    // unpaid (plan_id stays null).
+    if (plan_id && !expires) {
+      return NextResponse.json({ error: 'Date d\'expiration requise pour ce plan.' }, { status: 400 })
+    }
+
     // 1. Create auth user with the password supplied by the super admin.
     const { data: created, error: createErr } = await admin.auth.admin.createUser({
       email:         owner_email,
@@ -153,17 +207,29 @@ export async function POST(req: NextRequest) {
     }
     const newUserId = created.user.id
 
-    // 2. Create the showroom row.
+    // 2. Create the showroom row. When a plan was picked, mark the
+    // showroom as a paying customer from day 1 (is_trial=false, with
+    // trial_ends_at repurposed as the subscription end date — same
+    // convention used by ConvertTrialModal).
+    const showroomInsert: Record<string, unknown> = {
+      name,
+      city,
+      owner_email,
+      module_vente,
+      module_location,
+      active,
+    }
+    if (plan_id) {
+      showroomInsert.plan_id              = plan_id
+      showroomInsert.is_trial             = false
+      showroomInsert.trial_ends_at        = expires!.toISOString()
+      showroomInsert.trial_contract_amount = contract_amount
+      showroomInsert.trial_converted_at   = new Date().toISOString()
+      showroomInsert.trial_converted_by   = user.id
+    }
     const { data: shroom, error: shErr } = await admin
       .from('showrooms')
-      .insert([{
-        name,
-        city,
-        owner_email,
-        module_vente,
-        module_location,
-        active,
-      }])
+      .insert([showroomInsert])
       .select('id')
       .single()
     if (shErr || !shroom) {
@@ -205,6 +271,10 @@ export async function POST(req: NextRequest) {
       // Only echoed back when email failed, so the super admin can deliver
       // credentials manually. NEVER returned on success.
       temp_password: mail.ok ? undefined : password,
+      // Echo the chosen plan + paid expiry so the UI can confirm the
+      // showroom was created in paid mode.
+      plan_id:      plan_id ?? null,
+      expires_at:   expires ? expires.toISOString() : null,
     })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Erreur serveur.'
