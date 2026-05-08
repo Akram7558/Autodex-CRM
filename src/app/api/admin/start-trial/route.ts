@@ -26,6 +26,7 @@ import {
   welcomeTrialEmail, internalTrialStartedEmail,
   formatDateFr,
 } from '@/lib/resend'
+import { tryNormalizePhone } from '@/lib/phone'
 
 export const runtime = 'nodejs'
 
@@ -44,6 +45,11 @@ export async function POST(req: NextRequest) {
     const owner_name      = String(body.owner_name ?? '').trim()
     const owner_password  = String(body.owner_password ?? '')
     const city            = String(body.city ?? '').trim()
+    // Phone is optional. We normalise to +213XXXXXXXXX when supplied
+    // so internal notifications are consistent. Bad numbers are
+    // silently dropped (rather than blocking the whole flow).
+    const phoneRaw        = body.phone ? String(body.phone) : null
+    const phone           = phoneRaw ? tryNormalizePhone(phoneRaw) : null
 
     if (!rdv_id)        return NextResponse.json({ error: 'rdv_id requis.' },        { status: 400 })
     if (!prospect_id)   return NextResponse.json({ error: 'prospect_id requis.' },   { status: 400 })
@@ -173,10 +179,16 @@ export async function POST(req: NextRequest) {
       showroomName: showroom_name,
       endsAtFr:     trialEndsAtFr,
     })
+    // Append the owner's phone to the internal notification when present
+    // — keeps the plain-text template untouched and adds it as an extra
+    // line at the bottom so it's easy to spot in the inbox.
+    const internalText = phone
+      ? `${internal.text}\nTel: ${phone}`
+      : internal.text
     const internalRes = await sendEmail({
       to:      internalNotifyAddress(),
       subject: internal.subject,
-      text:    internal.text,
+      text:    internalText,
     })
 
     // Caller-id stored as activity for audit (lightweight, non-fatal).

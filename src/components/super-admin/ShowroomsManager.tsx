@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import { motion } from 'motion/react'
-import { Plus, Pencil, Trash2, Power, X, Building2, Copy, CheckCircle2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, Power, X, Building2, Copy, CheckCircle2, Crown } from 'lucide-react'
+import { TrialBadge } from '@/components/shared/TrialBadge'
+import { ConvertTrialModal } from '@/components/saas/ConvertTrialModal'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import type { Showroom } from '@/lib/types'
@@ -64,6 +66,10 @@ export function ShowroomsManager() {
   // Success modal — shown after the API responds. When email_sent is true
   // we show a simple "email envoyé" confirmation. When false, we surface
   // the password so the super admin can deliver it manually.
+  // Trial conversion modal target — set to a trial showroom row when
+  // the super_admin clicks the "Convertir →" action.
+  const [convertTarget, setConvertTarget] = useState<Showroom | null>(null)
+
   const [created, setCreated] = useState<
     | { email: string; emailSent: true }
     | { email: string; emailSent: false; password: string; emailError?: string }
@@ -247,20 +253,38 @@ export function ShowroomsManager() {
                   </div>
                 </td>
                 <td className="px-6 py-4">
-                  <span className={cn(
-                    'inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border',
-                    s.active
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30'
-                      : 'bg-zinc-100 text-zinc-500 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:border-zinc-700'
-                  )}>
-                    {s.active ? 'Actif' : 'Inactif'}
-                  </span>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className={cn(
+                      'inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border',
+                      s.active
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30'
+                        : 'bg-zinc-100 text-zinc-500 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:border-zinc-700'
+                    )}>
+                      {s.active ? 'Actif' : 'Inactif'}
+                    </span>
+                    <TrialBadge
+                      is_trial={!!s.is_trial}
+                      trial_ends_at={s.trial_ends_at ?? null}
+                      active={!!s.active}
+                    />
+                  </div>
                 </td>
                 <td className="px-6 py-4 text-xs font-medium text-zinc-500">
                   {format(new Date(s.created_at), 'd MMM yyyy', { locale: fr })}
                 </td>
                 <td className="px-6 py-4 text-right">
                   <div className="flex items-center justify-end gap-1">
+                    {/* Convertir → only for active trial showrooms */}
+                    {s.is_trial && s.active && (
+                      <button
+                        onClick={() => setConvertTarget(s)}
+                        title="Convertir l'essai en abonnement"
+                        className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest bg-violet-100 text-violet-700 hover:bg-violet-200 dark:bg-violet-500/15 dark:text-violet-300 dark:hover:bg-violet-500/25 inline-flex items-center gap-1 transition-colors"
+                      >
+                        <Crown className="w-3 h-3" />
+                        Convertir →
+                      </button>
+                    )}
                     <button
                       onClick={() => toggleActive(s)}
                       title={s.active ? 'Désactiver' : 'Activer'}
@@ -571,6 +595,33 @@ export function ShowroomsManager() {
           </div>
         </div>
       )}
+
+      {/* Convert-trial modal — opened via the Convertir → button on
+          active trial rows. The success callback updates the local
+          row (is_trial=false) so the badge / button disappear without
+          waiting for a refetch. */}
+      <ConvertTrialModal
+        open={!!convertTarget}
+        showroom={convertTarget}
+        onClose={() => setConvertTarget(null)}
+        onConverted={(info) => {
+          if (convertTarget) {
+            const tid = convertTarget.id
+            setRows((prev) => prev.map((x) => x.id === tid ? {
+              ...x,
+              is_trial:              false,
+              trial_ends_at:         info.expires_at,
+              trial_converted_at:    new Date().toISOString(),
+              trial_contract_amount: info.contract_amount,
+              plan_id:               info.plan_id,
+            } : x))
+          }
+          setConvertTarget(null)
+          // Refetch in the background to pick up server-side fields
+          // (trial_converted_by etc.) we don't have locally.
+          fetchAll()
+        }}
+      />
     </motion.div>
   )
 }

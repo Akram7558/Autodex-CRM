@@ -47,6 +47,7 @@ export function StartTrialModal({
   const [showroomName, setShowroomName] = useState('')
   const [ownerEmail,   setOwnerEmail]   = useState('')
   const [ownerName,    setOwnerName]    = useState('')
+  const [ownerPhone,   setOwnerPhone]   = useState('')
   const [password,     setPassword]     = useState('')
   const [confirmPwd,   setConfirmPwd]   = useState('')
   const [city,         setCity]         = useState('')
@@ -63,6 +64,7 @@ export function StartTrialModal({
     setSaving(false)
     setShowroomName(rdv.prospect?.showroom_name ?? '')
     setOwnerName(rdv.prospect?.full_name ?? '')
+    setOwnerPhone(rdv.prospect?.phone ?? '')
     setPassword('')
     setConfirmPwd('')
 
@@ -70,13 +72,14 @@ export function StartTrialModal({
     if (rdv.prospect_id) {
       supabase
         .from('super_admin_prospects')
-        .select('email, city, full_name, showroom_name')
+        .select('email, city, full_name, showroom_name, phone')
         .eq('id', rdv.prospect_id)
         .maybeSingle()
         .then(({ data }) => {
           if (!data) return
           setOwnerEmail(typeof data.email === 'string' ? data.email : '')
           setCity(typeof data.city === 'string' ? data.city : '')
+          if (typeof data.phone === 'string') setOwnerPhone(data.phone)
           if (!ownerName && typeof data.full_name === 'string') setOwnerName(data.full_name)
           if (!showroomName && typeof data.showroom_name === 'string') setShowroomName(data.showroom_name)
         })
@@ -121,6 +124,10 @@ export function StartTrialModal({
         owner_email:    ownerEmail.trim().toLowerCase(),
         owner_name:     ownerName.trim(),
         owner_password: password,
+        // Phone is optional. Server normalises to +213XXXXXXXXX and
+        // silently drops bad numbers — we don't pre-validate here so a
+        // mistyped number doesn't block trial creation.
+        phone:          ownerPhone.trim() || null,
         city,
       }),
     })
@@ -214,6 +221,20 @@ export function StartTrialModal({
               required
               className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20"
             />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-foreground mb-1">Téléphone du propriétaire</label>
+            <input
+              type="tel"
+              value={ownerPhone}
+              onChange={(e) => setOwnerPhone(e.target.value)}
+              placeholder="ex. 0555 XX XX XX"
+              className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20"
+            />
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Optionnel — sera normalisé au format +213.
+            </p>
           </div>
 
           <div>

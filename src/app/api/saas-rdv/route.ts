@@ -39,7 +39,8 @@ export async function GET(req: NextRequest) {
       .from('super_admin_rdv')
       .select(`
         *,
-        prospect:super_admin_prospects ( id, full_name, phone, showroom_name, suivi )
+        prospect:super_admin_prospects ( id, full_name, phone, showroom_name, suivi ),
+        linked_showroom:showrooms!linked_showroom_id ( id, name, is_trial, trial_ends_at, active )
       `, { count: 'exact' })
       .order('scheduled_at', { ascending: true })
       .range(from, to)

@@ -15,7 +15,21 @@ export type Showroom = {
   trial_converted_at?: string | null
   trial_contract_amount?: number | null
   trial_converted_by?: string | null
+  // Subscription plan (migration_23_plans.sql) — stamped on trial
+  // conversion via /api/admin/convert-trial.
+  plan_id?: string | null
   created_at: string
+}
+
+// ── SaaS subscription plans (migration_23_plans.sql) ────────────────
+export type SaasPlan = {
+  id: string
+  name: string
+  duration_months: number
+  price: number
+  active: boolean
+  created_at: string
+  updated_at: string
 }
 
 // ── RBAC roles (migration_12_rbac.sql + migration_15_internal_roles.sql)

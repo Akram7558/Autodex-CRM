@@ -1,6 +1,7 @@
 'use client'
 
 import { DistributionManager } from '@/components/saas/DistributionManager'
+import { PlansManager } from '@/components/saas/PlansManager'
 
 export default function SuperAdminSettingsPage() {
   return (
@@ -13,6 +14,8 @@ export default function SuperAdminSettingsPage() {
           Configuration globale de la plateforme AutoDex.
         </p>
       </div>
+
+      <PlansManager />
 
       <DistributionManager
         title="Distribution des RDV SaaS"

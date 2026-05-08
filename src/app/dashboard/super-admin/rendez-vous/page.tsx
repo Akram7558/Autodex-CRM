@@ -15,6 +15,7 @@ import {
 import { Sparkles, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { StartTrialModal, type StartTrialRdv } from '@/components/saas/StartTrialModal'
+import { TrialBadge } from '@/components/shared/TrialBadge'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 
@@ -23,6 +24,15 @@ type PageSize = typeof PAGE_SIZE_OPTIONS[number]
 
 type RdvWithProspect = SaasRdv & {
   prospect: Pick<SaasProspect, 'id' | 'full_name' | 'phone' | 'showroom_name' | 'suivi'> | null
+  // Joined showroom info — present once the RDV has been converted to a
+  // trial (status='essai_gratuit' + linked_showroom_id set).
+  linked_showroom?: {
+    id: string
+    name: string
+    is_trial: boolean
+    trial_ends_at: string | null
+    active: boolean
+  } | null
 }
 
 type RdvForm = {
@@ -401,9 +411,18 @@ export default function SuperAdminRendezVousSaasPage() {
                     )}
                   </td>
                   <td className="px-6 py-4">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${SAAS_RDV_STATUS_BADGE[r.status]}`}>
-                      {SAAS_RDV_STATUS_LABELS[r.status]}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${SAAS_RDV_STATUS_BADGE[r.status]}`}>
+                        {SAAS_RDV_STATUS_LABELS[r.status]}
+                      </span>
+                      {r.linked_showroom && (
+                        <TrialBadge
+                          is_trial={r.linked_showroom.is_trial}
+                          trial_ends_at={r.linked_showroom.trial_ends_at}
+                          active={r.linked_showroom.active}
+                        />
+                      )}
+                    </div>
                   </td>
                   <td className="px-6 py-4 text-xs text-zinc-500 max-w-[220px] truncate">
                     {r.notes ?? '—'}
