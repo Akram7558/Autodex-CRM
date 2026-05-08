@@ -14,6 +14,7 @@ import {
 } from '@/lib/types'
 import { Sparkles, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { StartTrialModal, type StartTrialRdv } from '@/components/saas/StartTrialModal'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 
@@ -79,6 +80,9 @@ export default function SuperAdminRendezVousSaasPage() {
   const [preview, setPreview] = useState<SaasDistributionPreview | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [internalUsers, setInternalUsers] = useState<InternalUser[]>([])
+
+  // StartTrialModal state — opens when status is set to 'essai_gratuit'.
+  const [startTrialRdv, setStartTrialRdv] = useState<StartTrialRdv | null>(null)
 
   const [currentRole, setCurrentRole] = useState<AppRole | null>(null)
   const [toast, setToast] = useState<string | null>(null)
@@ -169,6 +173,17 @@ export default function SuperAdminRendezVousSaasPage() {
 
     // ── Edit ─────────────────────────────────────────────────────
     if (form.id) {
+      // Intercept: setting status → 'essai_gratuit' must go through the
+      // StartTrialModal so we can collect owner credentials, provision
+      // the showroom, and link this RDV. Don't PATCH here.
+      const original = rows.find(r => r.id === form.id)
+      if (form.status === 'essai_gratuit' && original?.status !== 'essai_gratuit') {
+        if (!original) { setError('RDV introuvable.'); return }
+        setForm(null)
+        setStartTrialRdv(original as StartTrialRdv)
+        return
+      }
+
       setSaving(true)
       const res = await fetch(`/api/saas-rdv/${form.id}`, {
         method: 'PATCH',
@@ -652,6 +667,24 @@ export default function SuperAdminRendezVousSaasPage() {
           </div>
         </div>
       )}
+
+      {/* Start-trial modal — opens when the RDV status is changed to
+          'essai_gratuit'. Provisions a 20-day-trial showroom + owner
+          account atomically via /api/admin/start-trial. */}
+      <StartTrialModal
+        open={!!startTrialRdv}
+        rdv={startTrialRdv}
+        onClose={() => setStartTrialRdv(null)}
+        onStarted={(info) => {
+          setStartTrialRdv(null)
+          flashToast(
+            info.emailSent
+              ? `Essai démarré — email envoyé à ${info.owner_email}`
+              : `Essai démarré — envoyez les identifiants à ${info.owner_email}`,
+          )
+          fetchRdv()
+        }}
+      />
     </div>
   )
 }
