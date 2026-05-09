@@ -1,10 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import {
   Menu, X, ChevronRight, MessageCircle, CheckCircle2, AlertTriangle,
-  Users2, Calendar, Car, BarChart3, Zap, Shield,
+  Users2, Calendar, Car, BarChart3, Zap, Shield, Sun, Moon,
 } from 'lucide-react'
 import { WILAYAS_58 } from '@/lib/types'
 
@@ -13,13 +13,16 @@ import { WILAYAS_58 } from '@/lib/types'
 // ─────────────────────────────────────────────────────────────────────
 // Public landing page for AutoDex.
 // ─────────────────────────────────────────────────────────────────────
-// Bilingual French + Arabic, dark violet theme, single file with inline
-// sections. The form posts to /api/prospects/capture (public endpoint).
-// On success it fires Meta + TikTok pixel events and swaps in a thank-
-// you state.
+// Bilingual French + Arabic. Light theme by default with a toggle that
+// flips to the original deep-violet dark theme; the choice persists in
+// localStorage. Auth-aware redirect lives in the server component
+// (src/app/page.tsx) so this client component never flashes for
+// authed visitors. The capture form posts to /api/prospects/capture
+// and fires Meta + TikTok pixels on success.
 // ─────────────────────────────────────────────────────────────────────
 
 const WHATSAPP_NUMBER = process.env.NEXT_PUBLIC_AUTODEX_WHATSAPP || '213555000000'
+const THEME_STORAGE_KEY = 'autodex-landing-theme'
 
 const SHOWROOM_SIZE_OPTS = [
   { value: 'petit', label: 'Petit (moins de 50 voitures)' },
@@ -43,52 +46,161 @@ const emptyForm: FormState = {
   showroom_size: '',
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// Theme tokens — one object built per render from `isDark` and passed
+// down to every section. Keeps JSX readable; lets us switch themes
+// without touching layout or markup.
+// ─────────────────────────────────────────────────────────────────────
+type Theme = ReturnType<typeof buildTheme>
+
+function buildTheme(isDark: boolean) {
+  return {
+    isDark,
+    page:        isDark ? 'bg-[#0a0a0f] text-zinc-100'
+                        : 'bg-white text-zinc-900',
+    sectionAlt:  isDark ? 'bg-[#0d0d1a]/80 border-y border-zinc-800/50'
+                        : 'bg-[#f8f8fc] border-y border-zinc-200',
+    statsAccent: isDark ? 'bg-[#0d0d1a]/80 border-y border-zinc-800/50'
+                        : 'bg-violet-50 border-y border-violet-100',
+    formAccent:  isDark ? 'bg-transparent'
+                        : 'bg-violet-50/60',
+    text:        isDark ? 'text-zinc-100' : 'text-zinc-900',
+    textMuted:   isDark ? 'text-zinc-400' : 'text-zinc-600',
+    textSubtle:  isDark ? 'text-zinc-500' : 'text-zinc-500',
+    accent:      isDark ? 'text-violet-400' : 'text-violet-600',
+    card:        isDark ? 'bg-zinc-900/50 border-zinc-800 hover:border-violet-500/40 backdrop-blur-sm'
+                        : 'bg-white border-zinc-200 hover:border-violet-400 shadow-sm',
+    cardSolid:   isDark ? 'bg-zinc-900/40 border-zinc-800 hover:border-violet-500/40 backdrop-blur-sm'
+                        : 'bg-white border-zinc-200 hover:border-violet-400 shadow-sm',
+    cardDivider: isDark ? 'bg-zinc-800' : 'bg-zinc-200',
+    cardWarn:    isDark ? 'text-rose-300/90' : 'text-rose-600',
+    cardOk:      isDark ? 'text-emerald-300/90' : 'text-emerald-700',
+    iconChip:    isDark ? 'bg-violet-600/15 border-violet-500/30 text-violet-400'
+                        : 'bg-violet-100 border-violet-200 text-violet-700',
+    iconChipAlt: isDark ? 'bg-gradient-to-br from-violet-600/30 to-indigo-600/10 border-violet-500/30 text-violet-300'
+                        : 'bg-gradient-to-br from-violet-100 to-violet-50 border-violet-200 text-violet-700',
+    navbar:      isDark ? 'bg-[#0a0a0f]/70 border-zinc-800/50'
+                        : 'bg-white/85 border-zinc-200',
+    navbarMobileSheet: isDark ? 'border-zinc-800/50 bg-[#0a0a0f]/95'
+                              : 'border-zinc-200 bg-white/95',
+    navLink:     isDark ? 'text-zinc-300 hover:text-white'
+                        : 'text-zinc-700 hover:text-violet-700',
+    navIcon:     isDark ? 'text-zinc-300 hover:text-white hover:bg-white/5'
+                        : 'text-zinc-700 hover:text-zinc-900 hover:bg-zinc-100',
+    secondaryBtn: isDark ? 'bg-white/5 hover:bg-white/10 border-white/10 text-white'
+                         : 'bg-zinc-100 hover:bg-zinc-200 border-zinc-200 text-zinc-900',
+    arabicCard:  isDark ? 'border-violet-500/30 bg-gradient-to-br from-violet-500/10 to-indigo-500/5 backdrop-blur-sm text-white'
+                        : 'border-violet-200 bg-gradient-to-br from-violet-50 to-indigo-50 text-zinc-900',
+    arabicLabel: isDark ? 'text-violet-300' : 'text-violet-700',
+    arabicLead:  isDark ? 'text-zinc-300' : 'text-zinc-700',
+    badgePill:   isDark ? 'bg-violet-500/10 border-violet-500/30 text-violet-300'
+                        : 'bg-violet-100 border-violet-200 text-violet-700',
+    formCard:    isDark ? 'border-zinc-800 bg-zinc-900/50 backdrop-blur-md shadow-2xl shadow-violet-900/10'
+                        : 'border-zinc-200 bg-white shadow-2xl shadow-violet-200/30',
+    input:       isDark ? 'bg-zinc-950/80 border-zinc-800 text-white placeholder:text-zinc-600 focus:border-violet-500 focus:ring-violet-500/30'
+                        : 'bg-white border-zinc-300 text-zinc-900 placeholder:text-zinc-400 focus:border-violet-500 focus:ring-violet-500/20',
+    fieldLabel:  isDark ? 'text-zinc-400' : 'text-zinc-600',
+    formError:   isDark ? 'border-rose-500/30 bg-rose-500/10 text-rose-300'
+                        : 'border-rose-200 bg-rose-50 text-rose-700',
+    formNote:    isDark ? 'text-zinc-500' : 'text-zinc-500',
+    formSuccessTitle: isDark ? 'text-white' : 'text-zinc-900',
+    formSuccessLead:  isDark ? 'text-zinc-300' : 'text-zinc-700',
+    formSuccessAr:    isDark ? 'text-zinc-400' : 'text-zinc-600',
+    statLabel:   isDark ? 'text-zinc-300' : 'text-zinc-800',
+    statAr:      isDark ? 'text-zinc-500' : 'text-zinc-500',
+    toggleBtn:   isDark ? 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                        : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200',
+    toggleBtnFloat: isDark ? 'bg-zinc-800 text-zinc-100 hover:bg-zinc-700 shadow-2xl shadow-black/40'
+                           : 'bg-white text-zinc-700 hover:bg-zinc-50 shadow-2xl shadow-zinc-300/40 border border-zinc-200',
+    blob1Color:  isDark ? '#7c3aed' : '#a78bfa',
+    blob2Color:  isDark ? '#6366f1' : '#818cf8',
+    blob1Opacity: isDark ? 0.30 : 0.18,
+    blob2Opacity: isDark ? 0.25 : 0.14,
+    gridLineColor: isDark ? '#ffffff' : '#000000',
+    gridOpacity:   isDark ? 0.04 : 0.025,
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Root
+// ─────────────────────────────────────────────────────────────────────
 export default function Landing() {
-  // Auth-aware redirect lives in the server component (src/app/page.tsx)
-  // — by the time this client component renders, we already know the
-  // visitor is unauthenticated, so there's no flash and no race.
+  // Synchronous initializer reads localStorage on the very first render
+  // — avoids the dark-→-light flash that an effect-based read would
+  // produce. SSR fallback is `false` (light); the client read replaces
+  // this on hydration before paint.
+  const [isDark, setIsDark] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    try {
+      return window.localStorage.getItem(THEME_STORAGE_KEY) === 'dark'
+    } catch {
+      return false
+    }
+  })
+
+  // Persist on change. Skipped on the very first run when state matches
+  // what's already in localStorage (no-op write).
+  useEffect(() => {
+    try { window.localStorage.setItem(THEME_STORAGE_KEY, isDark ? 'dark' : 'light') }
+    catch { /* ignore quota / private mode */ }
+  }, [isDark])
+
+  const t = buildTheme(isDark)
+  const toggle = () => setIsDark(v => !v)
+
   return (
-    <div className="relative min-h-screen bg-[#0a0a0f] text-zinc-100 overflow-x-hidden">
-      <BackgroundBlobs />
-      <Navbar />
-      <Hero />
-      <ProblemSolution />
-      <FeaturesGrid />
-      <SocialProof />
-      <CaptureForm />
+    <div className={`relative min-h-screen overflow-x-hidden transition-colors duration-300 ${t.page}`}>
+      <BackgroundBlobs t={t} />
+      <Navbar t={t} onToggleTheme={toggle} />
+      <Hero t={t} />
+      <ProblemSolution t={t} />
+      <FeaturesGrid t={t} />
+      <SocialProof t={t} />
+      <CaptureForm t={t} />
       <Footer />
       <WhatsAppFAB />
+      {/* Mobile-only floating theme toggle. Desktop has the same toggle
+          inline in the navbar; we hide this one on md+. */}
+      <button
+        onClick={toggle}
+        aria-label={isDark ? 'Activer le mode clair' : 'Activer le mode sombre'}
+        className={`md:hidden fixed bottom-5 left-5 z-50 inline-flex items-center justify-center w-12 h-12 rounded-full transition-colors ${t.toggleBtnFloat}`}
+      >
+        {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+      </button>
     </div>
   )
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Animated background — pure CSS, GPU-friendly. Two slow-moving blurred
-// gradient blobs in violet / indigo.
+// Animated background — pure CSS, GPU-friendly.
 // ─────────────────────────────────────────────────────────────────────
-function BackgroundBlobs() {
+function BackgroundBlobs({ t }: { t: Theme }) {
   return (
     <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
       <div
-        className="absolute -top-40 -left-40 w-[36rem] h-[36rem] rounded-full opacity-30 blur-3xl"
+        className="absolute -top-40 -left-40 w-[36rem] h-[36rem] rounded-full blur-3xl"
         style={{
-          background: 'radial-gradient(circle at center, #7c3aed 0%, transparent 60%)',
-          animation: 'autodex-blob1 22s ease-in-out infinite',
+          background: `radial-gradient(circle at center, ${t.blob1Color} 0%, transparent 60%)`,
+          opacity:    t.blob1Opacity,
+          animation:  'autodex-blob1 22s ease-in-out infinite',
         }}
       />
       <div
-        className="absolute -bottom-40 -right-40 w-[40rem] h-[40rem] rounded-full opacity-25 blur-3xl"
+        className="absolute -bottom-40 -right-40 w-[40rem] h-[40rem] rounded-full blur-3xl"
         style={{
-          background: 'radial-gradient(circle at center, #6366f1 0%, transparent 60%)',
-          animation: 'autodex-blob2 28s ease-in-out infinite',
+          background: `radial-gradient(circle at center, ${t.blob2Color} 0%, transparent 60%)`,
+          opacity:    t.blob2Opacity,
+          animation:  'autodex-blob2 28s ease-in-out infinite',
         }}
       />
       <div
-        className="absolute inset-0 opacity-[0.04]"
+        className="absolute inset-0"
         style={{
           backgroundImage:
-            'linear-gradient(to right, #ffffff 1px, transparent 1px), linear-gradient(to bottom, #ffffff 1px, transparent 1px)',
+            `linear-gradient(to right, ${t.gridLineColor} 1px, transparent 1px), linear-gradient(to bottom, ${t.gridLineColor} 1px, transparent 1px)`,
           backgroundSize: '64px 64px',
+          opacity:        t.gridOpacity,
         }}
       />
       <style>{`
@@ -106,25 +218,32 @@ function BackgroundBlobs() {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Navbar — sticky, glass, with anchor links + CTA.
+// Navbar — sticky, with desktop theme toggle.
 // ─────────────────────────────────────────────────────────────────────
-function Navbar() {
+function Navbar({ t, onToggleTheme }: { t: Theme; onToggleTheme: () => void }) {
   const [open, setOpen] = useState(false)
   return (
-    <header className="sticky top-0 z-40 backdrop-blur-md bg-[#0a0a0f]/70 border-b border-zinc-800/50">
+    <header className={`sticky top-0 z-40 backdrop-blur-md border-b transition-colors ${t.navbar}`}>
       <div className="mx-auto max-w-6xl px-4 md:px-6 h-16 flex items-center justify-between">
-        <Link href="/" className="text-xl font-black tracking-tight">
-          Auto<span className="text-violet-400">Dex</span>
+        <Link href="/" className={`text-xl font-black tracking-tight ${t.text}`}>
+          Auto<span className={t.accent}>Dex</span>
         </Link>
-        <nav className="hidden md:flex items-center gap-7 text-sm font-medium text-zinc-300">
-          <a href="#features" className="hover:text-white transition-colors">Fonctionnalités</a>
-          <a href="#tarifs"   className="hover:text-white transition-colors">Tarifs</a>
-          <a href="#contact"  className="hover:text-white transition-colors">Contact</a>
+        <nav className={`hidden md:flex items-center gap-7 text-sm font-medium`}>
+          <a href="#features" className={`transition-colors ${t.navLink}`}>Fonctionnalités</a>
+          <a href="#tarifs"   className={`transition-colors ${t.navLink}`}>Tarifs</a>
+          <a href="#contact"  className={`transition-colors ${t.navLink}`}>Contact</a>
         </nav>
-        <div className="hidden md:block">
+        <div className="hidden md:flex items-center gap-3">
+          <button
+            onClick={onToggleTheme}
+            aria-label={t.isDark ? 'Activer le mode clair' : 'Activer le mode sombre'}
+            className={`p-2 rounded-full transition-colors ${t.toggleBtn}`}
+          >
+            {t.isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </button>
           <Link
             href="/login"
-            className="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-bold transition-colors"
+            className="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold transition-colors"
           >
             Connexion
           </Link>
@@ -132,16 +251,16 @@ function Navbar() {
         <button
           onClick={() => setOpen(o => !o)}
           aria-label="Menu"
-          className="md:hidden p-2 rounded-lg text-zinc-300 hover:text-white hover:bg-white/5"
+          className={`md:hidden p-2 rounded-lg transition-colors ${t.navIcon}`}
         >
           {open ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
       </div>
       {open && (
-        <div className="md:hidden border-t border-zinc-800/50 bg-[#0a0a0f]/95 backdrop-blur-md px-4 py-3 space-y-2">
-          <a href="#features" onClick={() => setOpen(false)} className="block py-2 text-sm text-zinc-300 hover:text-white">Fonctionnalités</a>
-          <a href="#tarifs"   onClick={() => setOpen(false)} className="block py-2 text-sm text-zinc-300 hover:text-white">Tarifs</a>
-          <a href="#contact"  onClick={() => setOpen(false)} className="block py-2 text-sm text-zinc-300 hover:text-white">Contact</a>
+        <div className={`md:hidden border-t backdrop-blur-md px-4 py-3 space-y-2 ${t.navbarMobileSheet}`}>
+          <a href="#features" onClick={() => setOpen(false)} className={`block py-2 text-sm ${t.navLink}`}>Fonctionnalités</a>
+          <a href="#tarifs"   onClick={() => setOpen(false)} className={`block py-2 text-sm ${t.navLink}`}>Tarifs</a>
+          <a href="#contact"  onClick={() => setOpen(false)} className={`block py-2 text-sm ${t.navLink}`}>Contact</a>
           <Link
             href="/login"
             className="block px-4 py-2 mt-2 rounded-xl bg-violet-600 text-white text-center font-bold"
@@ -157,36 +276,36 @@ function Navbar() {
 // ─────────────────────────────────────────────────────────────────────
 // Hero
 // ─────────────────────────────────────────────────────────────────────
-function Hero() {
+function Hero({ t }: { t: Theme }) {
   return (
     <section className="relative min-h-[90vh] flex items-center px-4 md:px-6 py-16 md:py-24">
       <div className="mx-auto max-w-6xl w-full grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
         <div className="lg:col-span-7">
-          <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-violet-500/10 border border-violet-500/30 text-[11px] font-bold uppercase tracking-widest text-violet-300">
+          <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border text-[11px] font-bold uppercase tracking-widest ${t.badgePill}`}>
             <Zap className="w-3.5 h-3.5" /> SaaS pour l&apos;automobile en Algérie
           </span>
-          <h1 className="mt-6 text-4xl md:text-6xl font-black tracking-tight leading-[1.05]">
+          <h1 className={`mt-6 text-4xl md:text-6xl font-black tracking-tight leading-[1.05] ${t.text}`}>
             Le CRM des concessionnaires{' '}
-            <span className="text-violet-400">algériens</span>
+            <span className={t.accent}>algériens</span>
           </h1>
-          <p className="mt-5 text-lg md:text-xl text-zinc-400 max-w-xl leading-relaxed">
+          <p className={`mt-5 text-lg md:text-xl max-w-xl leading-relaxed ${t.textMuted}`}>
             Gérez vos prospects, vos rendez-vous et votre inventaire depuis une seule plateforme.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <a
               href="#formulaire"
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-bold shadow-lg shadow-violet-600/30 transition-colors"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold shadow-lg shadow-violet-600/30 transition-colors"
             >
               Demander une démo gratuite <ChevronRight className="w-4 h-4" />
             </a>
             <a
               href="#features"
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white text-sm font-bold transition-colors"
+              className={`inline-flex items-center gap-2 px-6 py-3 rounded-xl border text-sm font-bold transition-colors ${t.secondaryBtn}`}
             >
               Voir les fonctionnalités
             </a>
           </div>
-          <p className="mt-6 text-xs font-medium text-zinc-500 uppercase tracking-widest">
+          <p className={`mt-6 text-xs font-medium uppercase tracking-widest ${t.textSubtle}`}>
             Déjà utilisé par des showrooms à Alger, Oran, Constantine
           </p>
         </div>
@@ -196,18 +315,18 @@ function Hero() {
           <div
             dir="rtl"
             lang="ar"
-            className="rounded-2xl border border-violet-500/30 bg-gradient-to-br from-violet-500/10 to-indigo-500/5 p-8 backdrop-blur-sm"
+            className={`rounded-2xl border p-8 ${t.arabicCard}`}
           >
-            <p className="text-[11px] font-bold uppercase tracking-widest text-violet-300 mb-3">بالعربية</p>
-            <h2 className="text-3xl md:text-4xl font-black leading-tight text-white">
+            <p className={`text-[11px] font-bold uppercase tracking-widest mb-3 ${t.arabicLabel}`}>بالعربية</p>
+            <h2 className="text-3xl md:text-4xl font-black leading-tight">
               الـ CRM لوكالات السيارات الجزائرية
             </h2>
-            <p className="mt-4 text-zinc-300 text-base leading-relaxed">
+            <p className={`mt-4 text-base leading-relaxed ${t.arabicLead}`}>
               سيّر عملاءك، مواعيدك ومخزون سياراتك من مكان واحد.
             </p>
             <a
               href="#formulaire"
-              className="mt-6 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-bold transition-colors"
+              className="mt-6 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold transition-colors"
             >
               اطلب عرضاً تجريبياً مجانياً
             </a>
@@ -221,7 +340,7 @@ function Hero() {
 // ─────────────────────────────────────────────────────────────────────
 // Problem → Solution
 // ─────────────────────────────────────────────────────────────────────
-function ProblemSolution() {
+function ProblemSolution({ t }: { t: Theme }) {
   const items = [
     {
       problem:  'Vous perdez des prospects dans WhatsApp et les carnets',
@@ -240,13 +359,13 @@ function ProblemSolution() {
     },
   ]
   return (
-    <section id="features" className="px-4 md:px-6 py-20 md:py-28 bg-[#0d0d1a]/80 border-y border-zinc-800/50">
+    <section id="features" className={`px-4 md:px-6 py-20 md:py-28 transition-colors ${t.sectionAlt}`}>
       <div className="mx-auto max-w-6xl">
         <div className="text-center max-w-2xl mx-auto">
-          <h2 className="text-3xl md:text-5xl font-black tracking-tight">
-            Pourquoi <span className="text-violet-400">AutoDex</span> ?
+          <h2 className={`text-3xl md:text-5xl font-black tracking-tight ${t.text}`}>
+            Pourquoi <span className={t.accent}>AutoDex</span> ?
           </h2>
-          <p dir="rtl" lang="ar" className="mt-2 text-zinc-400 text-lg">لماذا AutoDex ؟</p>
+          <p dir="rtl" lang="ar" className={`mt-2 text-lg ${t.textMuted}`}>لماذا AutoDex ؟</p>
         </div>
 
         <div className="mt-14 grid grid-cols-1 md:grid-cols-3 gap-5">
@@ -255,16 +374,16 @@ function ProblemSolution() {
             return (
               <div
                 key={i}
-                className="group rounded-2xl border border-zinc-800 bg-zinc-900/50 hover:border-violet-500/40 backdrop-blur-sm p-6 transition-all duration-300 hover:-translate-y-1"
+                className={`group rounded-2xl border p-6 transition-all duration-300 hover:-translate-y-1 ${t.card}`}
               >
-                <div className="w-10 h-10 rounded-xl bg-violet-600/15 border border-violet-500/30 flex items-center justify-center text-violet-400">
+                <div className={`w-10 h-10 rounded-xl border flex items-center justify-center ${t.iconChip}`}>
                   <Icon className="w-5 h-5" />
                 </div>
-                <p className="mt-4 text-rose-300/90 text-sm font-medium leading-relaxed">
+                <p className={`mt-4 text-sm font-medium leading-relaxed ${t.cardWarn}`}>
                   ❌ {it.problem}
                 </p>
-                <div className="my-3 h-px bg-zinc-800" />
-                <p className="text-emerald-300/90 text-sm font-bold leading-relaxed">
+                <div className={`my-3 h-px ${t.cardDivider}`} />
+                <p className={`text-sm font-bold leading-relaxed ${t.cardOk}`}>
                   ✅ {it.solution}
                 </p>
               </div>
@@ -279,7 +398,7 @@ function ProblemSolution() {
 // ─────────────────────────────────────────────────────────────────────
 // Features grid (6 cards)
 // ─────────────────────────────────────────────────────────────────────
-function FeaturesGrid() {
+function FeaturesGrid({ t }: { t: Theme }) {
   const features = [
     { icon: Users2,    title: 'Gestion des prospects', desc: 'Suivez chaque lead de la prise de contact à la vente.' },
     { icon: Calendar,  title: 'RDV & Pipeline',        desc: 'Planifiez, suivez, relancez automatiquement.' },
@@ -292,10 +411,10 @@ function FeaturesGrid() {
     <section id="tarifs" className="px-4 md:px-6 py-20 md:py-28">
       <div className="mx-auto max-w-6xl">
         <div className="text-center max-w-2xl mx-auto">
-          <h2 className="text-3xl md:text-5xl font-black tracking-tight">
-            Tout ce qu&apos;il faut pour vendre <span className="text-violet-400">plus</span>
+          <h2 className={`text-3xl md:text-5xl font-black tracking-tight ${t.text}`}>
+            Tout ce qu&apos;il faut pour vendre <span className={t.accent}>plus</span>
           </h2>
-          <p className="mt-3 text-zinc-400">Une plateforme complète, pensée pour les showrooms algériens.</p>
+          <p className={`mt-3 ${t.textMuted}`}>Une plateforme complète, pensée pour les showrooms algériens.</p>
         </div>
 
         <div className="mt-12 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -304,13 +423,13 @@ function FeaturesGrid() {
             return (
               <div
                 key={i}
-                className="rounded-2xl border border-zinc-800 bg-zinc-900/40 hover:border-violet-500/40 backdrop-blur-sm p-6 transition-colors"
+                className={`rounded-2xl border p-6 transition-colors ${t.cardSolid}`}
               >
-                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-violet-600/30 to-indigo-600/10 border border-violet-500/30 flex items-center justify-center text-violet-300">
+                <div className={`w-11 h-11 rounded-xl border flex items-center justify-center ${t.iconChipAlt}`}>
                   <Icon className="w-5 h-5" />
                 </div>
-                <h3 className="mt-4 text-base font-bold text-white">{f.title}</h3>
-                <p className="mt-2 text-sm text-zinc-400 leading-relaxed">{f.desc}</p>
+                <h3 className={`mt-4 text-base font-bold ${t.text}`}>{f.title}</h3>
+                <p className={`mt-2 text-sm leading-relaxed ${t.textMuted}`}>{f.desc}</p>
               </div>
             )
           })}
@@ -321,24 +440,24 @@ function FeaturesGrid() {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Stats
+// Stats — light mode uses violet-50 bg per spec.
 // ─────────────────────────────────────────────────────────────────────
-function SocialProof() {
+function SocialProof({ t }: { t: Theme }) {
   const stats = [
     { fig: '+50',  label: 'leads / mois',           ar: 'عميل محتمل / شهر' },
     { fig: '3×',   label: 'plus de RDV honorés',    ar: 'مواعيد محترمة' },
     { fig: '20',   label: 'minutes pour démarrer',  ar: 'دقيقة للإعداد' },
   ]
   return (
-    <section className="px-4 md:px-6 py-20 md:py-24 bg-[#0d0d1a]/80 border-y border-zinc-800/50">
+    <section className={`px-4 md:px-6 py-20 md:py-24 transition-colors ${t.statsAccent}`}>
       <div className="mx-auto max-w-6xl grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
         {stats.map((s, i) => (
           <div key={i}>
-            <p className="text-5xl md:text-6xl font-black tracking-tighter bg-gradient-to-r from-violet-400 to-indigo-400 bg-clip-text text-transparent">
+            <p className="text-5xl md:text-6xl font-black tracking-tighter bg-gradient-to-r from-violet-500 to-indigo-500 bg-clip-text text-transparent">
               {s.fig}
             </p>
-            <p className="mt-2 text-zinc-300 font-bold">{s.label}</p>
-            <p dir="rtl" lang="ar" className="text-xs text-zinc-500 mt-1">{s.ar}</p>
+            <p className={`mt-2 font-bold ${t.statLabel}`}>{s.label}</p>
+            <p dir="rtl" lang="ar" className={`text-xs mt-1 ${t.statAr}`}>{s.ar}</p>
           </div>
         ))}
       </div>
@@ -349,7 +468,7 @@ function SocialProof() {
 // ─────────────────────────────────────────────────────────────────────
 // Capture form — POSTs to /api/prospects/capture, fires pixels.
 // ─────────────────────────────────────────────────────────────────────
-function CaptureForm() {
+function CaptureForm({ t }: { t: Theme }) {
   const [form, setForm] = useState<FormState>(emptyForm)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -407,71 +526,74 @@ function CaptureForm() {
     }
   }
 
+  const inputCls =
+    `w-full h-11 px-3 rounded-xl border outline-none text-sm transition focus:ring-2 ${t.input}`
+
   return (
-    <section id="formulaire" className="px-4 md:px-6 py-20 md:py-28">
+    <section id="formulaire" className={`px-4 md:px-6 py-20 md:py-28 transition-colors ${t.formAccent}`}>
       <div className="mx-auto max-w-2xl">
         <div className="text-center">
-          <h2 className="text-3xl md:text-5xl font-black tracking-tight">
-            Essayez <span className="text-violet-400">AutoDex</span> gratuitement
+          <h2 className={`text-3xl md:text-5xl font-black tracking-tight ${t.text}`}>
+            Essayez <span className={t.accent}>AutoDex</span> gratuitement
           </h2>
-          <p dir="rtl" lang="ar" className="mt-2 text-zinc-300 text-lg">جرّب AutoDex مجاناً</p>
-          <p className="mt-3 text-zinc-400">
-            Essai gratuit <strong className="text-white">20 jours</strong> — sans carte bancaire.
+          <p dir="rtl" lang="ar" className={`mt-2 text-lg ${t.textMuted}`}>جرّب AutoDex مجاناً</p>
+          <p className={`mt-3 ${t.textMuted}`}>
+            Essai gratuit <strong className={t.text}>20 jours</strong> — sans carte bancaire.
           </p>
         </div>
 
-        <div className="mt-10 rounded-3xl border border-zinc-800 bg-zinc-900/50 backdrop-blur-md p-6 md:p-8 shadow-2xl shadow-violet-900/10">
+        <div className={`mt-10 rounded-3xl border p-6 md:p-8 ${t.formCard}`}>
           {done ? (
             <div className="flex flex-col items-center text-center gap-3 py-6">
               <div className="w-14 h-14 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
-                <CheckCircle2 className="w-7 h-7 text-emerald-400" />
+                <CheckCircle2 className="w-7 h-7 text-emerald-500" />
               </div>
-              <h3 className="text-xl font-bold text-white">
+              <h3 className={`text-xl font-bold ${t.formSuccessTitle}`}>
                 Demande reçue !
               </h3>
-              <p className="text-zinc-300">
+              <p className={t.formSuccessLead}>
                 Notre équipe vous contacte dans 24h.
               </p>
-              <p dir="rtl" lang="ar" className="text-zinc-400 text-sm">
+              <p dir="rtl" lang="ar" className={`text-sm ${t.formSuccessAr}`}>
                 تم استلام طلبك! سيتصل بك فريقنا خلال 24 ساعة.
               </p>
               {done.duplicate && (
-                <p className="text-[11px] text-zinc-500 mt-2">
+                <p className={`text-[11px] mt-2 ${t.textSubtle}`}>
                   Nous avons déjà vos coordonnées — un membre de l&apos;équipe vous recontactera.
                 </p>
               )}
             </div>
           ) : (
             <form onSubmit={submit} className="space-y-4">
-              <Field label="Nom complet *">
+              <Field label="Nom complet *" t={t}>
                 <input
                   type="text"
                   required
                   value={form.full_name}
                   onChange={(e) => setForm({ ...form, full_name: e.target.value })}
                   placeholder="ex. Karim Benali"
-                  className="w-full h-11 px-3 rounded-xl bg-zinc-950/80 border border-zinc-800 text-white placeholder:text-zinc-600 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/30 outline-none text-sm transition"
+                  className={inputCls}
                 />
               </Field>
 
-              <Field label="Téléphone *">
+              <Field label="Téléphone *" t={t}>
                 <input
                   type="tel"
                   required
                   value={form.phone}
                   onChange={(e) => setForm({ ...form, phone: e.target.value })}
                   placeholder="0555 XX XX XX"
-                  className="w-full h-11 px-3 rounded-xl bg-zinc-950/80 border border-zinc-800 text-white placeholder:text-zinc-600 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/30 outline-none text-sm transition"
+                  className={inputCls}
                 />
               </Field>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Field label="Wilaya *">
+                <Field label="Wilaya *" t={t}>
                   <select
                     required
                     value={form.wilaya}
                     onChange={(e) => setForm({ ...form, wilaya: e.target.value })}
-                    className="w-full h-11 px-3 rounded-xl bg-zinc-950/80 border border-zinc-800 text-white focus:border-violet-500 focus:ring-2 focus:ring-violet-500/30 outline-none text-sm transition"
+                    className={inputCls}
                   >
                     <option value="">— Choisir —</option>
                     {WILAYAS_58.map((w, i) => (
@@ -481,23 +603,23 @@ function CaptureForm() {
                     ))}
                   </select>
                 </Field>
-                <Field label="Nom du showroom *">
+                <Field label="Nom du showroom *" t={t}>
                   <input
                     type="text"
                     required
                     value={form.showroom_name}
                     onChange={(e) => setForm({ ...form, showroom_name: e.target.value })}
                     placeholder="ex. AutoSphère Alger"
-                    className="w-full h-11 px-3 rounded-xl bg-zinc-950/80 border border-zinc-800 text-white placeholder:text-zinc-600 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/30 outline-none text-sm transition"
+                    className={inputCls}
                   />
                 </Field>
               </div>
 
-              <Field label="Taille du showroom">
+              <Field label="Taille du showroom" t={t}>
                 <select
                   value={form.showroom_size}
                   onChange={(e) => setForm({ ...form, showroom_size: e.target.value as FormState['showroom_size'] })}
-                  className="w-full h-11 px-3 rounded-xl bg-zinc-950/80 border border-zinc-800 text-white focus:border-violet-500 focus:ring-2 focus:ring-violet-500/30 outline-none text-sm transition"
+                  className={inputCls}
                 >
                   <option value="">— Optionnel —</option>
                   {SHOWROOM_SIZE_OPTS.map(o => (
@@ -507,7 +629,7 @@ function CaptureForm() {
               </Field>
 
               {error && (
-                <div className="flex items-start gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2.5 text-sm text-rose-300">
+                <div className={`flex items-start gap-2 rounded-xl border px-3 py-2.5 text-sm ${t.formError}`}>
                   <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
                   <span>{error}</span>
                 </div>
@@ -516,11 +638,11 @@ function CaptureForm() {
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full h-12 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-bold text-base shadow-xl shadow-violet-900/40 transition-all disabled:opacity-60"
+                className="w-full h-12 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-bold text-base shadow-xl shadow-violet-900/30 transition-all disabled:opacity-60"
               >
                 {submitting ? 'Envoi…' : 'Je veux tester AutoDex — مجاناً'}
               </button>
-              <p className="text-[11px] text-zinc-500 text-center">
+              <p className={`text-[11px] text-center ${t.formNote}`}>
                 En soumettant ce formulaire, vous acceptez d&apos;être contacté par AutoDex.
               </p>
             </form>
@@ -531,21 +653,21 @@ function CaptureForm() {
   )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children, t }: { label: string; children: React.ReactNode; t: Theme }) {
   return (
     <div>
-      <label className="block text-xs font-bold uppercase tracking-widest text-zinc-400 mb-1.5">{label}</label>
+      <label className={`block text-xs font-bold uppercase tracking-widest mb-1.5 ${t.fieldLabel}`}>{label}</label>
       {children}
     </div>
   )
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Footer
+// Footer — stays dark in BOTH modes per spec.
 // ─────────────────────────────────────────────────────────────────────
 function Footer() {
   return (
-    <footer id="contact" className="border-t border-zinc-800/60 px-4 md:px-6 py-12">
+    <footer id="contact" className="bg-zinc-900 border-t border-zinc-800/60 px-4 md:px-6 py-12 text-zinc-100">
       <div className="mx-auto max-w-6xl flex flex-col md:flex-row items-center justify-between gap-6">
         <div className="text-center md:text-left">
           <p className="text-xl font-black">
@@ -566,7 +688,7 @@ function Footer() {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Floating WhatsApp button
+// Floating WhatsApp button — same green in both modes.
 // ─────────────────────────────────────────────────────────────────────
 function WhatsAppFAB() {
   return (
