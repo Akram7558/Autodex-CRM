@@ -21,13 +21,21 @@ export type Showroom = {
   created_at: string
 }
 
-// ── SaaS subscription plans (migration_23_plans.sql) ────────────────
+// ── SaaS subscription plans (migration_23_plans.sql, plan_type added in 24) ──
+export type SaasPlanType = 'classique' | 'totale'
+export const SAAS_PLAN_TYPE_VALUES: SaasPlanType[] = ['classique', 'totale']
+export const SAAS_PLAN_TYPE_LABELS: Record<SaasPlanType, string> = {
+  classique: 'Plan Classique',
+  totale:    'Plan La Totale',
+}
+
 export type SaasPlan = {
   id: string
   name: string
   duration_months: number
   price: number
   active: boolean
+  plan_type: SaasPlanType
   created_at: string
   updated_at: string
 }

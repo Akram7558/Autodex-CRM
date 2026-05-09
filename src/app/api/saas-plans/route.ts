@@ -1,14 +1,21 @@
 // ─────────────────────────────────────────────────────────────────────
 // /api/saas-plans
-//   GET  — read active plans (any internal user)
-//   PUT  — upsert plans (super_admin only)
+//   GET  — public read (used by the public landing Tarifs section AND
+//          the Super-Admin Plans Manager). Returns:
+//            { plans: SaasPlan[], grouped: { classique: [], totale: [] } }
+//          - plans:   ALL plans (active + inactive) — used by admin UI
+//          - grouped: only ACTIVE plans, ordered by duration_months ASC,
+//                     split by plan_type — used by the public landing.
+//   PUT  — upsert plans (super_admin only). Now accepts plan_type.
 // ─────────────────────────────────────────────────────────────────────
 
 import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { requireSuperAdmin, errorResponse } from '@/lib/api-auth'
 import {
-  requireInternalUser, requireSuperAdmin, errorResponse,
-} from '@/lib/api-auth'
+  SAAS_PLAN_TYPE_VALUES,
+  type SaasPlan, type SaasPlanType,
+} from '@/lib/types'
 
 export const runtime = 'nodejs'
 
@@ -20,28 +27,42 @@ function adminClient() {
 }
 
 // ── GET ─────────────────────────────────────────────────────────────
-// Returns all plans (active + inactive) so the parametres page can
-// render the full editable list. Active-only consumers (the convert
-// modal, the public catalogue) filter client-side.
-export async function GET(req: NextRequest) {
+// PUBLIC. The plan catalogue is non-sensitive (it's marketing copy
+// shown on the landing page). RLS on saas_plans already allows SELECT
+// to all authenticated users, but we want anonymous landing visitors
+// to see prices too — so this route returns plans via the service-role
+// client without checking auth.
+export async function GET() {
   try {
-    await requireInternalUser(req)
     const admin = adminClient()
     const { data, error } = await admin
       .from('saas_plans')
       .select('*')
+      .order('plan_type', { ascending: true })
       .order('duration_months', { ascending: true })
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ plans: data ?? [] })
+
+    const plans = (data ?? []) as SaasPlan[]
+
+    // Build the grouped view (active only, ordered by duration). Each
+    // group is empty if there's no active plan of that type.
+    const grouped: Record<SaasPlanType, SaasPlan[]> = { classique: [], totale: [] }
+    for (const p of plans) {
+      if (!p.active) continue
+      const t = (p.plan_type ?? 'classique') as SaasPlanType
+      if (grouped[t]) grouped[t].push(p)
+    }
+
+    return NextResponse.json({ plans, grouped })
   } catch (err) {
     return errorResponse(err)
   }
 }
 
 // ── PUT ─────────────────────────────────────────────────────────────
-// Body: { plans: [{ id?, name, duration_months, price, active }] }
+// Body: { plans: [{ id?, name, duration_months, price, active, plan_type }] }
 // Each entry without `id` is inserted; entries with `id` are updated.
-// Returns the canonical post-write list.
+// Returns the canonical post-write list (flat + grouped).
 export async function PUT(req: NextRequest) {
   try {
     await requireSuperAdmin(req)
@@ -55,6 +76,7 @@ export async function PUT(req: NextRequest) {
       duration_months: number
       price: number
       active: boolean
+      plan_type: SaasPlanType
     }
     const cleaned: Entry[] = []
     for (const raw of incoming) {
@@ -65,6 +87,7 @@ export async function PUT(req: NextRequest) {
       const duration_months = Number(raw.duration_months)
       const price = Number(raw.price)
       const active = raw.active !== false
+      const plan_type = (raw.plan_type ? String(raw.plan_type) : 'classique') as SaasPlanType
       if (!name) {
         return NextResponse.json({ error: 'Nom du plan requis.' }, { status: 400 })
       }
@@ -80,19 +103,23 @@ export async function PUT(req: NextRequest) {
           { status: 400 },
         )
       }
+      if (!SAAS_PLAN_TYPE_VALUES.includes(plan_type)) {
+        return NextResponse.json(
+          { error: `Type de plan invalide pour "${name}".` },
+          { status: 400 },
+        )
+      }
       cleaned.push({
         id: raw.id ? String(raw.id) : undefined,
         name,
         duration_months,
         price,
         active,
+        plan_type,
       })
     }
 
     const admin = adminClient()
-
-    // Two passes: insert rows without id, update rows with id. Keeps
-    // each row deterministic — no surprise FK churn from bulk upserts.
     const inserts = cleaned.filter(p => !p.id)
     const updates = cleaned.filter((p): p is Entry & { id: string } => !!p.id)
 
@@ -102,6 +129,7 @@ export async function PUT(req: NextRequest) {
         duration_months: p.duration_months,
         price:           p.price,
         active:          p.active,
+        plan_type:       p.plan_type,
       })))
       if (error) return NextResponse.json({ error: error.message }, { status: 400 })
     }
@@ -111,6 +139,7 @@ export async function PUT(req: NextRequest) {
         duration_months: u.duration_months,
         price:           u.price,
         active:          u.active,
+        plan_type:       u.plan_type,
       }).eq('id', u.id)
       if (error) return NextResponse.json({ error: error.message }, { status: 400 })
     }
@@ -118,10 +147,19 @@ export async function PUT(req: NextRequest) {
     const { data, error: fetchErr } = await admin
       .from('saas_plans')
       .select('*')
+      .order('plan_type', { ascending: true })
       .order('duration_months', { ascending: true })
     if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 })
 
-    return NextResponse.json({ success: true, plans: data ?? [] })
+    const plans = (data ?? []) as SaasPlan[]
+    const grouped: Record<SaasPlanType, SaasPlan[]> = { classique: [], totale: [] }
+    for (const p of plans) {
+      if (!p.active) continue
+      const t = (p.plan_type ?? 'classique') as SaasPlanType
+      if (grouped[t]) grouped[t].push(p)
+    }
+
+    return NextResponse.json({ success: true, plans, grouped })
   } catch (err) {
     return errorResponse(err)
   }

@@ -86,8 +86,19 @@ export async function POST(req: NextRequest) {
     const wilaya        = String(body.wilaya        ?? '').trim()
     const showroom_name = String(body.showroom_name ?? '').trim()
     const showroom_size = mapShowroomSize(body.showroom_size)
-    // Source defaults to 'landing_page' for this endpoint regardless
-    // of what the client sent — this is a public landing-page route.
+    // Optional email — validated only when provided. Stored on the
+    // super_admin_prospects.email column.
+    const emailRaw      = body.email ? String(body.email).trim().toLowerCase() : ''
+    if (emailRaw && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRaw)) {
+      return NextResponse.json({ error: 'Email invalide.' }, { status: 400 })
+    }
+    const email: string | null = emailRaw || null
+    // The DB enum (migration_16) only allows
+    // 'facebook_ads' | 'tiktok_ads' | 'landing_page' | 'manuel' | 'reference' | 'autre'
+    // — so all public submissions get tagged 'landing_page' regardless
+    // of which page they came from. We surface the actual originating
+    // page in the internal notification text below.
+    const sourceHint    = body.source ? String(body.source) : 'landing_page'
     const source        = 'landing_page' as const
 
     if (!full_name)     return NextResponse.json({ error: 'Nom complet requis.' },         { status: 400 })
@@ -140,6 +151,7 @@ export async function POST(req: NextRequest) {
       .insert([{
         full_name,
         phone,
+        email,
         city:           wilaya,
         showroom_name,
         showroom_size,
@@ -156,14 +168,15 @@ export async function POST(req: NextRequest) {
     const stamp = new Date().toLocaleString('fr-DZ', { dateStyle: 'short', timeStyle: 'short' })
     const subject = `🔥 Nouveau prospect AutoDex — ${showroom_name}`
     const text =
-`Nouveau prospect via la landing page :
+`Nouveau prospect via ${sourceHint} :
 
-Nom    : ${full_name}
-Tél    : ${phone}
-Wilaya : ${wilaya}
+Nom      : ${full_name}
+Tél      : ${phone}
+Email    : ${email ?? '—'}
+Wilaya   : ${wilaya}
 Showroom : ${showroom_name}
-Taille : ${showroom_size ?? '—'}
-Reçu le : ${stamp}
+Taille   : ${showroom_size ?? '—'}
+Reçu le  : ${stamp}
 `
     void sendEmail({
       to:      internalNotifyAddress(),

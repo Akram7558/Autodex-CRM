@@ -5,8 +5,9 @@ import Link from 'next/link'
 import {
   Menu, X, ChevronRight, MessageCircle, CheckCircle2, AlertTriangle,
   Users2, Calendar, Car, BarChart3, Zap, Shield, Sun, Moon,
+  Check, Star, Sparkles,
 } from 'lucide-react'
-import { WILAYAS_58 } from '@/lib/types'
+import { WILAYAS_58, type SaasPlan, type SaasPlanType } from '@/lib/types'
 
 // Pixel globals — declared in src/types/global.d.ts.
 
@@ -156,6 +157,7 @@ export default function Landing() {
       <ProblemSolution t={t} />
       <FeaturesGrid t={t} />
       <SocialProof t={t} />
+      <Tarifs t={t} />
       <CaptureForm t={t} />
       <Footer />
       <WhatsAppFAB />
@@ -408,7 +410,7 @@ function FeaturesGrid({ t }: { t: Theme }) {
     { icon: Shield,    title: 'Multi-showrooms',       desc: 'Chaque équipe dans son espace sécurisé.' },
   ]
   return (
-    <section id="tarifs" className="px-4 md:px-6 py-20 md:py-28">
+    <section className="px-4 md:px-6 py-20 md:py-28">
       <div className="mx-auto max-w-6xl">
         <div className="text-center max-w-2xl mx-auto">
           <h2 className={`text-3xl md:text-5xl font-black tracking-tight ${t.text}`}>
@@ -661,6 +663,213 @@ function Field({ label, children, t }: { label: string; children: React.ReactNod
     </div>
   )
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// Tarifs (pricing section) — toggle between "Classique" and "La Totale",
+// 3 plan cards each, prices hidden behind "Prix sur demande". Plans
+// load from GET /api/saas-plans (public endpoint).
+// ─────────────────────────────────────────────────────────────────────
+
+const CLASSIQUE_FEATURES = [
+  'Gestion des prospects',
+  'RDV & Pipeline de ventes',
+  'Inventaire véhicules',
+  'Tableau de bord',
+  'Intégrations WhatsApp/Facebook',
+  'Support dédié',
+] as const
+
+const TOTALE_FEATURES = [
+  'Tout le Plan Classique',
+  'Module Location de véhicules',
+  'Gestion contrats de location',
+  'Suivi des retours',
+  'Rapports avancés',
+] as const
+
+function Tarifs({ t }: { t: Theme }) {
+  const [grouped, setGrouped] = useState<Record<SaasPlanType, SaasPlan[]>>({ classique: [], totale: [] })
+  const [loading, setLoading] = useState(true)
+  const [selectedType, setSelectedType] = useState<SaasPlanType>('classique')
+  // Brief content fade when toggling type — 150ms out, swap, 150ms in.
+  const [fading, setFading] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/saas-plans')
+      .then(r => r.json())
+      .then(j => {
+        if (cancelled) return
+        const g = (j?.grouped ?? { classique: [], totale: [] }) as Record<SaasPlanType, SaasPlan[]>
+        setGrouped(g)
+      })
+      .catch(() => { /* silent — landing falls back to skeleton */ })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [])
+
+  function pickType(next: SaasPlanType) {
+    if (next === selectedType) return
+    setFading(true)
+    // Swap content roughly mid-fade so the user sees a clean transition.
+    window.setTimeout(() => {
+      setSelectedType(next)
+      setFading(false)
+    }, 150)
+  }
+
+  const visiblePlans = grouped[selectedType] ?? []
+  const features = selectedType === 'totale' ? TOTALE_FEATURES : CLASSIQUE_FEATURES
+
+  return (
+    <section id="tarifs" className={`px-4 md:px-6 py-20 md:py-28 transition-colors ${t.sectionAlt}`}>
+      <div className="mx-auto max-w-6xl">
+        <div className="text-center max-w-2xl mx-auto">
+          <h2 className={`text-3xl md:text-5xl font-black tracking-tight ${t.text}`}>
+            Choisissez votre <span className={t.accent}>formule</span>
+          </h2>
+          <p dir="rtl" lang="ar" className={`mt-2 text-lg ${t.textMuted}`}>اختر خطتك</p>
+          <p className={`mt-3 ${t.textMuted}`}>
+            Sans engagement • Essai gratuit 20 jours
+          </p>
+        </div>
+
+        {/* ── Plan-type toggle ─────────────────────────────────────── */}
+        <div className="mt-10 flex justify-center">
+          <div className={`inline-flex items-center gap-1 p-1 rounded-2xl ${t.isDark ? 'bg-zinc-900 border border-zinc-800' : 'bg-zinc-100 border border-zinc-200'}`}>
+            <button
+              type="button"
+              onClick={() => pickType('classique')}
+              className={`px-5 py-2 rounded-xl text-sm font-bold transition-colors ${
+                selectedType === 'classique'
+                  ? 'bg-violet-600 text-white shadow'
+                  : t.isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-zinc-600 hover:text-zinc-900'
+              }`}
+            >
+              Plan Classique
+            </button>
+            <button
+              type="button"
+              onClick={() => pickType('totale')}
+              className={`px-5 py-2 rounded-xl text-sm font-bold transition-colors inline-flex items-center gap-2 ${
+                selectedType === 'totale'
+                  ? 'bg-violet-600 text-white shadow'
+                  : t.isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-zinc-600 hover:text-zinc-900'
+              }`}
+            >
+              <span>Plan La Totale</span>
+              <span className={`hidden sm:inline-flex px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest border ${
+                selectedType === 'totale'
+                  ? 'border-white/30 text-white/90'
+                  : 'border-violet-400/50 text-violet-500'
+              }`}>
+                Location + Vente
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {/* ── Pricing cards ────────────────────────────────────────── */}
+        <div
+          className={`mt-12 grid grid-cols-1 md:grid-cols-3 gap-5 transition-opacity duration-150 ${fading ? 'opacity-0' : 'opacity-100'}`}
+        >
+          {loading && visiblePlans.length === 0 ? (
+            // Skeleton: 3 placeholder cards while plans load.
+            [0, 1, 2].map(i => (
+              <div key={`sk-${i}`} className={`rounded-2xl border p-6 h-80 animate-pulse ${t.cardSolid}`}>
+                <div className={`h-5 w-24 rounded ${t.isDark ? 'bg-zinc-800' : 'bg-zinc-200'}`} />
+                <div className={`mt-4 h-8 w-32 rounded ${t.isDark ? 'bg-zinc-800' : 'bg-zinc-200'}`} />
+              </div>
+            ))
+          ) : visiblePlans.length === 0 ? (
+            <div className={`md:col-span-3 rounded-2xl border p-8 text-center ${t.cardSolid} ${t.textMuted}`}>
+              Aucun plan {selectedType === 'totale' ? '« La Totale »' : '« Classique »'} disponible pour le moment.
+            </div>
+          ) : (
+            visiblePlans.map((plan) => {
+              const isPopular = plan.duration_months === 12
+              return (
+                <div
+                  key={plan.id}
+                  className={
+                    'relative rounded-2xl border p-6 transition-all duration-300 flex flex-col ' +
+                    (isPopular
+                      ? 'bg-violet-600 text-white border-violet-500 md:scale-105 shadow-2xl shadow-violet-600/30'
+                      : `${t.cardSolid} ${t.text}`)
+                  }
+                >
+                  {isPopular && (
+                    <span className="absolute -top-3 right-4 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-amber-400 text-amber-950 shadow">
+                      <Star className="w-3 h-3 fill-current" /> Populaire
+                    </span>
+                  )}
+
+                  <p className="text-[11px] font-bold uppercase tracking-widest opacity-80">
+                    {plan.duration_months === 12 ? '1 An' : `${plan.duration_months} mois`}
+                  </p>
+                  <h3 className="mt-1 text-2xl font-black">
+                    {plan.name.replace(/—.*$/, '').trim() || plan.name}
+                  </h3>
+
+                  <div className="mt-5 mb-1 text-lg font-bold">
+                    Prix sur demande
+                  </div>
+                  <p className={`text-xs ${isPopular ? 'text-white/70' : t.textMuted}`}>
+                    Contactez-nous pour un devis personnalisé.
+                  </p>
+
+                  <ul className="mt-6 space-y-2.5 flex-1">
+                    {features.map(f => (
+                      <li key={f} className="flex items-start gap-2 text-sm">
+                        <Check className={`w-4 h-4 mt-0.5 shrink-0 ${isPopular ? 'text-emerald-200' : 'text-violet-500'}`} />
+                        <span className={isPopular ? 'text-white/90' : t.text}>{f}</span>
+                      </li>
+                    ))}
+                    {selectedType === 'totale' && (
+                      <li className={`mt-2 text-[11px] italic ${isPopular ? 'text-white/70' : t.textSubtle}`}>
+                        Descriptions détaillées à venir.
+                      </li>
+                    )}
+                  </ul>
+
+                  <div className="mt-6 space-y-2">
+                    <a
+                      href="#formulaire"
+                      className={`block text-center px-4 py-2.5 rounded-xl border text-sm font-bold transition-colors ${
+                        isPopular
+                          ? 'border-white/40 text-white hover:bg-white/10'
+                          : 'border-violet-500 text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-500/10'
+                      }`}
+                    >
+                      Demander un devis
+                    </a>
+                    <Link
+                      href="/register"
+                      className={`block text-center px-4 py-2.5 rounded-xl text-sm font-bold transition-colors ${
+                        isPopular
+                          ? 'bg-white text-violet-700 hover:bg-zinc-100'
+                          : 'bg-violet-600 text-white hover:bg-violet-700'
+                      }`}
+                    >
+                      Essai gratuit 20 jours
+                    </Link>
+                  </div>
+                </div>
+              )
+            })
+          )}
+        </div>
+
+        {/* Bottom note */}
+        <p className={`mt-8 text-center text-xs ${t.textSubtle} inline-flex items-center gap-1.5 justify-center w-full`}>
+          <Sparkles className="w-3.5 h-3.5 text-violet-500" />
+          Tous les plans incluent l&apos;essai gratuit de 20 jours.
+        </p>
+      </div>
+    </section>
+  )
+}
+
 
 // ─────────────────────────────────────────────────────────────────────
 // Footer — stays dark in BOTH modes per spec.

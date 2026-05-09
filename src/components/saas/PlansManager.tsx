@@ -5,7 +5,10 @@ import { motion } from 'motion/react'
 import { Plus, Trash2, Crown, CheckCircle2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
-import type { AppRole, SaasPlan } from '@/lib/types'
+import {
+  SAAS_PLAN_TYPE_VALUES, SAAS_PLAN_TYPE_LABELS,
+  type AppRole, type SaasPlan, type SaasPlanType,
+} from '@/lib/types'
 
 type Row = {
   // `id` is undefined for newly-added local rows; PUT then assigns one.
@@ -14,6 +17,7 @@ type Row = {
   duration_months: number
   price: number
   active: boolean
+  plan_type: SaasPlanType
   /** Local-only flag — newly-added rows aren't persisted yet. */
   pending?: boolean
 }
@@ -44,6 +48,7 @@ export function PlansManager() {
       duration_months: p.duration_months,
       price:           Number(p.price),
       active:          p.active,
+      plan_type:       (p.plan_type ?? 'classique') as SaasPlanType,
     })))
   }
 
@@ -72,6 +77,7 @@ export function PlansManager() {
         duration_months: 1,
         price: 0,
         active: true,
+        plan_type: 'classique',
         pending: true,
       },
     ])
@@ -123,6 +129,7 @@ export function PlansManager() {
           duration_months: r.duration_months,
           price:           r.price,
           active:          r.active,
+          plan_type:       r.plan_type,
         })),
       }),
     })
@@ -166,6 +173,7 @@ export function PlansManager() {
           <thead>
             <tr className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/40 dark:bg-zinc-950/40">
               <th className="px-6 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-500">Nom</th>
+              <th className="px-6 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-500">Type</th>
               <th className="px-6 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-500">Durée (mois)</th>
               <th className="px-6 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-500">Prix (DZD)</th>
               <th className="px-6 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-500">Actif</th>
@@ -186,6 +194,18 @@ export function PlansManager() {
                     placeholder="ex. Pack 6 mois"
                     className="w-full h-9 px-2 rounded-lg border border-border bg-background text-foreground text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-60"
                   />
+                </td>
+                <td className="px-6 py-3">
+                  <select
+                    value={r.plan_type}
+                    onChange={(e) => patch(idx, { plan_type: e.target.value as SaasPlanType })}
+                    disabled={!canEdit}
+                    className="h-9 px-2 rounded-lg border border-border bg-background text-foreground text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-60"
+                  >
+                    {SAAS_PLAN_TYPE_VALUES.map(v => (
+                      <option key={v} value={v}>{SAAS_PLAN_TYPE_LABELS[v]}</option>
+                    ))}
+                  </select>
                 </td>
                 <td className="px-6 py-3">
                   <input
