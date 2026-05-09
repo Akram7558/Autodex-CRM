@@ -3,11 +3,11 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import {
-  Menu, X, ChevronRight, MessageCircle, CheckCircle2, AlertTriangle,
+  Menu, X, ChevronRight, MessageCircle,
   Users2, Calendar, Car, BarChart3, Zap, Shield, Sun, Moon,
   Check, Star, Sparkles,
 } from 'lucide-react'
-import { WILAYAS_58, type SaasPlan, type SaasPlanType } from '@/lib/types'
+import type { SaasPlan, SaasPlanType } from '@/lib/types'
 
 // Pixel globals — declared in src/types/global.d.ts.
 
@@ -18,34 +18,13 @@ import { WILAYAS_58, type SaasPlan, type SaasPlanType } from '@/lib/types'
 // flips to the original deep-violet dark theme; the choice persists in
 // localStorage. Auth-aware redirect lives in the server component
 // (src/app/page.tsx) so this client component never flashes for
-// authed visitors. The capture form posts to /api/prospects/capture
-// and fires Meta + TikTok pixels on success.
+// authed visitors. Self-registration happens on /register; this page
+// drives the user there via two CTAs (navbar + hero) and a WhatsApp
+// contact section near the bottom for everything else.
 // ─────────────────────────────────────────────────────────────────────
 
 const WHATSAPP_NUMBER = process.env.NEXT_PUBLIC_AUTODEX_WHATSAPP || '213555000000'
 const THEME_STORAGE_KEY = 'autodex-landing-theme'
-
-const SHOWROOM_SIZE_OPTS = [
-  { value: 'petit', label: 'Petit (moins de 50 voitures)' },
-  { value: 'moyen', label: 'Moyen (50 à 150 voitures)' },
-  { value: 'grand', label: 'Grand (plus de 150 voitures)' },
-] as const
-
-type FormState = {
-  full_name:     string
-  phone:         string
-  wilaya:        string
-  showroom_name: string
-  showroom_size: '' | 'petit' | 'moyen' | 'grand'
-}
-
-const emptyForm: FormState = {
-  full_name:     '',
-  phone:         '',
-  wilaya:        '',
-  showroom_name: '',
-  showroom_size: '',
-}
 
 // ─────────────────────────────────────────────────────────────────────
 // Theme tokens — one object built per render from `isDark` and passed
@@ -158,7 +137,7 @@ export default function Landing() {
       <FeaturesGrid t={t} />
       <SocialProof t={t} />
       <Tarifs t={t} />
-      <CaptureForm t={t} />
+      <WhatsAppContact t={t} />
       <Footer />
       <WhatsAppFAB />
       {/* Mobile-only floating theme toggle. Desktop has the same toggle
@@ -243,6 +222,14 @@ function Navbar({ t, onToggleTheme }: { t: Theme; onToggleTheme: () => void }) {
           >
             {t.isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
+          {/* Primary register CTA — orange to pop against the violet
+              accent the rest of the site uses. */}
+          <Link
+            href="/register"
+            className="px-4 py-2 rounded-full bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold transition-colors"
+          >
+            Essayer gratuitement
+          </Link>
           <Link
             href="/login"
             className="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold transition-colors"
@@ -264,8 +251,16 @@ function Navbar({ t, onToggleTheme }: { t: Theme; onToggleTheme: () => void }) {
           <a href="#tarifs"   onClick={() => setOpen(false)} className={`block py-2 text-sm ${t.navLink}`}>Tarifs</a>
           <a href="#contact"  onClick={() => setOpen(false)} className={`block py-2 text-sm ${t.navLink}`}>Contact</a>
           <Link
+            href="/register"
+            onClick={() => setOpen(false)}
+            className="block px-4 py-2 mt-2 rounded-full bg-orange-500 hover:bg-orange-600 text-white text-center font-semibold"
+          >
+            Essayer gratuitement
+          </Link>
+          <Link
             href="/login"
-            className="block px-4 py-2 mt-2 rounded-xl bg-violet-600 text-white text-center font-bold"
+            onClick={() => setOpen(false)}
+            className="block px-4 py-2 rounded-xl bg-violet-600 text-white text-center font-bold"
           >
             Connexion
           </Link>
@@ -294,12 +289,12 @@ function Hero({ t }: { t: Theme }) {
             Gérez vos prospects, vos rendez-vous et votre inventaire depuis une seule plateforme.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <a
-              href="#formulaire"
+            <Link
+              href="/register"
               className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold shadow-lg shadow-violet-600/30 transition-colors"
             >
-              Demander une démo gratuite <ChevronRight className="w-4 h-4" />
-            </a>
+              Essayer gratuitement <ChevronRight className="w-4 h-4" />
+            </Link>
             <a
               href="#features"
               className={`inline-flex items-center gap-2 px-6 py-3 rounded-xl border text-sm font-bold transition-colors ${t.secondaryBtn}`}
@@ -326,12 +321,12 @@ function Hero({ t }: { t: Theme }) {
             <p className={`mt-4 text-base leading-relaxed ${t.arabicLead}`}>
               سيّر عملاءك، مواعيدك ومخزون سياراتك من مكان واحد.
             </p>
-            <a
-              href="#formulaire"
+            <Link
+              href="/register"
               className="mt-6 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold transition-colors"
             >
               اطلب عرضاً تجريبياً مجانياً
-            </a>
+            </Link>
           </div>
         </div>
       </div>
@@ -468,203 +463,69 @@ function SocialProof({ t }: { t: Theme }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Capture form — POSTs to /api/prospects/capture, fires pixels.
+// WhatsApp contact section — replaces the old capture form. The
+// landing page now drives self-registration via /register; for any
+// other question we point users at WhatsApp directly.
 // ─────────────────────────────────────────────────────────────────────
-function CaptureForm({ t }: { t: Theme }) {
-  const [form, setForm] = useState<FormState>(emptyForm)
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState('')
-  const [done,  setDone]  = useState<null | { duplicate: boolean }>(null)
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault()
-    setError('')
-    if (!form.full_name.trim())     { setError('Nom complet requis.'); return }
-    if (!form.phone.trim())         { setError('Téléphone requis.'); return }
-    if (!form.wilaya)               { setError('Wilaya requise.'); return }
-    if (!form.showroom_name.trim()) { setError('Nom du showroom requis.'); return }
-    setSubmitting(true)
-    try {
-      const res = await fetch('/api/prospects/capture', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          full_name:     form.full_name.trim(),
-          phone:         form.phone.trim(),
-          wilaya:        form.wilaya,
-          showroom_name: form.showroom_name.trim(),
-          showroom_size: form.showroom_size || null,
-          source:        'landing_page',
-        }),
-      })
-      const json = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        setError(json?.error ?? 'Une erreur est survenue. Réessayez.')
-        return
-      }
-
-      // Pixel events — guarded so missing pixels don't crash the form.
-      try {
-        if (typeof window !== 'undefined' && typeof window.fbq === 'function') {
-          window.fbq('track', 'Lead', {
-            content_name: 'AutoDex Demo Request',
-            value: 0,
-            currency: 'DZD',
-          })
-        }
-      } catch {}
-      try {
-        if (typeof window !== 'undefined' && window.ttq && typeof window.ttq.track === 'function') {
-          window.ttq.track('SubmitForm', { content_name: 'AutoDex Demo Request' })
-        }
-      } catch {}
-
-      setDone({ duplicate: !!json.duplicate })
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Erreur réseau.'
-      setError(msg)
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  const inputCls =
-    `w-full h-11 px-3 rounded-xl border outline-none text-sm transition focus:ring-2 ${t.input}`
-
+function WhatsAppContact({ t }: { t: Theme }) {
   return (
-    <section id="formulaire" className={`px-4 md:px-6 py-20 md:py-28 transition-colors ${t.formAccent}`}>
-      <div className="mx-auto max-w-2xl">
-        <div className="text-center">
-          <h2 className={`text-3xl md:text-5xl font-black tracking-tight ${t.text}`}>
-            Essayez <span className={t.accent}>AutoDex</span> gratuitement
-          </h2>
-          <p dir="rtl" lang="ar" className={`mt-2 text-lg ${t.textMuted}`}>جرّب AutoDex مجاناً</p>
-          <p className={`mt-3 ${t.textMuted}`}>
-            Essai gratuit <strong className={t.text}>20 jours</strong> — sans carte bancaire.
-          </p>
-        </div>
+    <section
+      id="formulaire"
+      className={`px-4 md:px-6 py-20 md:py-28 transition-colors ${t.formAccent}`}
+    >
+      <div className="mx-auto max-w-2xl text-center">
+        <h2 className={`text-3xl md:text-5xl font-black tracking-tight ${t.text}`}>
+          Une question ? <span className={t.accent}>Contactez-nous</span>
+        </h2>
+        <p dir="rtl" lang="ar" className={`mt-2 text-lg ${t.textMuted}`}>لديك سؤال؟ تواصل معنا</p>
+        <p className={`mt-3 ${t.textMuted}`}>
+          Notre équipe vous répond rapidement sur WhatsApp.
+        </p>
 
-        <div className={`mt-10 rounded-3xl border p-6 md:p-8 ${t.formCard}`}>
-          {done ? (
-            <div className="flex flex-col items-center text-center gap-3 py-6">
-              <div className="w-14 h-14 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
-                <CheckCircle2 className="w-7 h-7 text-emerald-500" />
-              </div>
-              <h3 className={`text-xl font-bold ${t.formSuccessTitle}`}>
-                Demande reçue !
-              </h3>
-              <p className={t.formSuccessLead}>
-                Notre équipe vous contacte dans 24h.
-              </p>
-              <p dir="rtl" lang="ar" className={`text-sm ${t.formSuccessAr}`}>
-                تم استلام طلبك! سيتصل بك فريقنا خلال 24 ساعة.
-              </p>
-              {done.duplicate && (
-                <p className={`text-[11px] mt-2 ${t.textSubtle}`}>
-                  Nous avons déjà vos coordonnées — un membre de l&apos;équipe vous recontactera.
-                </p>
-              )}
-            </div>
-          ) : (
-            <form onSubmit={submit} className="space-y-4">
-              <Field label="Nom complet *" t={t}>
-                <input
-                  type="text"
-                  required
-                  value={form.full_name}
-                  onChange={(e) => setForm({ ...form, full_name: e.target.value })}
-                  placeholder="ex. Karim Benali"
-                  className={inputCls}
-                />
-              </Field>
+        <a
+          href={`https://wa.me/${WHATSAPP_NUMBER}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Nous contacter sur WhatsApp"
+          className="mt-10 inline-flex items-center gap-3 px-7 py-4 rounded-full text-white font-bold text-base shadow-2xl shadow-emerald-900/30 hover:brightness-105 transition-[filter] group"
+          style={{ backgroundColor: '#25D366' }}
+        >
+          <span className="relative inline-flex items-center justify-center w-9 h-9 rounded-full bg-white/15 group-hover:scale-105 transition-transform">
+            <WhatsAppIcon className="w-5 h-5 relative z-10" />
+            {/* Soft pulse halo behind the icon — drops to no-op for
+                users who prefer reduced motion. */}
+            <span
+              className="absolute inset-0 rounded-full bg-white/30 motion-safe:animate-ping opacity-60"
+              aria-hidden="true"
+            />
+          </span>
+          Nous contacter sur WhatsApp
+        </a>
 
-              <Field label="Téléphone *" t={t}>
-                <input
-                  type="tel"
-                  required
-                  value={form.phone}
-                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                  placeholder="0555 XX XX XX"
-                  className={inputCls}
-                />
-              </Field>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Field label="Wilaya *" t={t}>
-                  <select
-                    required
-                    value={form.wilaya}
-                    onChange={(e) => setForm({ ...form, wilaya: e.target.value })}
-                    className={inputCls}
-                  >
-                    <option value="">— Choisir —</option>
-                    {WILAYAS_58.map((w, i) => (
-                      <option key={w} value={w}>
-                        {String(i + 1).padStart(2, '0')} - {w}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Nom du showroom *" t={t}>
-                  <input
-                    type="text"
-                    required
-                    value={form.showroom_name}
-                    onChange={(e) => setForm({ ...form, showroom_name: e.target.value })}
-                    placeholder="ex. AutoSphère Alger"
-                    className={inputCls}
-                  />
-                </Field>
-              </div>
-
-              <Field label="Taille du showroom" t={t}>
-                <select
-                  value={form.showroom_size}
-                  onChange={(e) => setForm({ ...form, showroom_size: e.target.value as FormState['showroom_size'] })}
-                  className={inputCls}
-                >
-                  <option value="">— Optionnel —</option>
-                  {SHOWROOM_SIZE_OPTS.map(o => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              </Field>
-
-              {error && (
-                <div className={`flex items-start gap-2 rounded-xl border px-3 py-2.5 text-sm ${t.formError}`}>
-                  <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                  <span>{error}</span>
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={submitting}
-                className="w-full h-12 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-bold text-base shadow-xl shadow-violet-900/30 transition-all disabled:opacity-60"
-              >
-                {submitting ? 'Envoi…' : 'Je veux tester AutoDex — مجاناً'}
-              </button>
-              <p className={`text-[11px] text-center ${t.formNote}`}>
-                En soumettant ce formulaire, vous acceptez d&apos;être contacté par AutoDex.
-              </p>
-            </form>
-          )}
-        </div>
+        <p className={`mt-6 text-xs ${t.textSubtle}`}>
+          Réponse en quelques minutes pendant les heures ouvrables.
+        </p>
       </div>
     </section>
   )
 }
 
-function Field({ label, children, t }: { label: string; children: React.ReactNode; t: Theme }) {
+// Inline simplified WhatsApp glyph — keeps us off external icon
+// libraries that don't ship a brand-accurate version.
+function WhatsAppIcon({ className }: { className?: string }) {
   return (
-    <div>
-      <label className={`block text-xs font-bold uppercase tracking-widest mb-1.5 ${t.fieldLabel}`}>{label}</label>
-      {children}
-    </div>
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <path d="M19.05 4.91A10 10 0 0 0 4.21 18.36L3 22l3.73-1.18A10 10 0 1 0 19.05 4.91Zm-7.04 15.4a8.34 8.34 0 0 1-4.26-1.17l-.31-.18-2.21.7.7-2.16-.2-.34a8.36 8.36 0 1 1 6.28 3.15Zm4.62-6.27c-.25-.13-1.49-.74-1.72-.82-.23-.09-.4-.13-.57.13-.17.25-.66.82-.81.99-.15.17-.29.19-.54.07-.25-.13-1.06-.39-2.02-1.25-.74-.66-1.24-1.48-1.39-1.73-.15-.25-.02-.39.11-.51.11-.11.25-.29.37-.43.13-.15.17-.25.25-.42.08-.17.04-.31-.02-.43-.06-.13-.57-1.36-.78-1.86-.2-.49-.41-.42-.57-.43-.15-.01-.31-.01-.48-.01a.93.93 0 0 0-.68.31c-.23.25-.89.87-.89 2.13 0 1.26.91 2.47 1.04 2.64.13.17 1.79 2.74 4.34 3.84.61.26 1.08.42 1.45.54.61.19 1.16.16 1.6.1.49-.07 1.49-.61 1.71-1.2.21-.59.21-1.09.15-1.2-.06-.11-.23-.18-.48-.31Z" />
+    </svg>
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────
 // Tarifs (pricing section) — toggle between "Classique" and "La Totale",
 // 3 plan cards each, prices hidden behind "Prix sur demande". Plans
 // load from GET /api/saas-plans (public endpoint).
