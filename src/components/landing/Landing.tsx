@@ -1,13 +1,12 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import {
   Menu, X, ChevronRight, MessageCircle, CheckCircle2, AlertTriangle,
   Users2, Calendar, Car, BarChart3, Zap, Shield,
 } from 'lucide-react'
 import { WILAYAS_58 } from '@/lib/types'
-import { supabase } from '@/lib/supabase'
 
 // Pixel globals — declared in src/types/global.d.ts.
 
@@ -45,29 +44,9 @@ const emptyForm: FormState = {
 }
 
 export default function Landing() {
-  // Auth-aware redirect — if the visitor is already signed in, send
-  // them straight to their dashboard. Client-side check is fine here
-  // (the public landing is allowed to flash briefly for everyone).
-  useEffect(() => {
-    let cancelled = false
-    supabase.auth.getUser().then(async ({ data }) => {
-      if (cancelled || !data?.user) return
-      // Pick the right destination by role, mirroring /login's logic.
-      const { data: roleRow } = await supabase
-        .from('user_roles').select('role').eq('user_id', data.user.id).maybeSingle()
-      let target = '/dashboard'
-      switch (roleRow?.role) {
-        case 'super_admin':       target = '/dashboard/super-admin';            break
-        case 'commercial':        target = '/dashboard/super-admin';            break
-        case 'prospecteur_saas':  target = '/dashboard/super-admin/prospects';  break
-        case 'closer':            target = '/dashboard/rendez-vous';            break
-        case 'prospecteur':       target = '/dashboard/leads';                  break
-      }
-      if (!cancelled) window.location.href = target
-    })
-    return () => { cancelled = true }
-  }, [])
-
+  // Auth-aware redirect lives in the server component (src/app/page.tsx)
+  // — by the time this client component renders, we already know the
+  // visitor is unauthenticated, so there's no flash and no race.
   return (
     <div className="relative min-h-screen bg-[#0a0a0f] text-zinc-100 overflow-x-hidden">
       <BackgroundBlobs />
