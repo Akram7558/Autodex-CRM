@@ -1,17 +1,20 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import {
   CheckCircle2, AlertTriangle, Sun, Moon, Sparkles,
 } from 'lucide-react'
 import { WILAYAS_58 } from '@/lib/types'
+import { supabase } from '@/lib/supabase'
+import { cn } from '@/lib/utils'
 
 // ─────────────────────────────────────────────────────────────────────
-// /register — public lead-capture page dedicated to the Tarifs CTA.
-// Reuses the Landing theme tokens (light by default, dark via the
-// shared `autodex-landing-theme` localStorage key) so a visitor who
-// flipped to dark on /  arrives here in the same theme.
+// /register — public self-registration form. POSTs to /api/auth/register
+// which provisions a 20-day-trial showroom + owner account, then this
+// component immediately calls supabase.auth.signInWithPassword to
+// establish the session and hard-navigates to /dashboard so the new
+// owner lands logged in.
 // ─────────────────────────────────────────────────────────────────────
 
 const THEME_STORAGE_KEY = 'autodex-landing-theme'
@@ -23,21 +26,45 @@ const SHOWROOM_SIZE_OPTS = [
 ] as const
 
 type FormState = {
-  showroom_name: string
-  full_name:     string
-  phone:         string
-  email:         string
-  wilaya:        string
-  showroom_size: '' | 'petit' | 'moyen' | 'grand'
+  showroom_name:    string
+  full_name:        string
+  phone:            string
+  email:            string
+  password:         string
+  password_confirm: string
+  wilaya:           string
+  showroom_size:    '' | 'petit' | 'moyen' | 'grand'
 }
 
 const emptyForm: FormState = {
-  showroom_name: '',
-  full_name:     '',
-  phone:         '',
-  email:         '',
-  wilaya:        '',
-  showroom_size: '',
+  showroom_name:    '',
+  full_name:        '',
+  phone:            '',
+  email:            '',
+  password:         '',
+  password_confirm: '',
+  wilaya:           '',
+  showroom_size:    '',
+}
+
+// 0..3 — same scale as the existing super-admin password modals.
+function passwordStrength(pw: string): 0 | 1 | 2 | 3 {
+  if (!pw) return 0
+  let score = 0
+  if (pw.length >= 8)  score++
+  if (pw.length >= 12) score++
+  if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score++
+  if (/\d/.test(pw))   score++
+  if (/[^A-Za-z0-9]/.test(pw)) score++
+  if (score <= 2) return 1
+  if (score <= 4) return 2
+  return 3
+}
+const STRENGTH_META: Record<0 | 1 | 2 | 3, { label: string; color: string; widthClass: string }> = {
+  0: { label: '—',      color: 'bg-zinc-300 dark:bg-zinc-700', widthClass: 'w-0' },
+  1: { label: 'Faible', color: 'bg-rose-500',                   widthClass: 'w-1/3' },
+  2: { label: 'Moyen',  color: 'bg-amber-500',                  widthClass: 'w-2/3' },
+  3: { label: 'Fort',   color: 'bg-emerald-500',                widthClass: 'w-full' },
 }
 
 export default function Register() {
@@ -53,10 +80,13 @@ export default function Register() {
     catch { /* ignore */ }
   }, [isDark])
 
-  const [form, setForm] = useState<FormState>(emptyForm)
+  const [form, setForm]         = useState<FormState>(emptyForm)
   const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState('')
-  const [done,  setDone]  = useState<null | { duplicate: boolean }>(null)
+  const [error, setError]       = useState('')
+
+  const strength = useMemo(() => passwordStrength(form.password), [form.password])
+  const meta     = STRENGTH_META[strength]
+  const mismatch = form.password_confirm.length > 0 && form.password !== form.password_confirm
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -65,28 +95,37 @@ export default function Register() {
     if (!form.full_name.trim())     { setError('Nom complet requis.'); return }
     if (!form.phone.trim())         { setError('Téléphone requis.'); return }
     if (!form.email.trim())         { setError('Email requis.'); return }
+    if (form.password.length < 8)   { setError('Le mot de passe doit contenir au moins 8 caractères.'); return }
+    if (form.password !== form.password_confirm) {
+      setError('Les deux mots de passe ne correspondent pas.'); return
+    }
     if (!form.wilaya)               { setError('Wilaya requise.'); return }
+
     setSubmitting(true)
     try {
-      const res = await fetch('/api/prospects/capture', {
+      // ── 1. Provision the trial server-side ──────────────────────
+      const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          full_name:     form.full_name.trim(),
-          phone:         form.phone.trim(),
-          email:         form.email.trim().toLowerCase(),
-          wilaya:        form.wilaya,
           showroom_name: form.showroom_name.trim(),
+          full_name:     form.full_name.trim(),
+          email:         form.email.trim().toLowerCase(),
+          password:      form.password,
+          phone:         form.phone.trim(),
+          wilaya:        form.wilaya,
           showroom_size: form.showroom_size || null,
-          source:        'register_page',
         }),
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) {
+        // 409 / 400 / 500 all surface the same way — the message comes
+        // from the server in French.
         setError(json?.error ?? 'Une erreur est survenue. Réessayez.')
         return
       }
-      // Pixels (best-effort, guarded).
+
+      // ── 2. Pixels (best-effort, guarded) ────────────────────────
       try {
         if (typeof window !== 'undefined' && typeof window.fbq === 'function') {
           window.fbq('track', 'Lead', { content_name: 'Register' })
@@ -97,7 +136,28 @@ export default function Register() {
           window.ttq.track('SubmitForm', { content_name: 'Register' })
         }
       } catch {}
-      setDone({ duplicate: !!json.duplicate })
+
+      // ── 3. Sign the user in (option (a)) ────────────────────────
+      // Reuse the credentials we already have. On success, hard-nav to
+      // /dashboard so the middleware sees the freshly-set session
+      // cookie on the next request.
+      const { error: signInErr } = await supabase.auth.signInWithPassword({
+        email:    form.email.trim().toLowerCase(),
+        password: form.password,
+      })
+      if (signInErr) {
+        // Account was created but the sign-in failed — extremely rare
+        // (e.g. transient network error). Surface a friendly message
+        // and let the user log in manually.
+        setError(
+          'Compte créé. Connectez-vous manuellement avec votre email et mot de passe.',
+        )
+        // Send them to /login after a beat so the message is visible.
+        window.setTimeout(() => { window.location.href = '/login' }, 1200)
+        return
+      }
+
+      window.location.href = '/dashboard'
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erreur réseau.'
       setError(msg)
@@ -106,8 +166,7 @@ export default function Register() {
     }
   }
 
-  // Theme tokens (subset of buildTheme from Landing — kept locally to
-  // avoid leaking the full theme contract across files).
+  // Theme tokens (subset of buildTheme from Landing).
   const t = isDark
     ? {
         page:       'bg-[#0a0a0f] text-zinc-100',
@@ -120,6 +179,7 @@ export default function Register() {
         fieldLabel: 'text-zinc-400',
         formError:  'border-rose-500/30 bg-rose-500/10 text-rose-300',
         toggleBtn:  'bg-zinc-800 text-zinc-100 hover:bg-zinc-700 shadow-2xl shadow-black/40',
+        strengthBg: 'bg-zinc-800',
       }
     : {
         page:       'bg-white text-zinc-900',
@@ -132,14 +192,13 @@ export default function Register() {
         fieldLabel: 'text-zinc-600',
         formError:  'border-rose-200 bg-rose-50 text-rose-700',
         toggleBtn:  'bg-white text-zinc-700 hover:bg-zinc-50 shadow-2xl shadow-zinc-300/40 border border-zinc-200',
+        strengthBg: 'bg-zinc-200',
       }
 
   const inputCls = `w-full h-11 px-3 rounded-xl border outline-none text-sm transition focus:ring-2 ${t.input}`
 
   return (
     <div className={`relative min-h-screen flex items-center justify-center px-4 py-12 transition-colors duration-300 ${t.page}`}>
-      {/* Theme toggle — same FAB pattern as the landing page mobile
-          toggle. Sits bottom-left to mirror the landing's UX. */}
       <button
         onClick={() => setIsDark(v => !v)}
         aria-label={isDark ? 'Activer le mode clair' : 'Activer le mode sombre'}
@@ -156,145 +215,169 @@ export default function Register() {
         </div>
 
         <div className={`rounded-3xl border p-6 md:p-8 ${t.card}`}>
-          {done ? (
-            <div className="flex flex-col items-center text-center gap-3 py-4">
-              <div className="w-14 h-14 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
-                <CheckCircle2 className="w-7 h-7 text-emerald-500" />
-              </div>
-              <h3 className={`text-xl font-bold ${t.text}`}>Demande reçue !</h3>
-              <p className={t.textMuted}>
-                Notre équipe vous contacte dans les 24 h pour activer votre essai.
-              </p>
-              <p dir="rtl" lang="ar" className={`text-sm ${t.textSubtle}`}>
-                تم استلام طلبك! سيتصل بك فريقنا خلال 24 ساعة.
-              </p>
-              {done.duplicate && (
-                <p className={`text-[11px] mt-2 ${t.textSubtle}`}>
-                  Nous avons déjà vos coordonnées — un membre de l&apos;équipe vous recontactera.
+          <div className="text-center">
+            <h1 className={`text-2xl md:text-3xl font-black tracking-tight ${t.text}`}>
+              Démarrer votre essai gratuit
+            </h1>
+            <p className={`mt-2 text-sm ${t.textMuted}`}>
+              20 jours gratuits • Sans carte bancaire
+            </p>
+            <p dir="rtl" lang="ar" className={`mt-1 text-xs ${t.textSubtle}`}>
+              ابدأ تجربتك المجانية — 20 يوم مجاناً
+            </p>
+          </div>
+
+          <form onSubmit={submit} className="mt-6 space-y-4">
+            <Field label="Nom du showroom *" t={t}>
+              <input
+                type="text"
+                required
+                value={form.showroom_name}
+                onChange={(e) => setForm({ ...form, showroom_name: e.target.value })}
+                placeholder="ex. AutoSphère Alger"
+                className={inputCls}
+              />
+            </Field>
+
+            <Field label="Nom complet (propriétaire) *" t={t}>
+              <input
+                type="text"
+                required
+                value={form.full_name}
+                onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+                placeholder="ex. Karim Benali"
+                className={inputCls}
+                dir="auto"
+              />
+            </Field>
+
+            <Field label="Téléphone *" t={t}>
+              <input
+                type="tel"
+                required
+                value={form.phone}
+                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                placeholder="0555 XX XX XX (Algérie)"
+                className={inputCls}
+              />
+            </Field>
+
+            <Field label="Email *" t={t}>
+              <input
+                type="email"
+                required
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                placeholder="ex. proprietaire@showroom.dz"
+                className={inputCls}
+                autoComplete="email"
+              />
+            </Field>
+
+            <Field label="Mot de passe *" t={t}>
+              <input
+                type="password"
+                required
+                minLength={8}
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                placeholder="8 caractères minimum"
+                className={inputCls}
+                autoComplete="new-password"
+              />
+              {form.password && (
+                <div className="mt-2 flex items-center gap-2">
+                  <div className={`flex-1 h-1.5 rounded-full overflow-hidden ${t.strengthBg}`}>
+                    <div className={cn('h-full transition-all duration-200', meta.color, meta.widthClass)} />
+                  </div>
+                  <span className={`text-[10px] font-black uppercase tracking-widest w-12 text-right ${t.fieldLabel}`}>
+                    {meta.label}
+                  </span>
+                </div>
+              )}
+            </Field>
+
+            <Field label="Confirmer le mot de passe *" t={t}>
+              <input
+                type="password"
+                required
+                minLength={8}
+                value={form.password_confirm}
+                onChange={(e) => setForm({ ...form, password_confirm: e.target.value })}
+                className={cn(
+                  'w-full h-11 px-3 rounded-xl border outline-none text-sm transition focus:ring-2',
+                  mismatch
+                    ? (isDark
+                        ? 'bg-zinc-950/80 border-rose-400 text-white placeholder:text-zinc-600 focus:border-rose-400 focus:ring-rose-500/30'
+                        : 'bg-white border-rose-400 text-zinc-900 focus:border-rose-400 focus:ring-rose-500/20')
+                    : t.input,
+                )}
+                autoComplete="new-password"
+              />
+              {mismatch && (
+                <p className="mt-1 text-[11px] text-rose-600 dark:text-rose-400">
+                  Les deux mots de passe ne correspondent pas.
                 </p>
               )}
-              <Link
-                href="/"
-                className="mt-3 px-5 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold transition-colors"
+            </Field>
+
+            <Field label="Wilaya *" t={t}>
+              <select
+                required
+                value={form.wilaya}
+                onChange={(e) => setForm({ ...form, wilaya: e.target.value })}
+                className={inputCls}
               >
-                Retour à l&apos;accueil
-              </Link>
-            </div>
-          ) : (
-            <>
-              <div className="text-center">
-                <h1 className={`text-2xl md:text-3xl font-black tracking-tight ${t.text}`}>
-                  Démarrer votre essai gratuit
-                </h1>
-                <p className={`mt-2 text-sm ${t.textMuted}`}>
-                  20 jours gratuits • Sans carte bancaire
-                </p>
-                <p dir="rtl" lang="ar" className={`mt-1 text-xs ${t.textSubtle}`}>
-                  ابدأ تجربتك المجانية — 20 يوم مجاناً
-                </p>
+                <option value="">— Choisir —</option>
+                {WILAYAS_58.map((w, i) => (
+                  <option key={w} value={w}>
+                    {String(i + 1).padStart(2, '0')} - {w}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            <Field label="Taille du showroom" t={t}>
+              <select
+                value={form.showroom_size}
+                onChange={(e) => setForm({ ...form, showroom_size: e.target.value as FormState['showroom_size'] })}
+                className={inputCls}
+              >
+                <option value="">— Optionnel —</option>
+                {SHOWROOM_SIZE_OPTS.map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </Field>
+
+            {error && (
+              <div className={`flex items-start gap-2 rounded-xl border px-3 py-2.5 text-sm ${t.formError}`}>
+                <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                <span>{error}</span>
               </div>
+            )}
 
-              <form onSubmit={submit} className="mt-6 space-y-4">
-                <Field label="Nom du showroom *" t={t}>
-                  <input
-                    type="text"
-                    required
-                    value={form.showroom_name}
-                    onChange={(e) => setForm({ ...form, showroom_name: e.target.value })}
-                    placeholder="ex. AutoSphère Alger"
-                    className={inputCls}
-                  />
-                </Field>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full h-12 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-bold text-base shadow-xl shadow-violet-900/30 transition-all disabled:opacity-60 inline-flex items-center justify-center gap-2"
+            >
+              {submitting ? 'Création…' : (
+                <><Sparkles className="w-4 h-4" /> Créer mon essai gratuit</>
+              )}
+            </button>
+            <p className={`text-[11px] text-center ${t.textSubtle} inline-flex items-center gap-1.5 justify-center w-full`}>
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+              Compte actif en 1 minute · Aucune carte bancaire requise
+            </p>
+          </form>
 
-                <Field label="Nom complet (propriétaire) *" t={t}>
-                  <input
-                    type="text"
-                    required
-                    value={form.full_name}
-                    onChange={(e) => setForm({ ...form, full_name: e.target.value })}
-                    placeholder="ex. Karim Benali"
-                    className={inputCls}
-                    dir="auto"
-                  />
-                </Field>
-
-                <Field label="Téléphone *" t={t}>
-                  <input
-                    type="tel"
-                    required
-                    value={form.phone}
-                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                    placeholder="0555 XX XX XX (Algérie)"
-                    className={inputCls}
-                  />
-                </Field>
-
-                <Field label="Email *" t={t}>
-                  <input
-                    type="email"
-                    required
-                    value={form.email}
-                    onChange={(e) => setForm({ ...form, email: e.target.value })}
-                    placeholder="ex. proprietaire@showroom.dz"
-                    className={inputCls}
-                  />
-                </Field>
-
-                <Field label="Wilaya *" t={t}>
-                  <select
-                    required
-                    value={form.wilaya}
-                    onChange={(e) => setForm({ ...form, wilaya: e.target.value })}
-                    className={inputCls}
-                  >
-                    <option value="">— Choisir —</option>
-                    {WILAYAS_58.map((w, i) => (
-                      <option key={w} value={w}>
-                        {String(i + 1).padStart(2, '0')} - {w}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-
-                <Field label="Taille du showroom" t={t}>
-                  <select
-                    value={form.showroom_size}
-                    onChange={(e) => setForm({ ...form, showroom_size: e.target.value as FormState['showroom_size'] })}
-                    className={inputCls}
-                  >
-                    <option value="">— Optionnel —</option>
-                    {SHOWROOM_SIZE_OPTS.map(o => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
-                </Field>
-
-                {error && (
-                  <div className={`flex items-start gap-2 rounded-xl border px-3 py-2.5 text-sm ${t.formError}`}>
-                    <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                    <span>{error}</span>
-                  </div>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="w-full h-12 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-bold text-base shadow-xl shadow-violet-900/30 transition-all disabled:opacity-60 inline-flex items-center justify-center gap-2"
-                >
-                  {submitting ? 'Envoi…' : (
-                    <><Sparkles className="w-4 h-4" /> Créer mon essai gratuit</>
-                  )}
-                </button>
-              </form>
-
-              <p className={`mt-5 text-center text-sm ${t.textMuted}`}>
-                Vous avez déjà un compte ?{' '}
-                <Link href="/login" className={`font-bold ${t.accent} hover:underline`}>
-                  Connexion →
-                </Link>
-              </p>
-            </>
-          )}
+          <p className={`mt-5 text-center text-sm ${t.textMuted}`}>
+            Vous avez déjà un compte ?{' '}
+            <Link href="/login" className={`font-bold ${t.accent} hover:underline`}>
+              Connexion →
+            </Link>
+          </p>
         </div>
       </div>
     </div>
