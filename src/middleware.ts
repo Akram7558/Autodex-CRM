@@ -93,12 +93,12 @@ export async function middleware(req: NextRequest) {
     console.log('[mw]', pathname, '· user:', user?.id ?? 'none', '· email:', user?.email ?? 'none')
   }
 
-  // 1. Not signed in → bounce to landing.
+  // 1. Not signed in → bounce to login (root `/` is now the public landing).
   if (!user) {
     const url = req.nextUrl.clone()
-    url.pathname = '/'
+    url.pathname = '/login'
     url.searchParams.set('redirect', pathname)
-    if (DEBUG) console.log('[mw] redirect → / (no session)')
+    if (DEBUG) console.log('[mw] redirect → /login (no session)')
     return NextResponse.redirect(url)
   }
 
@@ -113,12 +113,12 @@ export async function middleware(req: NextRequest) {
     console.log('[mw] role lookup:', roleRow?.role ?? 'none', '· err:', roleErr?.message ?? 'none')
   }
 
-  // No role provisioned → bounce to landing.
+  // No role provisioned → bounce to login.
   if (!roleRow) {
     const url = req.nextUrl.clone()
-    url.pathname = '/'
+    url.pathname = '/login'
     url.searchParams.set('error', 'no_role')
-    if (DEBUG) console.log('[mw] redirect → / (no role row)')
+    if (DEBUG) console.log('[mw] redirect → /login (no role row)')
     return NextResponse.redirect(url)
   }
 

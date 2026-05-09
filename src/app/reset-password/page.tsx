@@ -77,7 +77,7 @@ export default function ResetPasswordPage() {
     // Sign out so the user lands on the login page in a clean state.
     await supabase.auth.signOut()
     setTimeout(() => {
-      window.location.href = '/?reset=success'
+      window.location.href = '/login?reset=success'
     }, 1500)
   }
 
@@ -109,7 +109,7 @@ export default function ResetPasswordPage() {
             <p className="text-red-400 text-sm">{tokenError}</p>
             <Button
               type="button"
-              onClick={() => { window.location.href = '/' }}
+              onClick={() => { window.location.href = '/login' }}
               className="w-full h-10 bg-white text-black hover:bg-white/90 font-medium mt-2"
             >
               Retour à la connexion
