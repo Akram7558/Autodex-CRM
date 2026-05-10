@@ -1,12 +1,14 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'motion/react'
 import {
-  Globe2, Phone as PhoneIcon, MapPin, Image as ImageIcon, Clock,
+  Globe2, Phone as PhoneIcon, MapPin, Clock,
   Copy, CheckCircle2, ExternalLink, AlertTriangle,
+  Camera, Loader2, X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { supabase } from '@/lib/supabase'
 import type { ShowroomOpeningHours, ShowroomPublicInfo } from '@/lib/types'
 
 // ─────────────────────────────────────────────────────────────────────
@@ -73,6 +75,94 @@ export default function ShowroomParametresPage() {
   const [toast,  setToast]  = useState<string | null>(null)
   function flashToast(msg: string) { setToast(msg); setTimeout(() => setToast(null), 2500) }
   const [copied, setCopied] = useState(false)
+
+  // ── Logo upload (Supabase Storage, same `vehicules` bucket as
+  //    vehicle / preorder images, scoped under `showroom-logos/<id>/...`).
+  //    The PUT to /api/showroom/public-info happens immediately on
+  //    upload so the new logo persists even if the user navigates away
+  //    before clicking Enregistrer; we still mirror the value into the
+  //    `logoUrl` state so the save-everything flow keeps working.
+  const logoFileRef = useRef<HTMLInputElement | null>(null)
+  const [logoUploading, setLogoUploading] = useState(false)
+  const [logoError, setLogoError] = useState<string | null>(null)
+
+  async function persistLogo(url: string | null) {
+    const res = await fetch('/api/showroom/public-info', {
+      method:  'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ logo_url: url }),
+    })
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}))
+      throw new Error(j?.error ?? 'Erreur de mise à jour.')
+    }
+    const json = await res.json().catch(() => ({}))
+    if (json.showroom) setInfo(json.showroom as ShowroomPublicInfo)
+  }
+
+  async function handleLogoFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      setLogoError('Format image requis (JPEG, PNG, WebP, SVG…).')
+      return
+    }
+    if (!info?.id) {
+      setLogoError('Showroom non chargé — réessayez dans un instant.')
+      return
+    }
+
+    const prev = logoUrl
+    const safeFilename = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+    const path = `showroom-logos/${info.id}/${Date.now()}-${safeFilename}`
+
+    setLogoUploading(true)
+    setLogoError(null)
+
+    const { error: upErr } = await supabase.storage
+      .from('vehicules')
+      .upload(path, file, { upsert: true, cacheControl: '3600' })
+    if (upErr) {
+      setLogoUploading(false)
+      setLogoError(upErr.message)
+      return
+    }
+    const { data: pub } = supabase.storage.from('vehicules').getPublicUrl(path)
+    const publicUrl = pub.publicUrl
+
+    // Optimistic paint.
+    setLogoUrl(publicUrl)
+
+    try {
+      await persistLogo(publicUrl)
+      flashToast('Logo mis à jour')
+    } catch (err) {
+      // Revert on failure.
+      setLogoUrl(prev)
+      setLogoError(err instanceof Error ? err.message : 'Erreur de mise à jour.')
+    } finally {
+      setLogoUploading(false)
+    }
+  }
+
+  async function removeLogo() {
+    if (!logoUrl) return
+    if (!confirm('Supprimer le logo ?')) return
+    const prev = logoUrl
+    setLogoUrl('')
+    setLogoUploading(true)
+    setLogoError(null)
+    try {
+      await persistLogo(null)
+      flashToast('Logo supprimé')
+    } catch (err) {
+      setLogoUrl(prev)
+      setLogoError(err instanceof Error ? err.message : 'Erreur de mise à jour.')
+    } finally {
+      setLogoUploading(false)
+    }
+  }
 
   async function fetchInfo() {
     setLoading(true); setLoadError('')
@@ -303,20 +393,79 @@ export default function ShowroomParametresPage() {
           </p>
         </Field>
 
-        <Field label="Logo (URL)">
-          <div className="relative">
-            <ImageIcon className="absolute left-3 top-3 w-4 h-4 text-zinc-400 pointer-events-none" />
-            <input
-              type="url"
-              value={logoUrl}
-              onChange={(e) => setLogoUrl(e.target.value)}
-              placeholder="https://…/logo.png"
-              className="w-full h-10 pl-9 pr-3 rounded-lg border border-border bg-background text-foreground text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20"
-            />
+        <Field label="Logo">
+          <div className="flex items-start gap-3">
+            <button
+              type="button"
+              onClick={() => logoFileRef.current?.click()}
+              disabled={logoUploading || !info?.id}
+              className={cn(
+                'group relative size-[120px] shrink-0 rounded-xl border-2 border-dashed flex items-center justify-center overflow-hidden transition-colors',
+                logoUrl
+                  ? 'border-zinc-300 dark:border-zinc-700 hover:border-violet-400'
+                  : 'border-zinc-300 dark:border-zinc-700 hover:border-violet-400 bg-zinc-50 dark:bg-zinc-950',
+                logoUploading && 'cursor-wait',
+                !info?.id && 'opacity-60 cursor-not-allowed',
+              )}
+              aria-label={logoUrl ? 'Modifier le logo' : 'Ajouter le logo'}
+            >
+              {logoUrl ? (
+                <>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={logoUrl}
+                    alt="Logo du showroom"
+                    className="absolute inset-0 w-full h-full object-contain p-2 bg-white dark:bg-zinc-900"
+                  />
+                  <span className="absolute inset-0 bg-zinc-900/0 group-hover:bg-zinc-900/40 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-white">
+                      <Camera className="size-3.5" /> Modifier
+                    </span>
+                  </span>
+                </>
+              ) : (
+                <div className="flex flex-col items-center gap-1.5 px-3 text-center">
+                  <Camera className="size-6 text-zinc-400 group-hover:text-violet-500 transition-colors" />
+                  <span className="text-[10px] font-medium text-zinc-500 dark:text-zinc-400 leading-tight">
+                    Cliquez pour ajouter votre logo
+                  </span>
+                </div>
+              )}
+
+              {logoUploading && (
+                <div className="absolute inset-0 bg-background/60 backdrop-blur-[2px] flex items-center justify-center z-10">
+                  <Loader2 className="size-5 text-violet-600 animate-spin" />
+                </div>
+              )}
+
+              <input
+                ref={logoFileRef}
+                type="file"
+                accept="image/*"
+                onChange={handleLogoFile}
+                className="hidden"
+              />
+            </button>
+
+            <div className="flex-1 min-w-0 pt-1">
+              <p className="text-xs text-muted-foreground">
+                Format carré recommandé (PNG ou SVG transparent), 512×512 px.
+              </p>
+              {logoUrl && (
+                <button
+                  type="button"
+                  onClick={removeLogo}
+                  disabled={logoUploading}
+                  className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 disabled:opacity-50"
+                >
+                  <X className="size-3" /> Supprimer le logo
+                </button>
+              )}
+              {logoError && (
+                <p className="mt-2 text-[11px] text-rose-600 dark:text-rose-400">{logoError}</p>
+              )}
+            </div>
           </div>
-          <p className="mt-1 text-[11px] text-muted-foreground">
-            Upload d&apos;image direct à venir.
-          </p>
         </Field>
       </motion.section>
 
