@@ -161,7 +161,7 @@ export async function POST(req: NextRequest, { params }: RouteCtx) {
           source:      'website',  // Lead.source enum doesn't have 'catalogue_public'
           notes:       noteBody,
           vehicle_id:  resolvedVehicleId,
-          suivi:       'tentative_1',  // 'nouveau' isn't in LeadSuivi enum; first-touch
+          suivi:       'nouveau',  // catalog leads start as "Nouveau" — owner triages from there
           status:      'new',
           // migration_27: discriminator so /dashboard/leads can split
           // these into "Commandes véhicules" vs "Pré-commandes" tabs.
