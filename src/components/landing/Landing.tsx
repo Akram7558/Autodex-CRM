@@ -237,33 +237,37 @@ function Navbar({ t, onToggleTheme }: { t: Theme; onToggleTheme: () => void }) {
             Connexion
           </Link>
         </div>
-        <button
-          onClick={() => setOpen(o => !o)}
-          aria-label="Menu"
-          className={`md:hidden p-2 rounded-lg transition-colors ${t.navIcon}`}
-        >
-          {open ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-        </button>
+        {/* ── Mobile right cluster ───────────────────────────────────
+            CTAs are always visible on mobile (per spec), shrunken to
+            fit alongside the logo + hamburger. The hamburger sheet
+            below now only contains the anchor links. */}
+        <div className="md:hidden flex items-center gap-1.5">
+          <Link
+            href="/register"
+            className="px-3 py-1.5 rounded-full bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold transition-colors whitespace-nowrap"
+          >
+            Essayer
+          </Link>
+          <Link
+            href="/login"
+            className="px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold transition-colors whitespace-nowrap"
+          >
+            Connexion
+          </Link>
+          <button
+            onClick={() => setOpen(o => !o)}
+            aria-label="Menu"
+            className={`p-2 rounded-lg transition-colors ${t.navIcon}`}
+          >
+            {open ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+        </div>
       </div>
       {open && (
         <div className={`md:hidden border-t backdrop-blur-md px-4 py-3 space-y-2 ${t.navbarMobileSheet}`}>
           <a href="#features" onClick={() => setOpen(false)} className={`block py-2 text-sm ${t.navLink}`}>Fonctionnalités</a>
           <a href="#tarifs"   onClick={() => setOpen(false)} className={`block py-2 text-sm ${t.navLink}`}>Tarifs</a>
           <a href="#contact"  onClick={() => setOpen(false)} className={`block py-2 text-sm ${t.navLink}`}>Contact</a>
-          <Link
-            href="/register"
-            onClick={() => setOpen(false)}
-            className="block px-4 py-2 mt-2 rounded-full bg-orange-500 hover:bg-orange-600 text-white text-center font-semibold"
-          >
-            Essayer gratuitement
-          </Link>
-          <Link
-            href="/login"
-            onClick={() => setOpen(false)}
-            className="block px-4 py-2 rounded-xl bg-violet-600 text-white text-center font-bold"
-          >
-            Connexion
-          </Link>
         </div>
       )}
     </header>
