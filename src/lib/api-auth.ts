@@ -92,6 +92,39 @@ export type InternalAuthContext = AuthContext & { role: InternalRole }
 const INTERNAL_ROLES: InternalRole[] = ['super_admin', 'commercial', 'prospecteur_saas']
 
 /**
+ * Like `requireShowroomMember`, but additionally restricts to roles
+ * `owner` or `manager` (or `super_admin` as a global override). Used
+ * by showroom-side admin endpoints — "Paramètres", preorder vehicles,
+ * etc. Returns the resolved showroom_id alongside the role.
+ */
+export type ShowroomAdminContext = AuthContext & {
+  role: 'owner' | 'manager' | 'super_admin'
+  showroomId: string | null
+  isSuperAdmin: boolean
+}
+export async function requireShowroomAdmin(
+  req: NextRequest,
+): Promise<ShowroomAdminContext> {
+  const ctx = await requireUser(req)
+  const { data: roleRow, error } = await ctx.authSb
+    .from('user_roles')
+    .select('role, showroom_id')
+    .eq('user_id', ctx.user.id)
+    .maybeSingle()
+  if (error) throw new ApiError(500, error.message)
+  const role = roleRow?.role as 'owner' | 'manager' | 'super_admin' | undefined
+  if (role !== 'owner' && role !== 'manager' && role !== 'super_admin') {
+    throw new ApiError(403, 'Accès refusé.')
+  }
+  return {
+    ...ctx,
+    role,
+    showroomId:    (roleRow?.showroom_id as string | null) ?? null,
+    isSuperAdmin:  role === 'super_admin',
+  }
+}
+
+/**
  * Verifies the caller is a member of the AutoDex internal team
  * (super_admin / commercial / prospecteur_saas). Server-derived role —
  * never trust client input. Throws 401/403 on failure.

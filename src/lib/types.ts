@@ -1,3 +1,12 @@
+// ── Public catalog opening-hours JSONB ──────────────────────────────
+// Keys are French day names (lowercase). Values are either "HH:MM-HH:MM"
+// or the literal "fermé" (closed). Free-form-tolerant so the form can
+// trim and the public renderer falls back gracefully.
+export type ShowroomOpeningHours = Partial<Record<
+  'lundi' | 'mardi' | 'mercredi' | 'jeudi' | 'vendredi' | 'samedi' | 'dimanche',
+  string
+>>
+
 export type Showroom = {
   id: string
   name: string
@@ -9,6 +18,13 @@ export type Showroom = {
   module_vente?: boolean
   module_location?: boolean
   active?: boolean
+  // Public-catalog fields (migration_25_public_catalog.sql)
+  slug?: string | null
+  whatsapp?: string | null
+  google_maps_url?: string | null
+  logo_url?: string | null
+  opening_hours?: ShowroomOpeningHours | null
+  catalog_enabled?: boolean
   // Trial tracking (migration_22_trial_system.sql)
   is_trial?: boolean
   trial_ends_at?: string | null
@@ -19,6 +35,47 @@ export type Showroom = {
   // conversion via /api/admin/convert-trial.
   plan_id?: string | null
   created_at: string
+}
+
+// ── Public catalog (migration_25_public_catalog.sql) ────────────────
+export type PreorderVehicle = {
+  id: string
+  showroom_id: string
+  marque: string
+  modele: string
+  annee: number | null
+  prix_estime: number | null
+  description: string | null
+  image_url: string | null
+  delai_livraison: string | null
+  disponible: boolean
+  created_at: string
+  updated_at: string
+}
+
+/** Subset of `Showroom` columns that owners edit on /dashboard/parametres. */
+export type ShowroomPublicInfo = {
+  id: string
+  name: string
+  slug: string | null
+  city: string | null
+  phone: string | null
+  whatsapp: string | null
+  address: string | null
+  google_maps_url: string | null
+  logo_url: string | null
+  opening_hours: ShowroomOpeningHours | null
+  catalog_enabled: boolean
+}
+
+export type CatalogOrderType = 'vehicle' | 'preorder'
+export type CatalogOrderInput = {
+  full_name: string
+  phone: string
+  message?: string | null
+  vehicle_id?: string | null
+  preorder_id?: string | null
+  type: CatalogOrderType
 }
 
 // ── SaaS subscription plans (migration_23_plans.sql, plan_type added in 24) ──

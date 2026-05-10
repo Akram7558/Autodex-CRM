@@ -21,6 +21,7 @@ import {
   Building2,
   ScrollText,
   Shield,
+  Package,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
@@ -35,8 +36,11 @@ const navItems = [
   { href: '/dashboard/rendez-vous', label: 'Rendez-vous',     icon: CalendarClock },
   { href: '/dashboard/ventes',      label: 'Ventes',          icon: BadgeDollarSign },
   { href: '/dashboard/vehicules',   label: 'Véhicules',       icon: Car },
+  { href: '/dashboard/precommandes', label: 'Pré-commandes',  icon: Package },
   { href: '/dashboard/activites',   label: 'Activités',       icon: Activity },
   { href: '/dashboard/alerts',      label: 'Alertes',         icon: BellRing },
+  // `Paramètres` is rendered in the sidebar footer (`!isInternalTeam`
+  // block) so we don't duplicate it in the main nav.
 ]
 
 // ── Super-admin sidebar ────────────────────────────────────────────

@@ -145,6 +145,7 @@ const ROUTE_ACL: Array<{ prefix: string; allow: AppRole[] }> = [
   { prefix: '/dashboard/settings/integrations',  allow: ['super_admin', 'owner', 'manager'] },
   { prefix: '/dashboard/alerts',                 allow: ['super_admin', 'owner', 'manager'] },
   { prefix: '/dashboard/ventes',                 allow: ['super_admin', 'owner', 'manager'] },
+  { prefix: '/dashboard/precommandes',           allow: ['super_admin', 'owner', 'manager'] },
 
   { prefix: '/dashboard/rendez-vous', allow: ['super_admin', 'owner', 'manager', 'closer'] },
   { prefix: '/dashboard/vehicules',   allow: ['super_admin', 'owner', 'manager', 'closer', 'prospecteur'] },
