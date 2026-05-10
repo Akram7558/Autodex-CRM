@@ -51,6 +51,16 @@ export async function POST(req: NextRequest) {
     if (prix_estime !== null && (!Number.isFinite(prix_estime) || prix_estime < 0)) {
       return NextResponse.json({ error: 'Prix estimé invalide.' }, { status: 400 })
     }
+    const budget_dedouanement =
+      body.budget_dedouanement != null && body.budget_dedouanement !== ''
+        ? Number(body.budget_dedouanement)
+        : null
+    if (
+      budget_dedouanement !== null &&
+      (!Number.isFinite(budget_dedouanement) || budget_dedouanement < 0)
+    ) {
+      return NextResponse.json({ error: 'Budget dédouanement invalide.' }, { status: 400 })
+    }
     const description     = body.description     ? String(body.description).trim()     : null
     const image_url       = body.image_url       ? String(body.image_url).trim()       : null
     const delai_livraison = body.delai_livraison ? String(body.delai_livraison).trim() : null
@@ -64,6 +74,7 @@ export async function POST(req: NextRequest) {
         modele,
         annee,
         prix_estime,
+        budget_dedouanement,
         description,
         image_url,
         delai_livraison,

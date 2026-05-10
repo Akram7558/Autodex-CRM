@@ -50,6 +50,15 @@ export async function PATCH(req: NextRequest, { params }: RouteCtx) {
       }
       updates.prix_estime = p
     }
+    if (body.budget_dedouanement !== undefined) {
+      const b = body.budget_dedouanement == null || body.budget_dedouanement === ''
+        ? null
+        : Number(body.budget_dedouanement)
+      if (b !== null && (!Number.isFinite(b) || b < 0)) {
+        return NextResponse.json({ error: 'Budget dédouanement invalide.' }, { status: 400 })
+      }
+      updates.budget_dedouanement = b
+    }
     if (body.description     !== undefined) updates.description     = body.description     ? String(body.description).trim()     : null
     if (body.image_url       !== undefined) updates.image_url       = body.image_url       ? String(body.image_url).trim()       : null
     if (body.delai_livraison !== undefined) updates.delai_livraison = body.delai_livraison ? String(body.delai_livraison).trim() : null

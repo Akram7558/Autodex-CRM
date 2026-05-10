@@ -686,14 +686,32 @@ function PreorderCard({
             ? `À partir de ${formatDZD(p.prix_estime)}`
             : 'Prix sur demande'}
         </div>
-        {p.delai_livraison && (
-          <div className="text-xs text-slate-600">
-            <span className="text-slate-500">Délai :</span> {p.delai_livraison}
-          </div>
-        )}
+
+        {/* Compact spec strip — same shape as VehicleCard so the two
+            tabs feel consistent. Only filled fields render. */}
+        <ul className="grid grid-cols-2 gap-1 text-[11px]">
+          {p.annee != null && (
+            <li className="rounded-md bg-amber-50 px-2 py-1 text-slate-700 truncate">
+              <span className="text-slate-500">Année : </span>{p.annee}
+            </li>
+          )}
+          {p.delai_livraison && (
+            <li className="rounded-md bg-amber-50 px-2 py-1 text-slate-700 truncate">
+              <span className="text-slate-500">Délai : </span>{p.delai_livraison}
+            </li>
+          )}
+          {p.budget_dedouanement != null && (
+            <li className="rounded-md bg-amber-50 px-2 py-1 text-slate-700 truncate col-span-2">
+              <span className="text-slate-500">Budget dédouanement : </span>
+              {formatDZD(p.budget_dedouanement)}
+            </li>
+          )}
+        </ul>
+
         {p.description && (
           <p className="text-xs text-slate-600 line-clamp-3">{p.description}</p>
         )}
+
         <div className="mt-auto pt-2">
           <button
             onClick={onOrder}

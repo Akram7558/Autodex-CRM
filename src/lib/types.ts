@@ -38,6 +38,9 @@ export type Showroom = {
 }
 
 // ── Public catalog (migration_25_public_catalog.sql) ────────────────
+// `budget_dedouanement` added by migration_26_preorder_fields.sql —
+// optional customs / clearance budget in DZD, shown alongside the price
+// on both the dashboard card and the public catalog.
 export type PreorderVehicle = {
   id: string
   showroom_id: string
@@ -45,6 +48,7 @@ export type PreorderVehicle = {
   modele: string
   annee: number | null
   prix_estime: number | null
+  budget_dedouanement: number | null
   description: string | null
   image_url: string | null
   delai_livraison: string | null
