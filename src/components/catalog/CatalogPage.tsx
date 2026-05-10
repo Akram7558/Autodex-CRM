@@ -431,20 +431,43 @@ export default function CatalogPage({
             )}
           </div>
 
-          {/* Map (right column hidden when no URL) */}
+          {/* Map link card (right column hidden when no URL).
+              We deliberately do NOT iframe the URL — Google's regular
+              maps.app.goo.gl / google.com/maps share links refuse to
+              be embedded (X-Frame-Options: DENY), which would surface
+              "refused to connect" on the visitor's screen. A clickable
+              preview card works with any URL the owner pastes. */}
           {showroom.google_maps_url && (
             <div>
               <h2 className="text-lg font-semibold text-slate-900 mb-4">Localisation</h2>
-              <div className="rounded-xl overflow-hidden border border-slate-200 bg-white aspect-[4/3]">
-                <iframe
-                  src={showroom.google_maps_url}
-                  title={`Carte — ${showroom.name}`}
-                  className="w-full h-full"
-                  loading="lazy"
-                  allowFullScreen
-                  referrerPolicy="no-referrer-when-downgrade"
-                />
-              </div>
+              <a
+                href={showroom.google_maps_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group block rounded-xl border border-slate-200 bg-zinc-100 hover:bg-zinc-50 hover:shadow-lg hover:scale-[1.01] transition-all duration-200 aspect-[4/3] overflow-hidden"
+                aria-label="Ouvrir l'itinéraire sur Google Maps"
+              >
+                <div className="w-full h-full flex flex-col items-center justify-center text-center px-6 py-8 gap-3">
+                  <div className="size-14 rounded-full bg-violet-100 ring-1 ring-violet-200 flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <MapPin className="size-7 text-violet-600" />
+                  </div>
+                  <div>
+                    <p className="text-base font-semibold text-slate-900">
+                      📍 Voir sur Google Maps
+                    </p>
+                    {(showroom.address || showroom.city) && (
+                      <p className="mt-1 text-sm text-slate-600 line-clamp-2">
+                        {showroom.address}
+                        {showroom.address && showroom.city ? ', ' : ''}
+                        {showroom.city ?? ''}
+                      </p>
+                    )}
+                  </div>
+                  <span className="mt-1 inline-flex items-center gap-1.5 text-xs font-medium text-violet-700 group-hover:text-violet-800">
+                    Ouvrir l&apos;itinéraire →
+                  </span>
+                </div>
+              </a>
             </div>
           )}
         </div>
