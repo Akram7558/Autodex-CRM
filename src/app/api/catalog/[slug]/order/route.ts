@@ -176,15 +176,11 @@ export async function POST(req: NextRequest, { params }: RouteCtx) {
       createdNew = true
     }
 
-    // ── Auto-reserve the in-stock vehicle (best-effort) ─────────────
-    if (resolvedVehicleId && leadId) {
-      await admin
-        .from('vehicles')
-        .update({ status: 'reserved', reserved_by_lead_id: leadId })
-        .eq('id', resolvedVehicleId)
-        .eq('status', 'available')   // don't clobber a sold/already-reserved one
-        .then(() => {}, () => {})
-    }
+    // ── Vehicle status intentionally NOT touched here ───────────────
+    // The vehicle stays "disponible" until the owner manually moves
+    // the lead's suivi to a state that triggers reservation (e.g. the
+    // deposit flow on /dashboard/leads). Catalog orders are
+    // expressions of interest, not confirmed holds.
 
     // ── Notify the showroom owner (best-effort) ─────────────────────
     if (showroom.owner_email) {
