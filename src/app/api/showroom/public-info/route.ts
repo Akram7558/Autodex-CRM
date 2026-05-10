@@ -6,11 +6,25 @@
 // ─────────────────────────────────────────────────────────────────────
 
 import { NextResponse, type NextRequest } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 import { requireShowroomAdmin, errorResponse, ApiError } from '@/lib/api-auth'
 import { tryNormalizePhone } from '@/lib/phone'
 import type { ShowroomOpeningHours } from '@/lib/types'
 
 export const runtime = 'nodejs'
+
+// Service-role client. Auth is enforced upstream by `requireShowroomAdmin`
+// (verifies the caller is owner/manager of `ctx.showroomId`); we still
+// scope every query by id so service-role can't be used to read or write
+// another tenant's row.
+function adminClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !key) throw new ApiError(500, 'Service role key missing.')
+  return createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
+}
 
 const PUBLIC_FIELDS =
   'id, name, slug, city, phone, whatsapp, address, google_maps_url, logo_url, opening_hours, catalog_enabled'
@@ -45,7 +59,12 @@ export async function GET(req: NextRequest) {
       // surface a friendly empty state.
       return NextResponse.json({ showroom: null })
     }
-    const { data, error } = await ctx.authSb
+    // Use service-role here too — caller is already authenticated as an
+    // admin of this showroom_id, and we scope with `.eq('id', ...)`. This
+    // avoids any GET/PUT mismatch where reads work via anon RLS but the
+    // matching write doesn't.
+    const admin = adminClient()
+    const { data, error } = await admin
       .from('showrooms')
       .select(PUBLIC_FIELDS)
       .eq('id', ctx.showroomId)
@@ -85,13 +104,29 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Aucun champ à mettre à jour.' }, { status: 400 })
     }
 
-    const { data, error } = await ctx.authSb
+    // Service-role write. Tenant RLS on `showrooms` may not grant UPDATE
+    // to owner/manager roles — but the caller is already proven to be an
+    // admin of this showroom by `requireShowroomAdmin`, and we scope with
+    // `.eq('id', ctx.showroomId)`, so this is safe.
+    //
+    // Use `.maybeSingle()` (not `.single()`) on the read-back so we don't
+    // throw "Cannot coerce the result to a single JSON object" on the
+    // edge case where the row vanishes mid-request — we'll return a
+    // proper 404 instead.
+    const admin = adminClient()
+    const { data, error } = await admin
       .from('showrooms')
       .update(updates)
       .eq('id', ctx.showroomId)
       .select(PUBLIC_FIELDS)
-      .single()
-    if (error) throw new ApiError(400, error.message)
+      .maybeSingle()
+    if (error) {
+      console.error('[public-info PUT] supabase error:', error)
+      throw new ApiError(400, error.message)
+    }
+    if (!data) {
+      throw new ApiError(404, 'Showroom introuvable.')
+    }
     return NextResponse.json({ showroom: data })
   } catch (err) {
     return errorResponse(err)
