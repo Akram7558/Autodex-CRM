@@ -163,6 +163,9 @@ export async function POST(req: NextRequest, { params }: RouteCtx) {
           vehicle_id:  resolvedVehicleId,
           suivi:       'tentative_1',  // 'nouveau' isn't in LeadSuivi enum; first-touch
           status:      'new',
+          // migration_27: discriminator so /dashboard/leads can split
+          // these into "Commandes véhicules" vs "Pré-commandes" tabs.
+          order_type:  orderType,
         }])
         .select('id')
         .single()

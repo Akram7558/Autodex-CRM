@@ -179,6 +179,12 @@ export type LeadSource =
   | 'whatsapp'
   | 'telephone'
 
+// Catalog order discriminator (migration_27_lead_order_type.sql).
+// 'vehicle'  → ordered an in-stock vehicle from /s/[slug]
+// 'preorder' → placed a pre-order from /s/[slug]
+// null       → regular lead (manual entry, ad campaign, etc.)
+export type LeadOrderType = 'vehicle' | 'preorder'
+
 export type Lead = {
   id: string
   showroom_id: string | null
@@ -191,6 +197,8 @@ export type Lead = {
   source: LeadSource
   status: 'new' | 'contacted' | 'qualified' | 'proposal' | 'won' | 'lost'
   notes: string | null
+  // Catalog order discriminator (migration 27). Null for regular leads.
+  order_type: LeadOrderType | null
   // fields added by migration_01_kanban.sql
   model_wanted: string | null
   budget_dzd: number | null

@@ -22,6 +22,7 @@ import {
   LEAD_STATUS_LABELS,
   type Lead,
   type LeadSuivi,
+  type LeadOrderType,
   type Vehicle,
   LEAD_SUIVI_LABELS,
   LEAD_SUIVI_VALUES,
@@ -97,6 +98,9 @@ export function ProspectsView() {
   const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE)
   const [addOpen, setAddOpen] = useState(false)
   const [suiviFilter, setSuiviFilter] = useState<'all' | LeadSuivi>('all')
+  // migration_27: split catalog leads by order_type. 'all' keeps the
+  // current behaviour (tous les prospects).
+  const [orderTab, setOrderTab] = useState<'all' | LeadOrderType>('all')
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
   const [contactPopover, setContactPopover] = useState<
     { id: string; kind: 'call' | 'msg' } | null
@@ -238,6 +242,22 @@ export function ProspectsView() {
     URL.revokeObjectURL(url)
   }
 
+  // ── Tab counts (migration_27) ───────────────────────────────────
+  // Independent of suivi/search filters so the user sees how many
+  // catalog orders exist regardless of what's currently filtered.
+  // Excludes vendu (sold) leads to stay consistent with the default
+  // "Tous" behaviour below.
+  const orderTabCounts = useMemo(() => {
+    let all = 0, vehicle = 0, preorder = 0
+    for (const l of leads) {
+      if (l.suivi === 'vendu') continue
+      all++
+      if (l.order_type === 'vehicle')  vehicle++
+      else if (l.order_type === 'preorder') preorder++
+    }
+    return { all, vehicle, preorder }
+  }, [leads])
+
   // Real backend rows shaped for the design template — UI structure unchanged.
   const prospectsData = useMemo(() => {
     const term = search.trim().toLowerCase()
@@ -251,6 +271,9 @@ export function ProspectsView() {
         } else if (l.suivi !== suiviFilter) {
           return false
         }
+        // Tab filter (migration_27).
+        if (orderTab !== 'all' && l.order_type !== orderTab) return false
+
         if (!term) return true
         return (
           l.full_name.toLowerCase().includes(term) ||
@@ -278,13 +301,14 @@ export function ProspectsView() {
           isLinked: !!linkedLabel,
           status: toDisplayStatus(l.status),
           suivi: (l.suivi ?? null) as LeadSuivi | null,
+          orderType: (l.order_type ?? null) as LeadOrderType | null,
           notes: l.notes ?? '',
           source: LEAD_SOURCE_LABELS[l.source] ?? l.source,
           date: formatDate(l.created_at),
           isVip: !!(l.budget_dzd && l.budget_dzd >= VIP_BUDGET_THRESHOLD),
         }
       })
-  }, [leads, search, suiviFilter, vehiclesById])
+  }, [leads, search, suiviFilter, orderTab, vehiclesById])
 
   const total = prospectsData.length
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
@@ -346,6 +370,50 @@ export function ProspectsView() {
         transition={{ delay: 0.3 }}
         className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-[2rem] shadow-sm flex flex-col overflow-hidden"
       >
+        {/* Order-type tabs (migration_27).
+            Sits above the search/filter toolbar and applies on top of
+            the existing suivi + search filters. Counts are independent
+            of those filters so users always know how many catalog
+            orders exist. */}
+        <div className="px-6 pt-4 border-b border-slate-100 dark:border-slate-800">
+          <nav className="flex items-center gap-1 -mb-px overflow-x-auto" role="tablist">
+            {(
+              [
+                { key: 'all',      label: 'Tous',                  count: orderTabCounts.all },
+                { key: 'vehicle',  label: '🚗 Commandes véhicules', count: orderTabCounts.vehicle },
+                { key: 'preorder', label: '📦 Pré-commandes',       count: orderTabCounts.preorder },
+              ] as Array<{ key: 'all' | LeadOrderType; label: string; count: number }>
+            ).map((t) => {
+              const active = orderTab === t.key
+              return (
+                <button
+                  key={t.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => { setOrderTab(t.key); setPage(1) }}
+                  className={cn(
+                    'relative px-4 py-3 text-sm font-bold inline-flex items-center gap-2 whitespace-nowrap transition-colors border-b-2',
+                    active
+                      ? 'text-violet-600 border-violet-600 dark:text-violet-400 dark:border-violet-400'
+                      : 'text-slate-500 dark:text-slate-400 border-transparent hover:text-slate-700 dark:hover:text-slate-200',
+                  )}
+                >
+                  <span>{t.label}</span>
+                  <span className={cn(
+                    'inline-flex items-center justify-center min-w-6 h-5 px-1.5 text-[11px] font-black rounded-full',
+                    active
+                      ? 'bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300'
+                      : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
+                  )}>
+                    {t.count}
+                  </span>
+                </button>
+              )
+            })}
+          </nav>
+        </div>
+
         {/* Toolbar (Search & Filters) */}
         <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="relative w-full sm:w-96">
@@ -425,11 +493,21 @@ export function ProspectsView() {
                     </div>
                   </td>
                   <td className="py-4 px-6">
-                    <div className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                    <div className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2 flex-wrap">
                       <span className="truncate">{prospect.car}</span>
                       {prospect.isLinked && (
                         <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-500/20 shrink-0">
                           Lié
+                        </span>
+                      )}
+                      {prospect.orderType === 'vehicle' && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300 border border-emerald-300/50 dark:border-emerald-500/30 shrink-0">
+                          🚗 Véhicule
+                        </span>
+                      )}
+                      {prospect.orderType === 'preorder' && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300 border border-amber-300/50 dark:border-amber-500/30 shrink-0">
+                          📦 Pré-commande
                         </span>
                       )}
                     </div>
