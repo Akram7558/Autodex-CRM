@@ -19,9 +19,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'motion/react'
 import {
   Plus, Pencil, Trash2, X, Package, CheckCircle2,
-  MoreVertical,
+  MoreVertical, Camera, Loader2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { supabase } from '@/lib/supabase'
 import type { PreorderVehicle } from '@/lib/types'
 
 // ─── Form state ────────────────────────────────────────────────────
@@ -34,7 +35,6 @@ type Form = {
   prix_estime: string
   budget_dedouanement: string
   description: string
-  image_url: string
   delai_livraison: string
   disponible: boolean
 }
@@ -47,7 +47,6 @@ const empty: Form = {
   prix_estime: '',
   budget_dedouanement: '',
   description: '',
-  image_url: '',
   delai_livraison: '',
   disponible: true,
 }
@@ -150,7 +149,7 @@ function PreorderCardMenu({
 
 function PreorderCard({
   p, isExpanded, onToggleExpand, menuOpenId, setMenuOpenId,
-  onEdit, onDelete, onToggleAvailable,
+  onEdit, onDelete, onToggleAvailable, onImageUpdated,
 }: {
   p: PreorderVehicle
   isExpanded: boolean
@@ -160,8 +159,64 @@ function PreorderCard({
   onEdit: (p: PreorderVehicle) => void
   onDelete: (p: PreorderVehicle) => void
   onToggleAvailable: (p: PreorderVehicle) => void
+  onImageUpdated: (id: string, url: string | null) => void
 }) {
   const isMenuOpen = menuOpenId === p.id
+  const fileRef = useRef<HTMLInputElement | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [imgError, setImgError] = useState<string | null>(null)
+
+  // Click-to-upload — same flow as VehicleCard.handleFile, but stores files
+  // under `preorders/<id>/...` inside the existing `vehicules` bucket so we
+  // don't need a new bucket / RLS policy.
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      setImgError('Format image requis (JPEG, PNG, WebP…).')
+      return
+    }
+
+    const prev = p.image_url
+    const safeFilename = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+    const path = `preorders/${p.id}/${Date.now()}-${safeFilename}`
+
+    setUploading(true)
+    setImgError(null)
+
+    const { error: upErr } = await supabase.storage
+      .from('vehicules')
+      .upload(path, file, { upsert: true, cacheControl: '3600' })
+    if (upErr) {
+      setUploading(false)
+      setImgError(upErr.message)
+      alert(`Erreur upload : ${upErr.message}`)
+      return
+    }
+    const { data: pub } = supabase.storage.from('vehicules').getPublicUrl(path)
+    const publicUrl = pub.publicUrl
+
+    // Optimistic — paint the new image immediately.
+    onImageUpdated(p.id, publicUrl)
+
+    // Persist via the API so all auth + tenant scoping flows through the
+    // same path as the rest of the page (PATCH already supports image_url
+    // since it's part of the original payload contract).
+    const res = await fetch(`/api/preorder-vehicles/${p.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_url: publicUrl }),
+    })
+    setUploading(false)
+    if (!res.ok) {
+      // Revert and surface the error.
+      onImageUpdated(p.id, prev ?? null)
+      const j = await res.json().catch(() => ({}))
+      setImgError(j?.error ?? 'Erreur de mise à jour.')
+      alert(`Erreur DB : ${j?.error ?? 'Erreur inconnue.'}`)
+    }
+  }
 
   return (
     <div
@@ -172,8 +227,13 @@ function PreorderCard({
           : 'border-border hover:border-primary/40')
       }
     >
-      {/* Image area */}
-      <div className="relative aspect-[4/3] bg-gradient-to-br from-amber-100 via-amber-50 to-orange-50 dark:from-amber-500/15 dark:via-amber-500/5 dark:to-orange-500/10 flex items-center justify-center overflow-hidden">
+      {/* Image area — click to upload */}
+      <button
+        type="button"
+        onClick={() => fileRef.current?.click()}
+        className="group relative aspect-[4/3] bg-gradient-to-br from-amber-100 via-amber-50 to-orange-50 dark:from-amber-500/15 dark:via-amber-500/5 dark:to-orange-500/10 flex items-center justify-center overflow-hidden cursor-pointer w-full"
+        aria-label={p.image_url ? 'Modifier la photo' : 'Ajouter une photo'}
+      >
         {p.image_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -182,17 +242,47 @@ function PreorderCard({
             className="absolute inset-0 w-full h-full object-cover"
           />
         ) : (
-          <Package className="w-14 h-14 text-amber-400/60 dark:text-amber-300/40" />
+          <div className="flex flex-col items-center gap-1.5">
+            <Package className="w-10 h-10 text-amber-400/60 dark:text-amber-300/40" />
+            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-700/80 dark:text-amber-300/80">
+              <Camera className="w-3 h-3" /> Ajouter une photo
+            </span>
+          </div>
         )}
 
-        <span className="absolute top-2 right-2 inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold bg-amber-500/90 text-white shadow-sm z-10">
+        <span className="absolute top-1.5 right-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold bg-amber-500/90 text-white shadow-sm z-10 pointer-events-none">
           📦 Pré-commande
         </span>
-      </div>
+
+        {/* Hover hint (only when an image already exists) */}
+        {p.image_url && (
+          <span className="absolute bottom-1.5 left-1/2 -translate-x-1/2 inline-flex items-center gap-1 rounded-md bg-background/85 backdrop-blur px-2 py-0.5 text-[10px] text-foreground opacity-0 group-hover:opacity-100 transition pointer-events-none">
+            <Camera className="w-3 h-3" /> Modifier la photo
+          </span>
+        )}
+
+        {uploading && (
+          <div className="absolute inset-0 bg-background/60 backdrop-blur-[2px] flex items-center justify-center z-20">
+            <Loader2 className="w-5 h-5 text-primary animate-spin" />
+          </div>
+        )}
+
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          onChange={handleFile}
+          className="hidden"
+        />
+      </button>
+
+      {imgError && (
+        <p className="px-3 pt-2 text-[10px] text-rose-600 dark:text-rose-400">{imgError}</p>
+      )}
 
       {/* Body — clickable region for expand */}
       <div
-        className="p-4 flex-1 flex flex-col cursor-pointer"
+        className="p-3 flex-1 flex flex-col cursor-pointer"
         role="button"
         tabIndex={0}
         aria-expanded={isExpanded}
@@ -204,17 +294,17 @@ function PreorderCard({
           }
         }}
       >
-        <div className="flex items-start justify-between gap-2">
+        <div className="flex items-start justify-between gap-1.5">
           <div className="min-w-0">
-            <h3 className="text-sm font-semibold text-foreground leading-tight truncate">
+            <h3 className="text-[13px] font-semibold text-foreground leading-tight truncate">
               {p.marque} {p.modele}
               {p.annee ? <span className="text-muted-foreground font-normal"> · {p.annee}</span> : null}
             </h3>
-            <p className="text-sm font-bold text-foreground mt-1">
+            <p className="text-[13px] font-bold text-foreground mt-0.5">
               {p.prix_estime != null ? (
-                <>{formatDzd(p.prix_estime)} <span className="text-[10px] font-medium text-muted-foreground">DZD</span></>
+                <>{formatDzd(p.prix_estime)} <span className="text-[9px] font-medium text-muted-foreground">DZD</span></>
               ) : (
-                <span className="text-muted-foreground font-normal">Prix sur demande</span>
+                <span className="text-muted-foreground font-normal text-xs">Prix sur demande</span>
               )}
             </p>
           </div>
@@ -229,27 +319,24 @@ function PreorderCard({
         </div>
 
         {/* Visible specs (only when filled) */}
-        <div className="mt-2 space-y-0.5">
-          {p.annee != null && (
-            <p className="text-xs text-muted-foreground">Année : {p.annee}</p>
-          )}
+        <div className="mt-1.5 space-y-0.5">
           {p.delai_livraison && (
-            <p className="text-xs text-muted-foreground">Délai : {p.delai_livraison}</p>
+            <p className="text-[11px] text-muted-foreground truncate">Délai : {p.delai_livraison}</p>
           )}
           {p.budget_dedouanement != null && (
-            <p className="text-xs text-muted-foreground">
-              Budget dédouanement : {formatDzd(p.budget_dedouanement)} <span className="text-[10px]">DZD</span>
+            <p className="text-[11px] text-muted-foreground truncate">
+              Dédouanement : {formatDzd(p.budget_dedouanement)} <span className="text-[9px]">DZD</span>
             </p>
           )}
         </div>
 
         {/* Divider + status row */}
-        <div className="mt-3 pt-3 border-t border-border/60 flex items-center justify-between gap-2">
+        <div className="mt-2 pt-2 border-t border-border/60 flex items-center justify-between gap-2">
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onToggleAvailable(p) }}
             className={cn(
-              'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold border transition',
+              'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold border transition',
               p.disponible
                 ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/25'
                 : 'bg-rose-500/15 text-rose-700 dark:text-rose-400 border-rose-500/30 hover:bg-rose-500/25',
@@ -258,7 +345,7 @@ function PreorderCard({
           >
             {p.disponible ? 'Disponible' : 'Indisponible'}
           </button>
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+          <span className="text-[9px] uppercase tracking-wider text-muted-foreground">
             Pré-commande
           </span>
         </div>
@@ -394,7 +481,6 @@ export default function PrecommandesPage() {
       prix_estime:         p.prix_estime != null ? String(p.prix_estime) : '',
       budget_dedouanement: p.budget_dedouanement != null ? String(p.budget_dedouanement) : '',
       description:         p.description ?? '',
-      image_url:           p.image_url ?? '',
       delai_livraison:     p.delai_livraison ?? '',
       disponible:          p.disponible,
     })
@@ -415,9 +501,10 @@ export default function PrecommandesPage() {
       prix_estime:         form.prix_estime ? Number(form.prix_estime.replace(/\s/g, '')) : null,
       budget_dedouanement: form.budget_dedouanement ? Number(form.budget_dedouanement.replace(/\s/g, '')) : null,
       description:         form.description.trim() || null,
-      image_url:           form.image_url.trim() || null,
       delai_livraison:     form.delai_livraison.trim() || null,
       disponible:          form.disponible,
+      // image_url is intentionally NOT in this payload — it's managed by
+      // the click-to-upload flow on the card itself, not the modal.
     }
     const res = form.id
       ? await fetch(`/api/preorder-vehicles/${form.id}`, {
@@ -451,6 +538,10 @@ export default function PrecommandesPage() {
     setConfirmDelete(null)
     flashToast('Pré-commande supprimée')
     fetchAll()
+  }
+
+  function handleImageUpdated(id: string, url: string | null) {
+    setRows((prev) => prev.map(r => r.id === id ? { ...r, image_url: url } : r))
   }
 
   async function toggleAvailable(p: PreorderVehicle) {
@@ -511,7 +602,7 @@ export default function PrecommandesPage() {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {rows.map((p) => (
             <PreorderCard
               key={p.id}
@@ -525,6 +616,7 @@ export default function PrecommandesPage() {
               onEdit={openEdit}
               onDelete={(pp) => setConfirmDelete(pp)}
               onToggleAvailable={toggleAvailable}
+              onImageUpdated={handleImageUpdated}
             />
           ))}
         </div>
@@ -636,16 +728,14 @@ export default function PrecommandesPage() {
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1">Image (URL)</label>
-                <input
-                  type="url"
-                  value={form.image_url}
-                  onChange={(e) => setForm({ ...form, image_url: e.target.value })}
-                  placeholder="https://…/photo.jpg"
-                  className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-                />
-              </div>
+              {/* Note: image is managed via click-to-upload on the card,
+                  not from this modal. Create the preorder first, then
+                  click on the card photo area to upload the image. */}
+              {!form.id && (
+                <p className="text-[11px] text-muted-foreground italic">
+                  💡 Vous pourrez ajouter la photo après création en cliquant sur la carte.
+                </p>
+              )}
 
               <label className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2.5 cursor-pointer">
                 <span className="text-sm text-foreground">Disponible publiquement</span>
