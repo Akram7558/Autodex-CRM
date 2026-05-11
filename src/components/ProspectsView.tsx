@@ -23,10 +23,13 @@ import {
   type Lead,
   type LeadSuivi,
   type LeadOrderType,
+  type LeadTemperature,
   type Vehicle,
   LEAD_SUIVI_LABELS,
   LEAD_SUIVI_VALUES,
   LEAD_SUIVI_BADGE_CLASSES,
+  LEAD_TEMPERATURE_LABELS,
+  LEAD_TEMPERATURE_BADGE_CLASSES,
 } from '@/lib/types'
 import { format, isToday, isYesterday } from 'date-fns'
 import { fr } from 'date-fns/locale'
@@ -101,6 +104,10 @@ export function ProspectsView() {
   // migration_27: split catalog leads by order_type. 'all' keeps the
   // current behaviour (tous les prospects).
   const [orderTab, setOrderTab] = useState<'all' | LeadOrderType>('all')
+  // migration_28: filter + sort by lead temperature.
+  const [tempFilter, setTempFilter] = useState<'all' | LeadTemperature>('all')
+  const [tempSortDesc, setTempSortDesc] = useState(true)
+  const [sortByTemp, setSortByTemp] = useState(false)
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
   const [contactPopover, setContactPopover] = useState<
     { id: string; kind: 'call' | 'msg' } | null
@@ -274,6 +281,9 @@ export function ProspectsView() {
         // Tab filter (migration_27).
         if (orderTab !== 'all' && l.order_type !== orderTab) return false
 
+        // Temperature filter (migration_28).
+        if (tempFilter !== 'all' && l.temperature !== tempFilter) return false
+
         if (!term) return true
         return (
           l.full_name.toLowerCase().includes(term) ||
@@ -302,19 +312,38 @@ export function ProspectsView() {
           status: toDisplayStatus(l.status),
           suivi: (l.suivi ?? null) as LeadSuivi | null,
           orderType: (l.order_type ?? null) as LeadOrderType | null,
+          temperature: (l.temperature ?? null) as LeadTemperature | null,
+          temperatureScore: (l.temperature_score ?? null) as number | null,
           notes: l.notes ?? '',
           source: LEAD_SOURCE_LABELS[l.source] ?? l.source,
           date: formatDate(l.created_at),
           isVip: !!(l.budget_dzd && l.budget_dzd >= VIP_BUDGET_THRESHOLD),
         }
       })
-  }, [leads, search, suiviFilter, orderTab, vehiclesById])
+  }, [leads, search, suiviFilter, orderTab, tempFilter, vehiclesById])
 
-  const total = prospectsData.length
+  // Sort by temperature_score when the column header is active. When
+  // not active, leave the order as the default (created_at DESC, set by
+  // fetchLeads). Falsy/null scores sort to the bottom in DESC, top in ASC.
+  const sortedProspectsData = useMemo(() => {
+    if (!sortByTemp) return prospectsData
+    const copy = [...prospectsData]
+    copy.sort((a, b) => {
+      const av = a.temperatureScore
+      const bv = b.temperatureScore
+      if (av == null && bv == null) return 0
+      if (av == null) return tempSortDesc ? 1 : -1
+      if (bv == null) return tempSortDesc ? -1 : 1
+      return tempSortDesc ? bv - av : av - bv
+    })
+    return copy
+  }, [prospectsData, sortByTemp, tempSortDesc])
+
+  const total = sortedProspectsData.length
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
   const safePage = Math.min(page, totalPages)
   const startIdx = (safePage - 1) * pageSize
-  const pageRows = prospectsData.slice(startIdx, startIdx + pageSize)
+  const pageRows = sortedProspectsData.slice(startIdx, startIdx + pageSize)
   const fromLabel = total === 0 ? 0 : startIdx + 1
   const toLabel = Math.min(startIdx + pageSize, total)
 
@@ -427,20 +456,39 @@ export function ProspectsView() {
             <Search className="absolute left-4 top-3.5 text-slate-400 w-5 h-5 pointer-events-none" />
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 shrink-0">
-              Suivi
-            </span>
-            <select
-              value={suiviFilter}
-              onChange={(e) => { setSuiviFilter(e.target.value as 'all' | LeadSuivi); setPage(1) }}
-              className="flex-1 sm:flex-none bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-            >
-              <option value="all">Tous</option>
-              {LEAD_SUIVI_VALUES.map((s) => (
-                <option key={s} value={s}>{LEAD_SUIVI_LABELS[s]}</option>
-              ))}
-            </select>
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 shrink-0">
+                Suivi
+              </span>
+              <select
+                value={suiviFilter}
+                onChange={(e) => { setSuiviFilter(e.target.value as 'all' | LeadSuivi); setPage(1) }}
+                className="bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+              >
+                <option value="all">Tous</option>
+                {LEAD_SUIVI_VALUES.map((s) => (
+                  <option key={s} value={s}>{LEAD_SUIVI_LABELS[s]}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Temperature filter (migration_28). */}
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 shrink-0">
+                Temp.
+              </span>
+              <select
+                value={tempFilter}
+                onChange={(e) => { setTempFilter(e.target.value as 'all' | LeadTemperature); setPage(1) }}
+                className="bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+              >
+                <option value="all">Toutes</option>
+                <option value="chaud">🔥 Chauds</option>
+                <option value="tiede">🟡 Tièdes</option>
+                <option value="froid">🧊 Froids</option>
+              </select>
+            </div>
           </div>
         </div>
 
@@ -452,6 +500,28 @@ export function ProspectsView() {
                 <th className="pb-4 pt-4 px-6 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Contact</th>
                 <th className="pb-4 pt-4 px-6 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Véhicule & Source</th>
                 <th className="pb-4 pt-4 px-6 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Suivi</th>
+                <th className="pb-4 pt-4 px-6 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (sortByTemp) setTempSortDesc((d) => !d)
+                      else { setSortByTemp(true); setTempSortDesc(true) }
+                      setPage(1)
+                    }}
+                    className={cn(
+                      'inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest transition-colors',
+                      sortByTemp
+                        ? 'text-violet-600 dark:text-violet-400'
+                        : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300',
+                    )}
+                    title="Trier par température"
+                  >
+                    Température
+                    <span aria-hidden="true" className="text-[9px]">
+                      {sortByTemp ? (tempSortDesc ? '▼' : '▲') : '↕'}
+                    </span>
+                  </button>
+                </th>
                 <th className="pb-4 pt-4 px-6 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Date</th>
                 <th className="pb-4 pt-4 px-6 text-right"></th>
               </tr>
@@ -549,6 +619,25 @@ export function ProspectsView() {
                       >
                         {prospect.notes}
                       </div>
+                    )}
+                  </td>
+                  <td className="py-4 px-6">
+                    {prospect.temperature ? (
+                      <span
+                        className={cn(
+                          'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-black border tabular-nums',
+                          LEAD_TEMPERATURE_BADGE_CLASSES[prospect.temperature],
+                        )}
+                        title={
+                          prospect.temperatureScore != null
+                            ? `Score : ${prospect.temperatureScore}/100`
+                            : undefined
+                        }
+                      >
+                        {LEAD_TEMPERATURE_LABELS[prospect.temperature]}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-slate-400">—</span>
                     )}
                   </td>
                   <td className="py-4 px-6 text-sm font-bold text-slate-500 dark:text-slate-400">

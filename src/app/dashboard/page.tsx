@@ -10,6 +10,7 @@ import {
 import { Users, Car, CalendarClock, BadgeDollarSign, ArrowUpRight } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { AlertBanner } from '@/components/alerts/alert-banner'
+import LeadTemperatureWidget from '@/components/LeadTemperatureWidget'
 import {
   LEAD_STATUS_LABELS, LEAD_SOURCE_LABELS,
   type Lead, type Vente,
@@ -281,6 +282,9 @@ export default function DashboardPage() {
 
       {/* Red alert banner (leads ignored > 48h) — wrapped to match design */}
       <AlertBanner />
+
+      {/* Lead temperature widget — chaud/tiède/froid distribution. */}
+      <LeadTemperatureWidget />
 
       {/* KPI cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">

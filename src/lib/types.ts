@@ -185,6 +185,28 @@ export type LeadSource =
 // null       → regular lead (manual entry, ad campaign, etc.)
 export type LeadOrderType = 'vehicle' | 'preorder'
 
+// Lead temperature bucket (migration_28_lead_temperature.sql).
+//   chaud = score ≥ 70  · 🔥
+//   tiede = score 40-69 · 🟡
+//   froid = score < 40  · 🧊
+export type LeadTemperature = 'chaud' | 'tiede' | 'froid'
+
+export const LEAD_TEMPERATURE_LABELS: Record<LeadTemperature, string> = {
+  chaud: '🔥 Chaud',
+  tiede: '🟡 Tiède',
+  froid: '🧊 Froid',
+}
+
+export const LEAD_TEMPERATURE_VALUES: LeadTemperature[] = ['chaud', 'tiede', 'froid']
+
+// Solid-fill badge classes (white text). Used on the prospects table
+// row badge and on the dashboard temperature widget chips.
+export const LEAD_TEMPERATURE_BADGE_CLASSES: Record<LeadTemperature, string> = {
+  chaud: 'bg-rose-500 text-white border-rose-600',
+  tiede: 'bg-amber-500 text-white border-amber-600',
+  froid: 'bg-blue-500 text-white border-blue-600',
+}
+
 export type Lead = {
   id: string
   showroom_id: string | null
@@ -199,6 +221,15 @@ export type Lead = {
   notes: string | null
   // Catalog order discriminator (migration 27). Null for regular leads.
   order_type: LeadOrderType | null
+  // Auto-computed lead temperature (migration 28). Default 50/tiede on
+  // insert; recalculated on suivi change, new activity, manual refresh,
+  // and the nightly cron. `manual_temperature_override` halts the auto
+  // recalc when the owner has set the bucket by hand.
+  temperature_score: number | null
+  temperature: LeadTemperature | null
+  temperature_updated_at: string | null
+  manual_temperature_override: boolean | null
+  froid_since: string | null
   // fields added by migration_01_kanban.sql
   model_wanted: string | null
   budget_dzd: number | null

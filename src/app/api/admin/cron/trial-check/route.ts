@@ -201,10 +201,41 @@ export async function GET(req: NextRequest) {
     else console.warn(`[cron] J-3 send failed for ${s.id}:`, r.error)
   }
 
+  // ── STEP D — Nightly lead temperature refresh ──────────────────────
+  // Recompute hot/warm/cold buckets for every active showroom so values
+  // stay accurate even if no owner clicks "Actualiser". Leads with
+  // manual_temperature_override = true and closed leads are skipped by
+  // the refresh_lead_temperatures(uuid) function.
+  let temperatures_refreshed = 0
+  const temperature_errors: Array<{ showroom_id: string; error: string }> = []
+  {
+    const { data: actives, error: activeErr } = await admin
+      .from('showrooms')
+      .select('id')
+      .eq('active', true)
+    if (activeErr) {
+      console.warn('[cron] STEP D: failed to list active showrooms:', activeErr.message)
+    } else {
+      for (const s of (actives ?? []) as Array<{ id: string }>) {
+        const { error: rpcErr } = await admin.rpc('refresh_lead_temperatures', {
+          p_showroom_id: s.id,
+        })
+        if (rpcErr) {
+          temperature_errors.push({ showroom_id: s.id, error: rpcErr.message })
+          console.warn(`[cron] STEP D: refresh failed for ${s.id}:`, rpcErr.message)
+        } else {
+          temperatures_refreshed++
+        }
+      }
+    }
+  }
+
   return NextResponse.json({
     disabled: disabled.length,
     disabled_showrooms: disabled,
     j1_sent,
     j3_sent,
+    temperatures_refreshed,
+    temperature_errors: temperature_errors.length ? temperature_errors : undefined,
   })
 }
