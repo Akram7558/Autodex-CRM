@@ -14,6 +14,7 @@ import {
   Pencil,
   Trash2,
   MessageCircle,
+  Eye,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
@@ -36,6 +37,7 @@ import { fr } from 'date-fns/locale'
 import { AddLeadModal } from '@/components/AddLeadModal'
 import { EditLeadModal } from '@/components/EditLeadModal'
 import { ConfirmVenteModal } from '@/components/ConfirmVenteModal'
+import LeadDetailModal from '@/components/LeadDetailModal'
 
 // ── Map real Lead.status (DB enum) → display label used by the design ──
 type DisplayStatus = 'Chaud' | 'En cours' | 'Nouveau' | 'Froid' | 'Contacté'
@@ -113,6 +115,8 @@ export function ProspectsView() {
     { id: string; kind: 'call' | 'msg' } | null
   >(null)
   const [editingLead, setEditingLead] = useState<Lead | null>(null)
+  // "Fiche Lead" — read-only consultation modal.
+  const [detailLead, setDetailLead] = useState<Lead | null>(null)
   const [vehiclesById, setVehiclesById] = useState<Record<string, Vehicle>>({})
   // Vente confirmation handed off from EditLeadModal when a lead is
   // transitioning to suivi='vendu'. The modal captures the final price
@@ -534,7 +538,11 @@ export function ProspectsView() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.4 + (idx * 0.05) }}
                   key={prospect.id}
-                  className="group hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-colors"
+                  onClick={() => {
+                    const full = leads.find((l) => l.id === prospect.id)
+                    if (full) setDetailLead(full)
+                  }}
+                  className="group hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-colors cursor-pointer"
                 >
                   <td className="py-4 px-6">
                     <div className="flex items-center gap-4">
@@ -584,7 +592,7 @@ export function ProspectsView() {
                     </div>
                     <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">{prospect.source}</div>
                   </td>
-                  <td className="py-4 px-6 max-w-[220px]">
+                  <td className="py-4 px-6 max-w-[220px]" onClick={(e) => e.stopPropagation()}>
                     <div className="relative inline-block">
                       <select
                         value={prospect.suivi ?? ''}
@@ -644,7 +652,7 @@ export function ProspectsView() {
                   <td className="py-4 px-6 text-sm font-bold text-slate-500 dark:text-slate-400">
                     {prospect.date}
                   </td>
-                  <td className="py-4 px-6 text-right">
+                  <td className="py-4 px-6 text-right" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-2">
                       {(() => {
                         const intl = formatPhoneIntl(prospect.rawPhone)
@@ -777,6 +785,18 @@ export function ProspectsView() {
                               type="button"
                               onClick={() => {
                                 const full = leads.find((l) => l.id === prospect.id)
+                                if (full) setDetailLead(full)
+                                setMenuOpenId(null)
+                              }}
+                              className="flex items-center gap-2 px-3 py-2 text-sm w-full text-left text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+                            >
+                              <Eye className="w-4 h-4" />
+                              Voir la fiche
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const full = leads.find((l) => l.id === prospect.id)
                                 if (full) setEditingLead(full)
                                 setMenuOpenId(null)
                               }}
@@ -859,6 +879,20 @@ export function ProspectsView() {
           if (info?.askVenteFor) {
             setVenteTarget(info.askVenteFor)
           }
+        }}
+      />
+
+      {/* Read-only "Fiche Lead" — opens on row click or "Voir la fiche".
+          The Modifier action inside the modal closes the detail view
+          and hands off to the EditLeadModal. */}
+      <LeadDetailModal
+        open={!!detailLead}
+        lead={detailLead}
+        onClose={() => setDetailLead(null)}
+        onEdit={() => {
+          const target = detailLead
+          setDetailLead(null)
+          if (target) setEditingLead(target)
         }}
       />
 
