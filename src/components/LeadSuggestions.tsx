@@ -100,17 +100,13 @@ export default function LeadSuggestions({
       </div>
     )
   }
-  if (error) {
-    return (
-      <div className="mt-4 rounded-xl border border-rose-200 dark:border-rose-500/30 bg-rose-50 dark:bg-rose-500/10 p-3 text-xs text-rose-700 dark:text-rose-300">
-        {error}
-      </div>
-    )
-  }
-  if (vehicles.length === 0 && preorders.length === 0) {
+  // Either error or empty result → friendly empty state. Errors here
+  // are almost always "no reference vehicle to compare against" or a
+  // transient DB hiccup, not something the owner needs to triage.
+  if (error || (vehicles.length === 0 && preorders.length === 0)) {
     return (
       <div className="mt-4 rounded-xl border border-dashed border-border p-3 text-xs text-muted-foreground italic">
-        Aucune suggestion pour le moment. Ajoutez plus de stock ou liez un véhicule à ce prospect.
+        Aucun véhicule lié — les suggestions apparaîtront quand un véhicule sera associé à ce lead.
       </div>
     )
   }
