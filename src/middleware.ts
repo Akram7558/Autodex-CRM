@@ -31,11 +31,14 @@ const ROUTE_ACL: Array<{ prefix: string; allow: AppRole[] }> = [
   { prefix: '/dashboard/alerts',                   allow: ['super_admin', 'owner', 'manager'] },
   { prefix: '/dashboard/ventes',                   allow: ['super_admin', 'owner', 'manager'] },
   { prefix: '/dashboard/precommandes',             allow: ['super_admin', 'owner', 'manager'] },
+  // migration_32 — restrict Pipeline (/prospects), Véhicules, Activités
+  // to owner+manager. Rendez-vous stays open to closer. Prospecteur is
+  // limited to Tableau de bord + Prospects (/leads).
   { prefix: '/dashboard/rendez-vous',              allow: ['super_admin', 'owner', 'manager', 'closer'] },
-  { prefix: '/dashboard/vehicules',                allow: ['super_admin', 'owner', 'manager', 'closer', 'prospecteur'] },
-  { prefix: '/dashboard/activites',                allow: ['super_admin', 'owner', 'manager', 'closer', 'prospecteur'] },
+  { prefix: '/dashboard/vehicules',                allow: ['super_admin', 'owner', 'manager'] },
+  { prefix: '/dashboard/activites',                allow: ['super_admin', 'owner', 'manager'] },
+  { prefix: '/dashboard/prospects',                allow: ['super_admin', 'owner', 'manager'] },
   { prefix: '/dashboard/leads',                    allow: ['super_admin', 'owner', 'manager', 'closer', 'prospecteur'] },
-  { prefix: '/dashboard/prospects',                allow: ['super_admin', 'owner', 'manager', 'closer', 'prospecteur'] },
   { prefix: '/dashboard',                          allow: ['super_admin', 'owner', 'manager', 'closer', 'prospecteur'] },
 ]
 

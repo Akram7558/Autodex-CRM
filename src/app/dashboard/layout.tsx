@@ -29,16 +29,23 @@ import { NotificationBell } from '@/components/alerts/notification-bell'
 import { ThemeToggle } from '@/components/theme-toggle'
 import type { AppRole } from '@/lib/types'
 
-const navItems = [
-  { href: '/dashboard',             label: 'Tableau de bord', icon: LayoutDashboard },
-  { href: '/dashboard/prospects',   label: 'Pipeline',        icon: Kanban },
-  { href: '/dashboard/leads',       label: 'Prospects',       icon: Users },
-  { href: '/dashboard/rendez-vous', label: 'Rendez-vous',     icon: CalendarClock },
-  { href: '/dashboard/ventes',      label: 'Ventes',          icon: BadgeDollarSign },
-  { href: '/dashboard/vehicules',   label: 'Véhicules',       icon: Car },
-  { href: '/dashboard/precommandes', label: 'Pré-commandes',  icon: Package },
-  { href: '/dashboard/activites',   label: 'Activités',       icon: Activity },
-  { href: '/dashboard/alerts',      label: 'Alertes',         icon: BellRing },
+// Showroom-side sidebar.
+// `roles` is the set of AppRoles for whom the entry renders.
+//   owner / manager  → everything
+//   closer           → dashboard / prospects / rendez-vous
+//   prospecteur      → dashboard / prospects
+// Restricted users also lose the Paramètres / Intégrations footer
+// links — that gating lives further down where the footer renders.
+const navItems: Array<{ href: string; label: string; icon: typeof LayoutDashboard; roles: AppRole[] }> = [
+  { href: '/dashboard',              label: 'Tableau de bord', icon: LayoutDashboard, roles: ['owner','manager','closer','prospecteur'] },
+  { href: '/dashboard/prospects',    label: 'Pipeline',        icon: Kanban,          roles: ['owner','manager'] },
+  { href: '/dashboard/leads',        label: 'Prospects',       icon: Users,           roles: ['owner','manager','closer','prospecteur'] },
+  { href: '/dashboard/rendez-vous',  label: 'Rendez-vous',     icon: CalendarClock,   roles: ['owner','manager','closer'] },
+  { href: '/dashboard/ventes',       label: 'Ventes',          icon: BadgeDollarSign, roles: ['owner','manager'] },
+  { href: '/dashboard/vehicules',    label: 'Véhicules',       icon: Car,             roles: ['owner','manager'] },
+  { href: '/dashboard/precommandes', label: 'Pré-commandes',   icon: Package,         roles: ['owner','manager'] },
+  { href: '/dashboard/activites',    label: 'Activités',       icon: Activity,        roles: ['owner','manager'] },
+  { href: '/dashboard/alerts',       label: 'Alertes',         icon: BellRing,        roles: ['owner','manager'] },
   // `Paramètres` is rendered in the sidebar footer (`!isInternalTeam`
   // block) so we don't duplicate it in the main nav.
 ]
@@ -75,7 +82,14 @@ function navItemsForRole(role: AppRole | null) {
     case 'super_admin':       return superAdminNavItems
     case 'commercial':        return commercialNavItems
     case 'prospecteur_saas':  return prospecteurSaasNavItems
-    default:                  return navItems
+    case 'owner':
+    case 'manager':
+    case 'closer':
+    case 'prospecteur':
+      return navItems.filter((it) => it.roles.includes(role))
+    default:
+      // Unknown / unprovisioned role: render nothing showroom-side.
+      return []
   }
 }
 
@@ -122,6 +136,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     userRole === 'super_admin' ||
     userRole === 'commercial'  ||
     userRole === 'prospecteur_saas'
+
+  // Showroom-side footer links (Paramètres / Intégrations) are owner-
+  // and manager-only — closer/prospecteur shouldn't see them either.
+  const canSeeShowroomSettings =
+    userRole === 'owner' || userRole === 'manager'
 
   // Close the mobile drawer whenever the route changes.
   useEffect(() => {
@@ -216,7 +235,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <div className="px-4 py-6 border-t border-zinc-100 dark:border-zinc-800 space-y-2">
         {/* Showroom-side links — hidden for internal team since their own
             Paramètres / Intégrations entries live in the main nav. */}
-        {!isInternalTeam && (
+        {!isInternalTeam && canSeeShowroomSettings && (
           <>
             <Link
               href="/dashboard/parametres"
