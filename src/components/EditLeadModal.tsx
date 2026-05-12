@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { X } from 'lucide-react'
+import { X, Phone as PhoneIcon } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import {
   type Lead,
@@ -9,12 +9,16 @@ import {
   type Vehicle,
   LEAD_SUIVI_LABELS,
   LEAD_SUIVI_VALUES,
+  LEAD_TEMPERATURE_LABELS,
+  LEAD_TEMPERATURE_BADGE_CLASSES,
   WILAYAS_58,
 } from '@/lib/types'
 import {
   KANBAN_SOURCES,
   SOURCE_ICONS,
 } from '@/components/AddLeadModal'
+import LeadTemperatureSparkline from '@/components/LeadTemperatureSparkline'
+import LeadSuggestions from '@/components/LeadSuggestions'
 
 type EditForm = {
   full_name: string
@@ -82,6 +86,24 @@ export function EditLeadModal({
   const [vehicleError, setVehicleError] = useState('')
   const [vehicles, setVehicles] = useState<Vehicle[]>([])
   const [leadsById, setLeadsById] = useState<Record<string, { id: string; full_name: string }>>({})
+  // migration_29 — used by LeadSuggestions to build /s/<slug>?v=… links.
+  const [showroomSlug, setShowroomSlug] = useState<string | null>(null)
+
+  // Fetch the showroom slug once per opened lead so suggestion cards
+  // can include a deep-link in the WhatsApp pre-fill.
+  useEffect(() => {
+    if (!lead?.showroom_id) { setShowroomSlug(null); return }
+    let cancelled = false
+    ;(async () => {
+      const { data } = await supabase
+        .from('showrooms')
+        .select('slug')
+        .eq('id', lead.showroom_id)
+        .maybeSingle()
+      if (!cancelled) setShowroomSlug((data?.slug as string | null) ?? null)
+    })()
+    return () => { cancelled = true }
+  }, [lead?.showroom_id])
 
   useEffect(() => {
     if (!lead) { setForm(null); return }
@@ -366,6 +388,46 @@ export function EditLeadModal({
         </div>
 
         <form onSubmit={submit} className="overflow-y-auto flex-1 px-6 py-5 space-y-4">
+          {/* migration_29 — Lead insights:
+                • temperature badge (if available)
+                • best call hour hint
+                • temperature score sparkline
+                • similar vehicles / pre-orders */}
+          {(lead.temperature || lead.best_call_hour != null) && (
+            <div className="rounded-xl border border-border bg-muted/30 p-3 space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                {lead.temperature && (
+                  <span
+                    className={
+                      'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-black border ' +
+                      LEAD_TEMPERATURE_BADGE_CLASSES[lead.temperature]
+                    }
+                    title={lead.temperature_score != null ? `Score : ${lead.temperature_score}/100` : undefined}
+                  >
+                    {LEAD_TEMPERATURE_LABELS[lead.temperature]}
+                    {lead.temperature_score != null && (
+                      <span className="ml-1.5 opacity-80">· {lead.temperature_score}/100</span>
+                    )}
+                  </span>
+                )}
+                {lead.best_call_hour != null && (
+                  <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                    <PhoneIcon className="w-3 h-3" />
+                    Meilleur moment : {lead.best_call_hour}h – {(lead.best_call_hour + 2) % 24}h
+                  </span>
+                )}
+              </div>
+              <LeadTemperatureSparkline leadId={lead.id} />
+            </div>
+          )}
+
+          <LeadSuggestions
+            leadId={lead.id}
+            leadName={lead.full_name}
+            leadPhone={lead.phone}
+            showroomSlug={showroomSlug}
+          />
+
           {/* Source */}
           <div>
             <label className="block text-xs font-medium text-foreground mb-2">Source</label>

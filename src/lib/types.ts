@@ -207,6 +207,25 @@ export const LEAD_TEMPERATURE_BADGE_CLASSES: Record<LeadTemperature, string> = {
   froid: 'bg-blue-500 text-white border-blue-600',
 }
 
+// migration_29 — score history (sparkline data source).
+export type LeadTemperatureHistoryEntry = {
+  score: number
+  temperature: LeadTemperature
+  recorded_at: string
+}
+
+// migration_29 — vehicle / pre-order matching suggestions.
+export type VehicleSuggestion = {
+  vehicle: Vehicle
+  match_score: number
+  match_reasons: string[]
+}
+export type PreorderSuggestion = {
+  preorder: PreorderVehicle
+  match_score: number
+  match_reasons: string[]
+}
+
 export type Lead = {
   id: string
   showroom_id: string | null
@@ -230,6 +249,10 @@ export type Lead = {
   temperature_updated_at: string | null
   manual_temperature_override: boolean | null
   froid_since: string | null
+  // migration_29_ai_features.sql
+  last_contacted_at: string | null
+  hot_alert_sent: boolean | null
+  best_call_hour: number | null
   // fields added by migration_01_kanban.sql
   model_wanted: string | null
   budget_dzd: number | null

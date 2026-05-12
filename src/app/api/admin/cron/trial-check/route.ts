@@ -230,6 +230,95 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // ── STEP E — Hot lead alerts ───────────────────────────────────────
+  // For each chaud lead that:
+  //   • hasn't been alerted yet (hot_alert_sent = false)
+  //   • hasn't been contacted in 2h (or never, but created > 2h ago)
+  //   • isn't closed (vendu/perdu/annule/reserve)
+  // → insert a notification (type='lead_ignored', deduped via dedupe_key)
+  //   and email the owner. Flip hot_alert_sent = true so we don't spam.
+  // Resets back to false on the next contact-type activity (trigger).
+  let hot_alerts_sent = 0
+  {
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
+    const { data: hotLeads, error: hotErr } = await admin
+      .from('leads')
+      .select('id, full_name, phone, showroom_id, last_contacted_at, created_at, suivi')
+      .eq('temperature', 'chaud')
+      .eq('hot_alert_sent', false)
+      .lt('created_at', twoHoursAgo)
+    if (hotErr) {
+      console.warn('[cron] STEP E: failed to list hot leads:', hotErr.message)
+    } else {
+      // Group leads by showroom so we can do one owner-email lookup per
+      // showroom rather than per lead.
+      const showroomIds = [...new Set((hotLeads ?? []).map(l => l.showroom_id).filter(Boolean) as string[])]
+      const ownerByShowroom = new Map<string, string | null>()
+      if (showroomIds.length > 0) {
+        const { data: sr } = await admin
+          .from('showrooms')
+          .select('id, owner_email')
+          .in('id', showroomIds)
+        for (const s of (sr ?? []) as Array<{ id: string; owner_email: string | null }>) {
+          ownerByShowroom.set(s.id, s.owner_email ?? null)
+        }
+      }
+
+      for (const l of (hotLeads ?? []) as Array<{
+        id: string; full_name: string | null; phone: string | null;
+        showroom_id: string | null; last_contacted_at: string | null;
+        created_at: string; suivi: string | null;
+      }>) {
+        // Filter closed leads server-side (PostgREST .not('suivi','in', ...) is
+        // awkward — easier in JS).
+        if (l.suivi && ['vendu','perdu','annule','reserve'].includes(l.suivi)) continue
+        // Final check: last_contacted_at NULL or > 2h ago.
+        if (l.last_contacted_at && new Date(l.last_contacted_at).getTime() > Date.parse(twoHoursAgo)) {
+          continue
+        }
+        if (!l.showroom_id) continue
+
+        const sinceMs = Date.now() - new Date(l.last_contacted_at ?? l.created_at).getTime()
+        const sinceHours = Math.max(2, Math.round(sinceMs / 3_600_000))
+
+        // 1) Notification (idempotent via dedupe_key — reset by the
+        //    activities trigger when contact is logged, but the unique
+        //    key prevents duplicate rows in the same cold window).
+        await admin.from('notifications').insert([{
+          showroom_id: l.showroom_id,
+          type:        'lead_ignored',
+          title:       '🔥 Lead chaud en attente !',
+          message:     `${l.full_name ?? 'Un lead chaud'} attend un contact depuis ${sinceHours}h. Rappelle-le !`,
+          lead_id:     l.id,
+          dedupe_key:  `hot_alert:${l.id}:${new Date().toISOString().slice(0, 10)}`,
+        }]).then(() => {}, () => {})
+
+        // 2) Best-effort owner email.
+        const owner = ownerByShowroom.get(l.showroom_id) ?? null
+        if (owner) {
+          await sendEmail({
+            to:      owner,
+            subject: `🔥 Lead chaud en attente — ${l.full_name ?? ''}`.trim(),
+            text:
+`Un lead chaud attend un contact :
+
+Nom        : ${l.full_name ?? '—'}
+Téléphone  : ${l.phone ?? '—'}
+Sans contact depuis : ${sinceHours}h
+
+Rappelez-le rapidement — chaque heure compte.
+
+— AutoDex`,
+          }).catch(() => {})
+        }
+
+        // 3) Flip the gate.
+        await admin.from('leads').update({ hot_alert_sent: true }).eq('id', l.id).then(() => {}, () => {})
+        hot_alerts_sent++
+      }
+    }
+  }
+
   return NextResponse.json({
     disabled: disabled.length,
     disabled_showrooms: disabled,
@@ -237,5 +326,6 @@ export async function GET(req: NextRequest) {
     j3_sent,
     temperatures_refreshed,
     temperature_errors: temperature_errors.length ? temperature_errors : undefined,
+    hot_alerts_sent,
   })
 }

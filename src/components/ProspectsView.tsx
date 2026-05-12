@@ -314,6 +314,7 @@ export function ProspectsView() {
           orderType: (l.order_type ?? null) as LeadOrderType | null,
           temperature: (l.temperature ?? null) as LeadTemperature | null,
           temperatureScore: (l.temperature_score ?? null) as number | null,
+          bestCallHour: (l.best_call_hour ?? null) as number | null,
           notes: l.notes ?? '',
           source: LEAD_SOURCE_LABELS[l.source] ?? l.source,
           date: formatDate(l.created_at),
@@ -669,7 +670,13 @@ export function ProspectsView() {
                                   "p-2 text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 rounded-xl transition-colors shadow-sm inline-flex items-center justify-center",
                                   !hasPhone && "opacity-40 cursor-not-allowed hover:bg-indigo-50 dark:hover:bg-indigo-500/10"
                                 )}
-                                title={hasPhone ? `Appeler ${prospect.rawPhone}` : noPhoneTitle}
+                                title={
+                                  hasPhone
+                                    ? prospect.bestCallHour != null
+                                      ? `Appeler ${prospect.rawPhone}\nMeilleur moment : ${prospect.bestCallHour}h – ${(prospect.bestCallHour + 2) % 24}h`
+                                      : `Appeler ${prospect.rawPhone}`
+                                    : noPhoneTitle
+                                }
                               >
                                 <Phone className="w-4 h-4" />
                               </button>
