@@ -9,7 +9,9 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
+import { getCurrentUserRole } from '@/lib/auth'
 import type { ShowroomOpeningHours, ShowroomPublicInfo } from '@/lib/types'
+import ShowroomTeamSection from '@/components/ShowroomTeamSection'
 
 // ─────────────────────────────────────────────────────────────────────
 // /dashboard/parametres — owner / manager catalog settings.
@@ -85,6 +87,22 @@ export default function ShowroomParametresPage() {
   const logoFileRef = useRef<HTMLInputElement | null>(null)
   const [logoUploading, setLogoUploading] = useState(false)
   const [logoError, setLogoError] = useState<string | null>(null)
+
+  // Caller's role + user_id — used to gate the Mon Équipe / Distribution
+  // sections (owner+manager only) and to filter manager-side delete
+  // affordances client-side.
+  const [callerRole, setCallerRole] = useState<'owner' | 'manager' | 'super_admin' | null>(null)
+  const [callerUserId, setCallerUserId] = useState<string | null>(null)
+  useEffect(() => {
+    (async () => {
+      const r = await getCurrentUserRole()
+      if (!r) return
+      if (r.role === 'owner' || r.role === 'manager' || r.role === 'super_admin') {
+        setCallerRole(r.role)
+        setCallerUserId(r.userId)
+      }
+    })()
+  }, [])
 
   async function persistLogo(url: string | null) {
     const res = await fetch('/api/showroom/public-info', {
@@ -540,6 +558,12 @@ export default function ShowroomParametresPage() {
           {saving ? 'Enregistrement…' : 'Enregistrer'}
         </button>
       </div>
+
+      {/* migration_31 — Team + auto-distribution. Owner+manager only;
+          closer/prospecteur don't reach /dashboard/parametres (ACL). */}
+      {callerRole && (
+        <ShowroomTeamSection callerRole={callerRole} callerUserId={callerUserId} />
+      )}
 
       {toast && (
         <div className="fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-xl bg-emerald-600 text-white shadow-lg shadow-emerald-600/20 text-sm font-medium">
