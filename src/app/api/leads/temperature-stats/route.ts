@@ -10,7 +10,7 @@
 
 import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { requireShowroomAdmin, errorResponse, ApiError } from '@/lib/api-auth'
+import { requireShowroomMember, errorResponse, ApiError } from '@/lib/api-auth'
 import type { LeadTemperature } from '@/lib/types'
 
 export const runtime = 'nodejs'
@@ -28,16 +28,23 @@ const CLOSED_SUIVIS = ['vendu', 'perdu', 'annule']
 
 export async function GET(req: NextRequest) {
   try {
-    const ctx = await requireShowroomAdmin(req)
+    const ctx = await requireShowroomMember(req)
     if (!ctx.showroomId) {
       throw new ApiError(403, 'Aucun showroom associé à votre compte.')
     }
 
     const admin = adminClient()
-    const { data, error } = await admin
+    // Closer / prospecteur only see their own assigned leads — service
+    // role bypasses RLS, so we must enforce the scope explicitly here.
+    const restrictToOwn = ctx.role === 'closer' || ctx.role === 'prospecteur'
+    let q = admin
       .from('leads')
       .select('temperature, temperature_updated_at, suivi')
       .eq('showroom_id', ctx.showroomId)
+    if (restrictToOwn) {
+      q = q.eq('assigned_to', ctx.user.id)
+    }
+    const { data, error } = await q
     if (error) throw new ApiError(500, error.message)
 
     let chaud = 0, tiede = 0, froid = 0

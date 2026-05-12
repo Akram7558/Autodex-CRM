@@ -9,8 +9,10 @@ import {
 } from 'recharts'
 import { Users, Car, CalendarClock, BadgeDollarSign, ArrowUpRight } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { getCurrentUserRole } from '@/lib/auth'
 import { AlertBanner } from '@/components/alerts/alert-banner'
 import LeadTemperatureWidget from '@/components/LeadTemperatureWidget'
+import type { AppRole } from '@/lib/types'
 import {
   LEAD_STATUS_LABELS, LEAD_SOURCE_LABELS,
   type Lead, type Vente,
@@ -83,6 +85,12 @@ export default function DashboardPage() {
   const [ventes,   setVentes]   = useState<Vente[]>([])
   const [vehiclesCount, setVehiclesCount] = useState(0)
   const [loading,  setLoading]  = useState(true)
+  // Role gating — closer / prospecteur only see their own data;
+  // prospecteur additionally has RDV / Ventes / CA cards hidden.
+  // canSeeFinancials elsewhere is reserved for super_admin financials
+  // across showrooms; here we mirror the same idea showroom-side.
+  const [role,     setRole]     = useState<AppRole | null>(null)
+  const [userId,   setUserId]   = useState<string | null>(null)
 
   // Default: Ce mois
   const [dateRange, setDateRange] = useState<DateRange>('month')
@@ -92,17 +100,41 @@ export default function DashboardPage() {
   const [appliedTo, setAppliedTo]     = useState('')
 
   useEffect(() => {
-    Promise.all([
-      supabase.from('leads').select('*').order('created_at', { ascending: false }),
-      supabase.from('vehicles').select('id'),
-      supabase.from('ventes').select('*').order('date_vente', { ascending: false }),
-    ]).then(([{ data: l }, { data: v }, { data: s }]) => {
+    (async () => {
+      const r = await getCurrentUserRole()
+      setRole(r?.role ?? null)
+      setUserId(r?.userId ?? null)
+
+      const isRestricted = r?.role === 'closer' || r?.role === 'prospecteur'
+
+      // Leads: RLS already scopes the result for closer/prospecteur
+      // (migration 32), so this single query is correct for every role.
+      const leadsP = supabase
+        .from('leads')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      // Vehicles: showroom inventory is not visible to closer (sidebar
+      // hidden) and never makes sense for prospecteur — skip the
+      // count entirely for restricted roles instead of leaking it.
+      const vehiclesP = isRestricted
+        ? Promise.resolve({ data: [] })
+        : supabase.from('vehicles').select('id')
+
+      // Ventes: hidden from prospecteur outright. For closer we still
+      // fetch the page-wide set, but the rendering below filters to
+      // ventes linked to their leads only (CA card is hidden either way
+      // for closer per the financials gate).
+      const ventesP = r?.role === 'prospecteur'
+        ? Promise.resolve({ data: [] })
+        : supabase.from('ventes').select('*').order('date_vente', { ascending: false })
+
+      const [{ data: l }, { data: v }, { data: s }] = await Promise.all([leadsP, vehiclesP, ventesP])
       setLeads(   (l ?? []) as Lead[])
       setVehiclesCount((v ?? []).length)
-      // ventes table may not exist on older schemas — silently fall back to [].
       setVentes(  (s ?? []) as Vente[])
       setLoading(false)
-    })
+    })()
   }, [])
 
   // Resolve [from, to] window from the dropdown.
@@ -132,7 +164,22 @@ export default function DashboardPage() {
 
   // ── Filtered datasets ─────────────────────────────────────
   const filteredLeads  = useMemo(() => leads.filter(l => inWindow(l.created_at)), [leads, activeWindow])
-  const filteredVentes = useMemo(() => ventes.filter(v => inWindow(v.date_vente)),  [ventes, activeWindow])
+
+  // Closer: ventes scoped to ventes linked to their assigned leads.
+  // Prospecteur: ventes is empty (fetched as []) anyway.
+  // Owner / manager: every vente in the showroom.
+  const myLeadIds = useMemo(() => {
+    if (role !== 'closer' || !userId) return null
+    return new Set(leads.filter(l => l.assigned_to === userId).map(l => l.id))
+  }, [role, userId, leads])
+
+  const filteredVentes = useMemo(() => {
+    return ventes.filter(v => {
+      if (myLeadIds && (!v.lead_id || !myLeadIds.has(v.lead_id))) return false
+      return inWindow(v.date_vente)
+    })
+  }, [ventes, activeWindow, myLeadIds])
+
   const filteredRdv    = useMemo(
     () => leads.filter(l => l.suivi === 'rdv_planifie' && inWindow(l.rdv_date)),
     [leads, activeWindow]
@@ -171,26 +218,30 @@ export default function DashboardPage() {
       value: totalLeads.toString(),
       sub: leads.length ? `sur ${leads.length} au total` : '—',
       icon: Users,
+      show: true,
     },
     {
       label: 'Véhicules vendus',
       value: vehiculesVendus.toString(),
       sub: `sur ${vehiclesCount} en stock`,
       icon: Car,
+      show: role !== 'prospecteur',
     },
     {
       label: 'Chiffre d\u2019affaires',
       value: formatDzd(chiffreAffaires),
       sub: 'DZD',
       icon: BadgeDollarSign,
+      show: role === 'owner' || role === 'manager' || role === 'super_admin' || role === 'commercial' || role == null,
     },
     {
       label: 'RDV planifiés',
       value: rdvPlanifies.toString(),
       sub: 'sur la période',
       icon: CalendarClock,
+      show: role !== 'prospecteur',
     },
-  ]
+  ].filter((k) => k.show)
 
   // Sales objective — share of "won" leads in the filtered window.
   const wonInWindow = filteredLeads.filter(l => l.status === 'won').length
