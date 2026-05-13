@@ -223,19 +223,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               onClick={() => setMobileOpen(false)}
               style={{ animationDelay: `${idx * 30}ms` }}
               className={cn(
-                'group relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-200 animate-slide-in',
+                'group relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-200',
                 isActive
-                  ? 'bg-emerald-50 text-emerald-700 font-medium dark:bg-emerald-500/10 dark:text-emerald-300'
-                  : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800/40 dark:hover:text-zinc-100',
+                  ? 'bg-emerald-500 text-white font-semibold shadow-md shadow-emerald-500/30'
+                  : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-white/[0.04] dark:hover:text-zinc-100',
               )}
             >
-              {/* 3px left accent for active item — sits just inside the rounded-xl. */}
-              {isActive && (
-                <span aria-hidden="true" className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-r-full bg-emerald-500" />
-              )}
               <Icon className={cn(
                 'w-4 h-4 flex-shrink-0 transition-colors',
-                isActive ? 'text-emerald-500 dark:text-emerald-400' : '',
+                isActive ? 'text-white' : '',
               )} />
               {item.label}
             </Link>
@@ -253,14 +249,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               className={cn(
                 'group relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-200',
                 pathname === '/dashboard/parametres'
-                  ? 'bg-emerald-50 text-emerald-700 font-medium dark:bg-emerald-500/10 dark:text-emerald-300'
-                  : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800/40 dark:hover:text-zinc-100',
+                  ? 'bg-emerald-500 text-white font-semibold shadow-md shadow-emerald-500/30'
+                  : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-white/[0.04] dark:hover:text-zinc-100',
               )}
             >
-              {pathname === '/dashboard/parametres' && (
-                <span aria-hidden="true" className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-r-full bg-emerald-500" />
-              )}
-              <Settings className={cn('w-4 h-4', pathname === '/dashboard/parametres' ? 'text-emerald-500 dark:text-emerald-400' : '')} />
+              <Settings className={cn('w-4 h-4', pathname === '/dashboard/parametres' ? 'text-white' : '')} />
               Paramètres
             </Link>
             <Link
@@ -269,14 +262,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               className={cn(
                 'group relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-200',
                 pathname.startsWith('/dashboard/settings/integrations')
-                  ? 'bg-emerald-50 text-emerald-700 font-medium dark:bg-emerald-500/10 dark:text-emerald-300'
-                  : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800/40 dark:hover:text-zinc-100',
+                  ? 'bg-emerald-500 text-white font-semibold shadow-md shadow-emerald-500/30'
+                  : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-white/[0.04] dark:hover:text-zinc-100',
               )}
             >
-              {pathname.startsWith('/dashboard/settings/integrations') && (
-                <span aria-hidden="true" className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-r-full bg-emerald-500" />
-              )}
-              <Plug className={cn('w-4 h-4', pathname.startsWith('/dashboard/settings/integrations') ? 'text-emerald-500 dark:text-emerald-400' : '')} />
+              <Plug className={cn('w-4 h-4', pathname.startsWith('/dashboard/settings/integrations') ? 'text-white' : '')} />
               Intégrations
             </Link>
           </>

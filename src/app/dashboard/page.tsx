@@ -34,9 +34,14 @@ import { fr } from 'date-fns/locale'
 
 // ─── Helpers ───────────────────────────────────────────────────────
 
+// French-style thousand separators with regular spaces (NBSP/NNBSP
+// the Intl API emits don't always render consistently). "10850000" →
+// "10 850 000".
 function formatDzd(n: number | null | undefined): string {
   if (n == null) return '—'
-  return new Intl.NumberFormat('fr-DZ', { maximumFractionDigits: 0 }).format(n)
+  return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 })
+    .format(n)
+    .replace(/ | /g, ' ')
 }
 
 // French-style: lowercase day with first letter capitalised.
@@ -560,7 +565,7 @@ export default function DashboardPage() {
       </div>
 
       {/* ── Derniers véhicules — horizontal scroll ─────────────── */}
-      {showListings && vehicles.length > 0 && (
+      {showListings && (
         <section className="space-y-4 animate-fade-in animate-delay-4">
           <div className="flex items-center justify-between">
             <div>
@@ -575,6 +580,18 @@ export default function DashboardPage() {
             </a>
           </div>
 
+          {vehicles.length === 0 ? (
+            <div className="glass-card p-8 text-center">
+              <Car className="w-9 h-9 mx-auto text-[var(--text-secondary)] opacity-50" />
+              <p className="mt-3 text-sm text-[var(--text-secondary)]">Aucun véhicule au stock pour le moment.</p>
+              <a
+                href="/dashboard/vehicules"
+                className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400"
+              >
+                Ajouter un véhicule <ArrowUpRight className="w-3.5 h-3.5" />
+              </a>
+            </div>
+          ) : (
           <div className="flex gap-4 overflow-x-auto no-scrollbar snap-x snap-mandatory pb-2 -mx-2 px-2">
             {vehicles.slice(0, 12).map((v) => {
               const statusCls =
@@ -623,6 +640,7 @@ export default function DashboardPage() {
               )
             })}
           </div>
+          )}
         </section>
       )}
 
@@ -632,7 +650,7 @@ export default function DashboardPage() {
       </div>
 
       {/* ── Top selling table ──────────────────────────────────── */}
-      {showListings && visibleVentes.length > 0 && (
+      {showListings && (
         <section className="glass-card overflow-hidden animate-fade-in animate-delay-5">
           <div className="flex items-center justify-between px-6 py-4 border-b glass-divider">
             <div>
@@ -646,6 +664,12 @@ export default function DashboardPage() {
               Voir tout <ArrowUpRight className="w-3.5 h-3.5" />
             </a>
           </div>
+          {visibleVentes.length === 0 ? (
+            <div className="px-6 py-10 text-center">
+              <Banknote className="w-9 h-9 mx-auto text-[var(--text-secondary)] opacity-50" />
+              <p className="mt-3 text-sm text-[var(--text-secondary)]">Aucune vente enregistrée pour le moment.</p>
+            </div>
+          ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -683,6 +707,7 @@ export default function DashboardPage() {
               </tbody>
             </table>
           </div>
+          )}
         </section>
       )}
     </div>

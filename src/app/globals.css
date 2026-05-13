@@ -1,4 +1,7 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
+/* DM Sans is loaded via `next/font/google` in src/app/layout.tsx,
+   which writes the --font-sans CSS variable on <html>. Tailwind's
+   --font-sans @theme below reads that same variable. No external
+   Google Fonts request happens at runtime. */
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -6,7 +9,7 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme {
-  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
 }
 
 @theme inline {
@@ -112,18 +115,19 @@
 }
 
 .dark {
-  /* ── FoCar surfaces (dark — primary mode) ─────────────────────────── */
+  /* ── FoCar surfaces (dark — primary mode). Near-pure-black so the
+     emerald accent and glass cards pop the way the reference does. ── */
   --bg-main:        #050507;
-  --bg-surface:     #0c0c10;
-  --bg-elevated:    #131318;
-  --bg-sidebar:     #0a0a0e;
+  --bg-surface:     #0a0a0e;
+  --bg-elevated:    #111116;
+  --bg-sidebar:     #070709;
   --text-primary:   #f1f5f9;
   --text-secondary: #64748b;
   --accent:         #10b981;
   --accent-hover:   #34d399;
   --accent-glow:    rgba(16, 185, 129, 0.20);
   --accent-subtle:  rgba(16, 185, 129, 0.06);
-  --card-shadow:    0 4px 30px rgba(0, 0, 0, 0.4);
+  --card-shadow:    0 4px 30px rgba(0, 0, 0, 0.5);
 
   /* shadcn re-bindings */
   --background:           var(--bg-main);
@@ -191,13 +195,16 @@
     box-shadow: var(--card-shadow);
   }
   .dark .glass-card {
-    background: rgba(12, 12, 16, 0.8);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(10, 10, 14, 0.60);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow:
+      0 4px 30px rgba(0, 0, 0, 0.50),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
   }
   @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-    .dark .glass-card { background: #0c0c10; }
+    .dark .glass-card { background: #0a0a0e; }
   }
 
   /* KPI card with an emerald gradient rim (top bar in dark / brighter
@@ -217,20 +224,24 @@
     top: 0; left: 0; right: 0;
     height: 3px;
     background: linear-gradient(90deg, #10b981, #34d399, #6ee7b7);
+    opacity: 1;
   }
   .dark .kpi-card {
-    background: rgba(12, 12, 16, 0.8);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.04);
+    background: rgba(10, 10, 14, 0.60);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow:
+      0 4px 30px rgba(0, 0, 0, 0.50),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
   }
   .dark .kpi-card::before {
-    height: 2px;
-    background: linear-gradient(90deg, #10b981, #34d399);
-    opacity: 0.85;
+    height: 3px;
+    background: linear-gradient(90deg, #10b981, #34d399, #6ee7b7);
+    opacity: 1;
   }
   @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-    .dark .kpi-card { background: #0c0c10; }
+    .dark .kpi-card { background: #0a0a0e; }
   }
 
   /* Hover lift used by KPI + listings */
