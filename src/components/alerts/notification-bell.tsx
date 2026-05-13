@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { Bell, AlertTriangle, Clock, PackageX, UserX } from 'lucide-react'
+import { Bell, AlertTriangle, Clock, PackageX, UserX, AlertOctagon } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { formatDistanceToNow } from 'date-fns'
 import { fr } from 'date-fns/locale'
@@ -16,6 +16,8 @@ function iconFor(type: NotificationType) {
     case 'lead_stagnant':   return Clock
     case 'stock_rupture':   return PackageX
     case 'vendor_inactive': return UserX
+    case 'reminder':        return Clock
+    case 'escalation':      return AlertOctagon
   }
 }
 
@@ -25,11 +27,18 @@ function colorFor(type: NotificationType) {
     case 'lead_stagnant':   return 'text-amber-500 bg-amber-500/10'
     case 'stock_rupture':   return 'text-orange-500 bg-orange-500/10'
     case 'vendor_inactive': return 'text-indigo-500 bg-indigo-500/10'
+    case 'reminder':        return 'text-orange-500 bg-orange-500/10'
+    case 'escalation':      return 'text-red-600 bg-red-500/10'
   }
 }
 
 function hrefFor(n: Notification) {
-  if (n.lead_id) return `/dashboard/prospects?lead=${n.lead_id}`
+  // migration_34 — reminder + escalation notifications target the
+  // leads table (accessible to every showroom role) with the matching
+  // URL filter so the row pops to the top.
+  if (n.type === 'reminder')   return '/dashboard/leads?filter=pending'
+  if (n.type === 'escalation') return '/dashboard/leads?filter=escalated'
+  if (n.lead_id)    return `/dashboard/leads`
   if (n.vehicle_id) return `/dashboard/vehicules`
   return '/dashboard/alerts'
 }

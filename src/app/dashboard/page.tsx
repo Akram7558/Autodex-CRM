@@ -12,6 +12,7 @@ import { supabase } from '@/lib/supabase'
 import { getCurrentUserRole } from '@/lib/auth'
 import { AlertBanner } from '@/components/alerts/alert-banner'
 import LeadTemperatureWidget from '@/components/LeadTemperatureWidget'
+import ReminderBanner from '@/components/ReminderBanner'
 import type { AppRole } from '@/lib/types'
 import {
   LEAD_STATUS_LABELS, LEAD_SOURCE_LABELS,
@@ -333,6 +334,9 @@ export default function DashboardPage() {
 
       {/* Red alert banner (leads ignored > 48h) — wrapped to match design */}
       <AlertBanner />
+
+      {/* migration_34 — reminder / escalation banner. Hidden when 0. */}
+      <ReminderBanner role={role} userId={userId} />
 
       {/* Lead temperature widget — chaud/tiède/froid distribution. */}
       <LeadTemperatureWidget />

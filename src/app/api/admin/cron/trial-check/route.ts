@@ -319,6 +319,176 @@ Rappelez-le rapidement — chaque heure compte.
     }
   }
 
+  // ── STEP F — Smart reminders + escalation (migration 34) ─────────
+  // Temperature-aware thresholds for when a lead is overdue:
+  //   chaud → 1 day · tiede → 3 days · froid → 7 days
+  // Reminder cadence: at most 1 per 24h per lead, capped at 3.
+  // Escalation: 24h after any reminder without contact, the owner +
+  // every manager of the showroom get an "escalation" notification
+  // (deduped per-lead).
+  //
+  // The reset side of the loop is handled by trg_activities_signal:
+  // any contact-type activity sets reminder_count back to 0 and
+  // clears escalated, so this step never re-fires once someone reaches
+  // out to the lead.
+  let reminders_sent     = 0
+  let reminders_escalated = 0
+  const CLOSED_SUIVI = ['vendu', 'perdu', 'annule', 'reserve']
+
+  const DAY_MS  = 24 * 60 * 60 * 1000
+  const NOW     = now.getTime()
+  function staleThresholdMs(temp: string | null): number {
+    if (temp === 'chaud') return 1 * DAY_MS
+    if (temp === 'froid') return 7 * DAY_MS
+    return 3 * DAY_MS // tiede / unknown
+  }
+  function daysSince(ts: string | null | undefined): number {
+    if (!ts) return Infinity
+    return Math.floor((NOW - new Date(ts).getTime()) / DAY_MS)
+  }
+
+  // Active showrooms — owner / manager directory for escalation.
+  const { data: activeShowrooms } = await admin
+    .from('showrooms')
+    .select('id, name')
+    .eq('active', true)
+
+  for (const s of (activeShowrooms ?? []) as Array<{ id: string; name: string }>) {
+    // ── Pull every candidate lead in one query (showroom-scoped). ──
+    const { data: candidates, error: candErr } = await admin
+      .from('leads')
+      .select(
+        'id, showroom_id, full_name, assigned_to, suivi, temperature, '
+        + 'last_contacted_at, created_at, reminder_count, last_reminder_at, '
+        + 'escalated, escalated_at',
+      )
+      .eq('showroom_id', s.id)
+      .not('assigned_to', 'is', null)
+    if (candErr) {
+      console.warn(`[cron F] failed to list candidates for ${s.id}:`, candErr.message)
+      continue
+    }
+
+    // Resolve owner + managers once per showroom for escalation.
+    const { data: admins } = await admin
+      .from('user_roles')
+      .select('user_id, role')
+      .eq('showroom_id', s.id)
+      .in('role', ['owner', 'manager'])
+    const adminIds = (admins ?? []).map((r) => r.user_id as string)
+
+    for (const l of (candidates ?? []) as unknown as Array<{
+      id: string
+      showroom_id: string
+      full_name: string | null
+      assigned_to: string | null
+      suivi: string | null
+      temperature: string | null
+      last_contacted_at: string | null
+      created_at: string
+      reminder_count: number | null
+      last_reminder_at: string | null
+      escalated: boolean | null
+    }>) {
+      if (l.suivi && CLOSED_SUIVI.includes(l.suivi)) continue
+      if (!l.assigned_to) continue
+
+      const lastContact = l.last_contacted_at ?? l.created_at
+      const stale = NOW - new Date(lastContact).getTime() > staleThresholdMs(l.temperature)
+      if (!stale) continue
+
+      const reminderCount = l.reminder_count ?? 0
+      const sinceLastReminderMs = l.last_reminder_at
+        ? NOW - new Date(l.last_reminder_at).getTime()
+        : Infinity
+
+      // ── Reminder (cap at 3, max one per 24h) ────────────────────
+      if (reminderCount < 3 && sinceLastReminderMs >= DAY_MS) {
+        const nextCount = reminderCount + 1
+        const days = daysSince(lastContact)
+        const tempLabel = l.temperature === 'chaud' ? 'Chaud'
+                       : l.temperature === 'froid' ? 'Froid'
+                       : 'Tiède'
+        const name = l.full_name ?? 'Ce lead'
+        let title: string
+        if (nextCount === 1) {
+          title = `⏰ Relancez ${name} !`
+        } else if (nextCount === 2) {
+          title = `⚠️ ${name} attend toujours un contact`
+        } else {
+          title = `🚨 Dernier rappel — ${name} va refroidir`
+        }
+        const message =
+          `Pas de contact depuis ${Number.isFinite(days) ? days : '—'} jour${days > 1 ? 's' : ''}. `
+          + `Température : ${tempLabel}.`
+
+        // Insert reminder first (deduped per (lead, count)); only bump
+        // the lead counters if the insert actually happened, so we
+        // can re-run the cron safely without losing reminders.
+        const { error: insErr } = await admin
+          .from('notifications')
+          .insert([{
+            showroom_id: l.showroom_id,
+            user_id:     l.assigned_to,
+            lead_id:     l.id,
+            type:        'reminder',
+            title,
+            message,
+            dedupe_key:  `reminder:${l.id}:${nextCount}`,
+          }])
+        if (!insErr) {
+          await admin
+            .from('leads')
+            .update({
+              reminder_count:   nextCount,
+              last_reminder_at: now.toISOString(),
+            })
+            .eq('id', l.id)
+            .then(() => {}, () => {})
+          reminders_sent++
+        } else if (!/duplicate|unique/i.test(insErr.message)) {
+          console.warn(`[cron F] reminder insert failed for ${l.id}:`, insErr.message)
+        }
+      }
+
+      // ── Escalation (≥1 reminder, 24h gone, still stale) ─────────
+      if (
+        !l.escalated &&
+        reminderCount >= 1 &&
+        sinceLastReminderMs >= DAY_MS &&
+        adminIds.length > 0
+      ) {
+        const name = l.full_name ?? 'Ce lead'
+        const days = daysSince(lastContact)
+        const message =
+          `L'employé assigné n'a pas relancé ${name} depuis ${Number.isFinite(days) ? days : '—'} jour${days > 1 ? 's' : ''} `
+          + `malgré ${reminderCount} rappel${reminderCount > 1 ? 's' : ''}.`
+
+        // One notification per admin, deduped by (lead, recipient).
+        const rows = adminIds.map((adminId) => ({
+          showroom_id: l.showroom_id,
+          user_id:     adminId,
+          lead_id:     l.id,
+          type:        'escalation' as const,
+          title:       `🔴 Escalade — ${name} non contacté`,
+          message,
+          dedupe_key:  `escalation:${l.id}:${adminId}`,
+        }))
+        const { error: escErr } = await admin.from('notifications').insert(rows)
+        if (!escErr || /duplicate|unique/i.test(escErr.message)) {
+          await admin
+            .from('leads')
+            .update({ escalated: true, escalated_at: now.toISOString() })
+            .eq('id', l.id)
+            .then(() => {}, () => {})
+          reminders_escalated++
+        } else {
+          console.warn(`[cron F] escalation insert failed for ${l.id}:`, escErr.message)
+        }
+      }
+    }
+  }
+
   return NextResponse.json({
     disabled: disabled.length,
     disabled_showrooms: disabled,
@@ -327,5 +497,7 @@ Rappelez-le rapidement — chaque heure compte.
     temperatures_refreshed,
     temperature_errors: temperature_errors.length ? temperature_errors : undefined,
     hot_alerts_sent,
+    reminders_sent,
+    reminders_escalated,
   })
 }

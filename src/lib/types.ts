@@ -249,6 +249,12 @@ export type Lead = {
   temperature_updated_at: string | null
   manual_temperature_override: boolean | null
   froid_since: string | null
+  // Smart reminders (migration 34). Reset by trg_activities_signal
+  // when the assignee finally contacts the lead.
+  reminder_count: number | null
+  last_reminder_at: string | null
+  escalated: boolean | null
+  escalated_at: string | null
   // migration_29_ai_features.sql
   last_contacted_at: string | null
   hot_alert_sent: boolean | null
@@ -572,6 +578,8 @@ export type NotificationType =
   | 'lead_stagnant'
   | 'stock_rupture'
   | 'vendor_inactive'
+  | 'reminder'     // migration 34 — assignee-targeted reminder
+  | 'escalation'   // migration 34 — owner+manager escalation
 
 export type Notification = {
   id: string
@@ -592,6 +600,8 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   lead_stagnant:   'Lead stagnant',
   stock_rupture:   'Rupture de stock',
   vendor_inactive: 'Vendeur inactif',
+  reminder:        'Rappel',
+  escalation:      'Escalade',
 }
 
 // ── Integrations (Meta OAuth) ────────────────────────────────────

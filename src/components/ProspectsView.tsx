@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { motion } from 'motion/react'
 import {
   Search,
@@ -15,6 +16,8 @@ import {
   Trash2,
   MessageCircle,
   Eye,
+  Clock,
+  AlertOctagon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
@@ -110,6 +113,21 @@ export function ProspectsView() {
   const [tempFilter, setTempFilter] = useState<'all' | LeadTemperature>('all')
   const [tempSortDesc, setTempSortDesc] = useState(true)
   const [sortByTemp, setSortByTemp] = useState(false)
+
+  // migration_34: optional ?filter=pending|escalated URL param. Read
+  // once at mount; we don't push it back into the URL so the existing
+  // filters keep working as the user navigates within the page.
+  const searchParams = useSearchParams()
+  const reminderFilter = (searchParams?.get('filter') ?? null) as
+    'pending' | 'escalated' | null
+  // Current user id — used by the 'pending' filter to scope to leads
+  // assigned to the caller. Fetched on mount.
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setCurrentUserId(data?.user?.id ?? null)
+    })
+  }, [])
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
   const [contactPopover, setContactPopover] = useState<
     { id: string; kind: 'call' | 'msg' } | null
@@ -288,6 +306,14 @@ export function ProspectsView() {
         // Temperature filter (migration_28).
         if (tempFilter !== 'all' && l.temperature !== tempFilter) return false
 
+        // Reminder URL filter (migration_34).
+        if (reminderFilter === 'pending') {
+          if ((l.reminder_count ?? 0) <= 0) return false
+          if (currentUserId && l.assigned_to !== currentUserId) return false
+        } else if (reminderFilter === 'escalated') {
+          if (!l.escalated) return false
+        }
+
         if (!term) return true
         return (
           l.full_name.toLowerCase().includes(term) ||
@@ -318,6 +344,10 @@ export function ProspectsView() {
           orderType: (l.order_type ?? null) as LeadOrderType | null,
           temperature: (l.temperature ?? null) as LeadTemperature | null,
           temperatureScore: (l.temperature_score ?? null) as number | null,
+          // migration_34 — reminder + escalation indicators.
+          reminderCount:    (l.reminder_count ?? 0) as number,
+          lastContactedAt:  (l.last_contacted_at ?? null) as string | null,
+          escalated:        !!l.escalated,
           bestCallHour: (l.best_call_hour ?? null) as number | null,
           notes: l.notes ?? '',
           source: LEAD_SOURCE_LABELS[l.source] ?? l.source,
@@ -325,7 +355,7 @@ export function ProspectsView() {
           isVip: !!(l.budget_dzd && l.budget_dzd >= VIP_BUDGET_THRESHOLD),
         }
       })
-  }, [leads, search, suiviFilter, orderTab, tempFilter, vehiclesById])
+  }, [leads, search, suiviFilter, orderTab, tempFilter, reminderFilter, currentUserId, vehiclesById])
 
   // Sort by temperature_score when the column header is active. When
   // not active, leave the order as the default (created_at DESC, set by
@@ -557,7 +587,29 @@ export function ProspectsView() {
                         )}
                       </div>
                       <div>
-                        <div className="text-sm font-bold text-slate-900 dark:text-slate-100">{prospect.name}</div>
+                        <div className="text-sm font-bold text-slate-900 dark:text-slate-100 inline-flex items-center gap-1.5">
+                          <span>{prospect.name}</span>
+                          {prospect.escalated ? (
+                            <span
+                              title="Escalade — non contacté malgré rappels"
+                              className="inline-flex items-center text-rose-600 dark:text-rose-400"
+                            >
+                              <AlertOctagon className="w-3.5 h-3.5" />
+                            </span>
+                          ) : prospect.reminderCount > 0 && (
+                            <span
+                              title={
+                                'Rappel actif #' + prospect.reminderCount +
+                                (prospect.lastContactedAt
+                                  ? ' · Dernier contact : ' + new Date(prospect.lastContactedAt).toLocaleDateString('fr-DZ')
+                                  : ' · Jamais contacté')
+                              }
+                              className="inline-flex items-center text-orange-500 dark:text-orange-400"
+                            >
+                              <Clock className="w-3.5 h-3.5" />
+                            </span>
+                          )}
+                        </div>
                         <div className="flex items-center gap-3 mt-1">
                           <div className="flex items-center gap-1 text-slate-500" title={prospect.email}>
                             <Mail className="w-3 h-3" />
