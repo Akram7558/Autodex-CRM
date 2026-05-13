@@ -183,13 +183,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // Shared sidebar body so desktop + mobile drawer stay in sync.
   const sidebarBody = (
     <>
-      {/* Logo */}
+      {/* Logo — "Dex" carries the emerald accent (FoCar mark). */}
       <div className="flex items-center gap-3 px-6 h-20 flex-shrink-0">
-        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-indigo-600">
+        <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 shadow-lg shadow-emerald-500/30">
           <Car className="w-5 h-5 text-white" />
         </div>
         <div className="flex-1">
-          <p className="text-zinc-900 dark:text-white text-xl font-bold uppercase tracking-tight leading-none">AutoDex</p>
+          <p className="text-xl font-bold tracking-tight leading-none">
+            <span className="text-zinc-900 dark:text-white">Auto</span>
+            <span className="text-emerald-500 dark:text-emerald-400">Dex</span>
+          </p>
         </div>
         {/* Close button — mobile drawer only */}
         <button
@@ -201,9 +204,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </button>
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 px-4 pt-2 pb-2 space-y-2 overflow-y-auto">
-        {activeNavItems.map((item) => {
+      {/* Navigation — FoCar-style: subtle emerald tint + 3px left rail
+          for the active item; everything else stays muted. */}
+      <nav className="flex-1 px-3 pt-2 pb-2 space-y-0.5 overflow-y-auto">
+        {activeNavItems.map((item, idx) => {
           const Icon = item.icon
           // Roots (/dashboard, /dashboard/super-admin) match exactly so
           // their child routes don't keep highlighting the parent. All
@@ -217,14 +221,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               key={item.href}
               href={item.href}
               onClick={() => setMobileOpen(false)}
+              style={{ animationDelay: `${idx * 30}ms` }}
               className={cn(
-                'w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all',
+                'group relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-200 animate-slide-in',
                 isActive
-                  ? 'bg-indigo-50 text-indigo-600 border border-indigo-100 dark:bg-zinc-900 dark:text-indigo-400 dark:border dark:border-zinc-800'
-                  : 'text-zinc-500 hover:text-zinc-900 dark:text-zinc-500 dark:hover:text-white border border-transparent'
+                  ? 'bg-emerald-50 text-emerald-700 font-medium dark:bg-emerald-500/10 dark:text-emerald-300'
+                  : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800/40 dark:hover:text-zinc-100',
               )}
             >
-              <Icon className="w-4 h-4 flex-shrink-0" />
+              {/* 3px left accent for active item — sits just inside the rounded-xl. */}
+              {isActive && (
+                <span aria-hidden="true" className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-r-full bg-emerald-500" />
+              )}
+              <Icon className={cn(
+                'w-4 h-4 flex-shrink-0 transition-colors',
+                isActive ? 'text-emerald-500 dark:text-emerald-400' : '',
+              )} />
               {item.label}
             </Link>
           )
@@ -232,55 +244,62 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </nav>
 
       {/* Footer */}
-      <div className="px-4 py-6 border-t border-zinc-100 dark:border-zinc-800 space-y-2">
-        {/* Showroom-side links — hidden for internal team since their own
-            Paramètres / Intégrations entries live in the main nav. */}
+      <div className="px-3 py-4 border-t border-zinc-100 dark:border-white/5 space-y-0.5">
         {!isInternalTeam && canSeeShowroomSettings && (
           <>
             <Link
               href="/dashboard/parametres"
               onClick={() => setMobileOpen(false)}
               className={cn(
-                'w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all',
+                'group relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-200',
                 pathname === '/dashboard/parametres'
-                  ? 'text-indigo-600 dark:text-indigo-400'
-                  : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
+                  ? 'bg-emerald-50 text-emerald-700 font-medium dark:bg-emerald-500/10 dark:text-emerald-300'
+                  : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800/40 dark:hover:text-zinc-100',
               )}
             >
-              <Settings className="w-4 h-4" />
+              {pathname === '/dashboard/parametres' && (
+                <span aria-hidden="true" className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-r-full bg-emerald-500" />
+              )}
+              <Settings className={cn('w-4 h-4', pathname === '/dashboard/parametres' ? 'text-emerald-500 dark:text-emerald-400' : '')} />
               Paramètres
             </Link>
             <Link
               href="/dashboard/settings/integrations"
               onClick={() => setMobileOpen(false)}
               className={cn(
-                'w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all',
+                'group relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-200',
                 pathname.startsWith('/dashboard/settings/integrations')
-                  ? 'text-indigo-600 dark:text-indigo-400'
-                  : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
+                  ? 'bg-emerald-50 text-emerald-700 font-medium dark:bg-emerald-500/10 dark:text-emerald-300'
+                  : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800/40 dark:hover:text-zinc-100',
               )}
             >
-              <Plug className="w-4 h-4" />
+              {pathname.startsWith('/dashboard/settings/integrations') && (
+                <span aria-hidden="true" className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-r-full bg-emerald-500" />
+              )}
+              <Plug className={cn('w-4 h-4', pathname.startsWith('/dashboard/settings/integrations') ? 'text-emerald-500 dark:text-emerald-400' : '')} />
               Intégrations
             </Link>
           </>
         )}
         <button
           onClick={handleLogout}
-          className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-semibold text-zinc-500 hover:text-zinc-900 dark:hover:text-white transition-all"
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800/40 dark:hover:text-zinc-100 transition-all duration-200"
         >
           <LogOut className="w-4 h-4" />
           Déconnexion
         </button>
       </div>
 
-      {/* User pill */}
-      <div className="mx-4 mb-4 flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-zinc-50 border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800">
-        <div className="w-7 h-7 rounded-full bg-indigo-600 flex items-center justify-center flex-shrink-0">
+      {/* User pill — emerald gradient avatar, glassy chip on dark */}
+      <div className="mx-3 mb-4 flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-zinc-50 border border-zinc-200 dark:bg-white/[0.03] dark:border-white/[0.06]">
+        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center flex-shrink-0 shadow-md shadow-emerald-500/30">
           <span className="text-white text-[11px] font-bold">{userInitial}</span>
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-zinc-900 dark:text-white text-xs font-semibold truncate">{userName}</p>
+          {userRole && (
+            <p className="text-[10px] text-zinc-500 dark:text-zinc-400 capitalize">{userRole.replace('_', ' ')}</p>
+          )}
         </div>
         <MoreVertical className="w-3.5 h-3.5 text-zinc-400 dark:text-zinc-500 flex-shrink-0" />
       </div>
@@ -290,7 +309,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div className="flex h-screen bg-background overflow-hidden">
       {/* ── Desktop sidebar ─────────────────────────────────── */}
-      <aside className="hidden md:flex flex-col w-64 bg-white border-r border-zinc-200 shadow-sm dark:bg-zinc-950 dark:border-zinc-800 dark:shadow-none flex-shrink-0 transition-colors duration-500">
+      <aside className="hidden md:flex flex-col w-64 bg-[var(--sidebar)] border-r border-[var(--sidebar-border)] shadow-sm dark:shadow-none flex-shrink-0 transition-colors duration-500">
         {sidebarBody}
       </aside>
 
@@ -307,7 +326,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* Drawer */}
       <aside
         className={cn(
-          'md:hidden fixed inset-y-0 left-0 z-50 flex flex-col w-64 bg-white border-r border-zinc-200 dark:bg-zinc-950 dark:border-zinc-800',
+          'md:hidden fixed inset-y-0 left-0 z-50 flex flex-col w-64 bg-[var(--sidebar)] border-r border-[var(--sidebar-border)]',
           'transform transition-transform duration-300 ease-in-out',
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
         )}
@@ -342,7 +361,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="flex items-center gap-6">
             <ThemeToggle />
             <NotificationBell userId={userId} />
-            <div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-indigo-600/20">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-emerald-500/20">
               {userInitial}
             </div>
           </div>

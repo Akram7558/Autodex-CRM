@@ -13,7 +13,8 @@ import { getCurrentUserRole } from '@/lib/auth'
 import { AlertBanner } from '@/components/alerts/alert-banner'
 import LeadTemperatureWidget from '@/components/LeadTemperatureWidget'
 import ReminderBanner from '@/components/ReminderBanner'
-import type { AppRole } from '@/lib/types'
+import Sparkline from '@/components/Sparkline'
+import type { AppRole, Vehicle } from '@/lib/types'
 import {
   LEAD_STATUS_LABELS, LEAD_SOURCE_LABELS,
   type Lead, type Vente,
@@ -30,7 +31,7 @@ function statusPill(status: Lead['status']) {
     new:       'bg-zinc-100 text-zinc-700 border border-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-700',
     contacted: 'bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20',
     qualified: 'bg-sky-50 text-sky-700 border border-sky-200 dark:bg-sky-500/10 dark:text-sky-400 dark:border-sky-500/20',
-    proposal:  'bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-500/10 dark:text-indigo-400 dark:border-indigo-500/20',
+    proposal:  'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20',
     won:       'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20',
     lost:      'bg-red-50 text-red-700 border border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20',
   }
@@ -42,7 +43,7 @@ function sourcePill(source: Lead['source']) {
     'walk-in':  'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300',
     phone:      'bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-400',
     website:    'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300',
-    referral:   'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400',
+    referral:   'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
     social:     'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
     facebook:   'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400',
     instagram:  'bg-pink-50 text-pink-700 dark:bg-pink-500/10 dark:text-pink-400',
@@ -61,7 +62,7 @@ const SOURCE_COLORS: Record<string, string> = {
   instagram: '#ec4899',
   telephone: '#0ea5e9',
   phone:     '#0ea5e9',
-  'walk-in': '#6366f1',
+  'walk-in': '#10b981',
   website:   '#71717a',
   referral:  '#8b5cf6',
   social:    '#f59e0b',
@@ -85,6 +86,8 @@ export default function DashboardPage() {
   const [leads,    setLeads]    = useState<Lead[]>([])
   const [ventes,   setVentes]   = useState<Vente[]>([])
   const [vehiclesCount, setVehiclesCount] = useState(0)
+  // Recent listings (FoCar-inspired horizontal scroll).
+  const [vehicles, setVehicles] = useState<Vehicle[]>([])
   const [loading,  setLoading]  = useState(true)
   // Role gating — closer / prospecteur only see their own data;
   // prospecteur additionally has RDV / Ventes / CA cards hidden.
@@ -92,6 +95,7 @@ export default function DashboardPage() {
   // across showrooms; here we mirror the same idea showroom-side.
   const [role,     setRole]     = useState<AppRole | null>(null)
   const [userId,   setUserId]   = useState<string | null>(null)
+  const [userName, setUserName] = useState<string>('vous')
 
   // Default: Ce mois
   const [dateRange, setDateRange] = useState<DateRange>('month')
@@ -105,6 +109,10 @@ export default function DashboardPage() {
       const r = await getCurrentUserRole()
       setRole(r?.role ?? null)
       setUserId(r?.userId ?? null)
+      if (r?.email) {
+        const local = r.email.split('@')[0].replace(/[._-]/g, ' ').trim()
+        if (local) setUserName(local.charAt(0).toUpperCase() + local.slice(1))
+      }
 
       const isRestricted = r?.role === 'closer' || r?.role === 'prospecteur'
 
@@ -115,12 +123,15 @@ export default function DashboardPage() {
         .select('*')
         .order('created_at', { ascending: false })
 
-      // Vehicles: showroom inventory is not visible to closer (sidebar
-      // hidden) and never makes sense for prospecteur — skip the
-      // count entirely for restricted roles instead of leaking it.
+      // Vehicles: full rows for the new "Derniers véhicules" listing
+      // (owner/manager only — restricted roles never see the section).
       const vehiclesP = isRestricted
         ? Promise.resolve({ data: [] })
-        : supabase.from('vehicles').select('id')
+        : supabase
+            .from('vehicles')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(10)
 
       // Ventes: hidden from prospecteur outright. For closer we still
       // fetch the page-wide set, but the rendering below filters to
@@ -131,9 +142,11 @@ export default function DashboardPage() {
         : supabase.from('ventes').select('*').order('date_vente', { ascending: false })
 
       const [{ data: l }, { data: v }, { data: s }] = await Promise.all([leadsP, vehiclesP, ventesP])
-      setLeads(   (l ?? []) as Lead[])
-      setVehiclesCount((v ?? []).length)
-      setVentes(  (s ?? []) as Vente[])
+      setLeads((l ?? []) as Lead[])
+      const vRows = (v ?? []) as Vehicle[]
+      setVehicles(vRows)
+      setVehiclesCount(vRows.length)
+      setVentes((s ?? []) as Vente[])
       setLoading(false)
     })()
   }, [])
@@ -162,6 +175,56 @@ export default function DashboardPage() {
     if (activeWindow.to   && d > activeWindow.to)   return false
     return true
   }
+
+  // ── 7-day buckets for KPI sparklines ──────────────────────
+  // Always relative to "now" (independent of the page date filter)
+  // so the small line readers as "last week" — consistent with the
+  // FoCar reference's "growth from previous month" subtext.
+  const last7Series = useMemo(() => {
+    const days: { day: Date; leads: number; ventes: number; revenue: number; rdv: number }[] = []
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(today); d.setDate(today.getDate() - i)
+      days.push({ day: d, leads: 0, ventes: 0, revenue: 0, rdv: 0 })
+    }
+    const sameDay = (a: Date, b: Date) =>
+      a.getFullYear() === b.getFullYear() &&
+      a.getMonth()    === b.getMonth() &&
+      a.getDate()     === b.getDate()
+
+    for (const l of leads) {
+      const d = new Date(l.created_at)
+      const slot = days.find((s) => sameDay(s.day, d))
+      if (slot) slot.leads++
+      if (l.suivi === 'rdv_planifie' && l.rdv_date) {
+        const r = new Date(l.rdv_date)
+        const rs = days.find((s) => sameDay(s.day, r))
+        if (rs) rs.rdv++
+      }
+    }
+    for (const v of ventes) {
+      if (!v.date_vente) continue
+      const d = new Date(v.date_vente)
+      const slot = days.find((s) => sameDay(s.day, d))
+      if (slot) {
+        slot.ventes++
+        slot.revenue += v.prix_vente ?? 0
+      }
+    }
+    return {
+      leads:   days.map((d) => d.leads),
+      ventes:  days.map((d) => d.ventes),
+      revenue: days.map((d) => d.revenue),
+      rdv:     days.map((d) => d.rdv),
+    }
+  }, [leads, ventes])
+
+  // Greeting copy.
+  const todayLabel = useMemo(() =>
+    format(new Date(), "EEEE d MMMM yyyy", { locale: fr })
+      .replace(/^./, (c) => c.toUpperCase()),
+  [])
 
   // ── Filtered datasets ─────────────────────────────────────
   const filteredLeads  = useMemo(() => leads.filter(l => inWindow(l.created_at)), [leads, activeWindow])
@@ -219,6 +282,7 @@ export default function DashboardPage() {
       value: totalLeads.toString(),
       sub: leads.length ? `sur ${leads.length} au total` : '—',
       icon: Users,
+      series: last7Series.leads,
       show: true,
     },
     {
@@ -226,6 +290,7 @@ export default function DashboardPage() {
       value: vehiculesVendus.toString(),
       sub: `sur ${vehiclesCount} en stock`,
       icon: Car,
+      series: last7Series.ventes,
       show: role !== 'prospecteur',
     },
     {
@@ -233,6 +298,7 @@ export default function DashboardPage() {
       value: formatDzd(chiffreAffaires),
       sub: 'DZD',
       icon: BadgeDollarSign,
+      series: last7Series.revenue,
       show: role === 'owner' || role === 'manager' || role === 'super_admin' || role === 'commercial' || role == null,
     },
     {
@@ -240,6 +306,7 @@ export default function DashboardPage() {
       value: rdvPlanifies.toString(),
       sub: 'sur la période',
       icon: CalendarClock,
+      series: last7Series.rdv,
       show: role !== 'prospecteur',
     },
   ].filter((k) => k.show)
@@ -252,7 +319,7 @@ export default function DashboardPage() {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 rounded-full border-2 border-indigo-500/30 border-t-indigo-500 animate-spin" />
+          <div className="w-8 h-8 rounded-full border-2 border-emerald-500/30 border-t-emerald-500 animate-spin" />
           <p className="text-zinc-500 text-sm">Chargement du tableau de bord…</p>
         </div>
       </div>
@@ -260,12 +327,20 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="p-10 pt-2 max-w-7xl space-y-8 pb-12">
+    <div className="p-10 pt-6 max-w-7xl space-y-8 pb-12">
+      {/* Greeting — top of the dashboard, FoCar-inspired. */}
+      <div className="flex flex-col gap-1 animate-fade-in">
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-zinc-900 dark:text-white">
+          Bonjour, <span className="text-emerald-600 dark:text-emerald-400">{userName}</span> 👋
+        </h1>
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">{todayLabel}</p>
+      </div>
+
       {/* Header row: live insights pill + period filter */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
-          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-500 dark:text-indigo-400">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500 dark:text-emerald-400">
             Live Insights · {format(new Date(), "EEEE d MMMM", { locale: fr })}
           </span>
         </div>
@@ -290,7 +365,7 @@ export default function DashboardPage() {
                   setAppliedTo('')
                 }
               }}
-              className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl px-4 py-2.5 text-sm font-bold text-zinc-700 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm"
+              className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl px-4 py-2.5 text-sm font-bold text-zinc-700 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 shadow-sm"
             >
               <option value="all">Tout</option>
               <option value="week">Cette semaine</option>
@@ -308,14 +383,14 @@ export default function DashboardPage() {
                 type="date"
                 value={customFrom}
                 onChange={(e) => setCustomFrom(e.target.value)}
-                className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl px-3 py-2 text-sm font-bold text-zinc-700 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm"
+                className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl px-3 py-2 text-sm font-bold text-zinc-700 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 shadow-sm"
               />
               <span className="text-xs font-bold text-zinc-500 dark:text-zinc-400">au</span>
               <input
                 type="date"
                 value={customTo}
                 onChange={(e) => setCustomTo(e.target.value)}
-                className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl px-3 py-2 text-sm font-bold text-zinc-700 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm"
+                className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl px-3 py-2 text-sm font-bold text-zinc-700 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 shadow-sm"
               />
               <button
                 type="button"
@@ -323,7 +398,7 @@ export default function DashboardPage() {
                   setAppliedFrom(customFrom)
                   setAppliedTo(customTo)
                 }}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-sm transition-colors"
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-sm transition-colors"
               >
                 Appliquer
               </button>
@@ -342,26 +417,38 @@ export default function DashboardPage() {
       <LeadTemperatureWidget />
 
       {/* KPI cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
         {kpis.map((kpi, i) => {
           const Icon = kpi.icon
           return (
-            <motion.div
+            <div
               key={kpi.label}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: i * 0.05, ease: 'easeOut' }}
-              className="rounded-[2.5rem] border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900 p-6 flex items-start justify-between gap-4 shadow-sm transition-colors"
+              style={{ animationDelay: `${i * 80}ms` }}
+              className="kpi-card glass-card rounded-2xl p-5 flex flex-col gap-4 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_10px_40px_-12px_var(--accent-glow)] animate-fade-in"
             >
-              <div className="min-w-0">
-                <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-black">{kpi.label}</p>
-                <p className="text-3xl md:text-4xl font-black text-zinc-900 dark:text-white mt-3 leading-none tracking-tighter break-all">{kpi.value}</p>
-                <p className="text-xs text-zinc-500 mt-3 font-medium">{kpi.sub}</p>
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 dark:text-zinc-400 font-bold">{kpi.label}</p>
+                <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-emerald-500/10 ring-1 ring-emerald-500/25 flex items-center justify-center">
+                  <Icon className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                </div>
               </div>
-              <div className="flex-shrink-0 w-11 h-11 rounded-2xl bg-indigo-50 border border-indigo-100 dark:bg-indigo-500/10 dark:border-indigo-500/20 flex items-center justify-center">
-                <Icon className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+              <div>
+                <p className="text-3xl md:text-4xl font-bold text-zinc-900 dark:text-white leading-none tracking-tight break-all tabular-nums">
+                  {kpi.value}
+                </p>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-2 font-medium">{kpi.sub}</p>
               </div>
-            </motion.div>
+              <div className="-mx-1">
+                <Sparkline
+                  values={kpi.series}
+                  width={200}
+                  height={36}
+                  stroke="#10b981"
+                  fill="rgba(16,185,129,0.16)"
+                  className="w-full h-auto"
+                />
+              </div>
+            </div>
           )
         })}
       </div>
@@ -392,9 +479,9 @@ export default function DashboardPage() {
               />
               <Tooltip
                 contentStyle={{ borderRadius: 12, border: '1px solid rgba(63,63,70,0.5)', background: '#18181b', fontSize: 11, color: '#fafafa', fontWeight: 600 }}
-                cursor={{ fill: 'rgba(99,102,241,0.08)' }}
+                cursor={{ fill: 'rgba(16,185,129,0.10)' }}
               />
-              <Bar dataKey="total" name="Prospects" fill="#6366f1" radius={[8, 8, 0, 0]} />
+              <Bar dataKey="total" name="Prospects" fill="#10b981" radius={[8, 8, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </motion.div>
@@ -445,7 +532,7 @@ export default function DashboardPage() {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.3 }}
-            className="rounded-[2.5rem] bg-indigo-600 text-white p-8 shadow-2xl shadow-indigo-600/20 relative overflow-hidden group"
+            className="rounded-[2.5rem] bg-emerald-600 text-white p-8 shadow-2xl shadow-emerald-600/20 relative overflow-hidden group"
           >
             <span className="text-[10px] font-black uppercase tracking-[0.2em] opacity-70 block mb-4">Objectif Ventes</span>
             <div className="text-6xl font-black tracking-tighter mb-4 leading-none">{salesPct}%</div>
@@ -454,7 +541,7 @@ export default function DashboardPage() {
             </p>
             <a
               href="/dashboard/prospects"
-              className="block w-full text-center h-11 leading-[2.75rem] bg-white text-indigo-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-transform"
+              className="block w-full text-center h-11 leading-[2.75rem] bg-white text-emerald-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-transform"
             >
               Voir le pipeline
             </a>
@@ -462,6 +549,116 @@ export default function DashboardPage() {
           </motion.div>
         </div>
       </div>
+
+      {/* ── Derniers véhicules — horizontal scroll (FoCar-style) ──── */}
+      {vehicles.length > 0 && (
+        <section className="space-y-4 animate-fade-in" style={{ animationDelay: '300ms' }}>
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-bold tracking-tight text-zinc-900 dark:text-white">
+              Derniers véhicules
+            </h2>
+            <a
+              href="/dashboard/vehicules"
+              className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:text-emerald-500 inline-flex items-center gap-1"
+            >
+              Voir tout <ArrowUpRight className="w-3.5 h-3.5" />
+            </a>
+          </div>
+          <div className="flex gap-4 overflow-x-auto no-scrollbar snap-x snap-mandatory pb-2 -mx-2 px-2">
+            {vehicles.slice(0, 8).map((v) => {
+              const statusCls =
+                v.status === 'available'
+                  ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 ring-emerald-500/30'
+                  : v.status === 'reserved'
+                    ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 ring-amber-500/30'
+                    : 'bg-rose-500/15 text-rose-700 dark:text-rose-300 ring-rose-500/30'
+              const statusLabel = v.status === 'available' ? 'Disponible'
+                : v.status === 'reserved' ? 'Réservé' : 'Vendu'
+              return (
+                <a
+                  key={v.id}
+                  href="/dashboard/vehicules"
+                  className="glass-card snap-start shrink-0 w-[240px] rounded-2xl overflow-hidden hover:-translate-y-0.5 hover:shadow-[0_10px_40px_-12px_var(--accent-glow)] transition-all duration-300"
+                >
+                  <div className="aspect-[4/3] bg-gradient-to-br from-emerald-100 via-emerald-50 to-white dark:from-emerald-500/15 dark:via-emerald-500/5 dark:to-zinc-900 relative overflow-hidden">
+                    {v.image_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={v.image_url} alt={`${v.brand} ${v.model}`} loading="lazy" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <Car className="w-10 h-10 text-emerald-400/60 dark:text-emerald-400/40" />
+                      </div>
+                    )}
+                    <span className={'absolute top-2 right-2 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ' + statusCls}>
+                      {statusLabel}
+                    </span>
+                  </div>
+                  <div className="p-3 space-y-1">
+                    <p className="text-sm font-semibold text-zinc-900 dark:text-white truncate">
+                      {v.brand} {v.model}{v.year ? ` · ${v.year}` : ''}
+                    </p>
+                    <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                      {v.price_dzd != null ? formatDzd(v.price_dzd) + ' DZD' : 'Prix sur demande'}
+                    </p>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate">
+                      {[v.type_moteur, v.color, v.kilometrage != null ? formatDzd(v.kilometrage) + ' km' : null]
+                        .filter(Boolean).join(' · ') || '—'}
+                    </p>
+                  </div>
+                </a>
+              )
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* ── Véhicules les plus vendus (table) ──────────────────────── */}
+      {ventes.length > 0 && (role === 'owner' || role === 'manager' || role === 'super_admin') && (
+        <section className="glass-card rounded-2xl overflow-hidden animate-fade-in" style={{ animationDelay: '380ms' }}>
+          <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-100 dark:border-white/5">
+            <h2 className="text-lg font-bold tracking-tight text-zinc-900 dark:text-white">
+              Véhicules les plus vendus
+            </h2>
+            <a
+              href="/dashboard/ventes"
+              className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:text-emerald-500 inline-flex items-center gap-1"
+            >
+              Voir tout <ArrowUpRight className="w-3.5 h-3.5" />
+            </a>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left bg-zinc-50/60 dark:bg-white/[0.02]">
+                  <th className="px-6 py-3 text-[10px] uppercase tracking-widest text-zinc-500 font-bold">Modèle</th>
+                  <th className="px-6 py-3 text-[10px] uppercase tracking-widest text-zinc-500 font-bold">Client</th>
+                  <th className="px-6 py-3 text-[10px] uppercase tracking-widest text-zinc-500 font-bold">Date</th>
+                  <th className="px-6 py-3 text-[10px] uppercase tracking-widest text-zinc-500 font-bold text-right">Montant</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100 dark:divide-white/5">
+                {ventes.slice(0, 5).map((v) => (
+                  <tr key={v.id} className="hover:bg-zinc-50/50 dark:hover:bg-white/[0.02] transition-colors">
+                    <td className="px-6 py-3 font-medium text-zinc-900 dark:text-white truncate max-w-[220px]">
+                      {v.vehicle_name ?? '—'}
+                      {v.vehicle_reference && (
+                        <span className="ml-2 text-[10px] font-mono text-zinc-500">{v.vehicle_reference}</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-3 text-zinc-700 dark:text-zinc-300 truncate max-w-[180px]">{v.client_name ?? '—'}</td>
+                    <td className="px-6 py-3 text-xs text-zinc-500">
+                      {v.date_vente ? format(new Date(v.date_vente), 'd MMM yyyy', { locale: fr }) : '—'}
+                    </td>
+                    <td className="px-6 py-3 text-right font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                      {v.prix_vente != null ? formatDzd(v.prix_vente) + ' DZD' : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       {/* Recent leads — also filtered by period */}
       <motion.div
@@ -474,7 +671,7 @@ export default function DashboardPage() {
           <h2 className="text-lg font-black uppercase tracking-tighter text-zinc-900 dark:text-white">Derniers prospects</h2>
           <a
             href="/dashboard/leads"
-            className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+            className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-emerald-600 hover:text-emerald-500 dark:text-emerald-400"
           >
             Voir tout <ArrowUpRight className="w-3.5 h-3.5" />
           </a>
