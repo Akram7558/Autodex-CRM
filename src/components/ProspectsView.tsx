@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { motion } from 'motion/react'
 import {
   Search,
   Plus,
@@ -18,6 +17,7 @@ import {
   Eye,
   Clock,
   AlertOctagon,
+  Users,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
@@ -383,159 +383,149 @@ export function ProspectsView() {
   const toLabel = Math.min(startIdx + pageSize, total)
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6 pb-12">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="p-6 md:p-10 max-w-7xl mx-auto space-y-6 pb-12">
+      {/* ── Header ─────────────────────────────────────────────── */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 animate-fade-in">
         <div>
-          <motion.h1
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-3xl font-black tracking-tight text-slate-900 dark:text-slate-50"
-          >
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-[var(--text-primary)]">
             Prospects
-          </motion.h1>
-          <motion.p
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="text-slate-500 dark:text-slate-400 mt-1"
-          >
+          </h1>
+          <p className="mt-1 text-sm text-[var(--text-secondary)]">
             Gérez votre base de contacts et identifiez les meilleures opportunités.
-          </motion.p>
+          </p>
         </div>
 
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.2 }}
-          className="flex items-center gap-3"
-        >
+        <div className="flex items-center gap-2">
           <button
             onClick={exportCsv}
-            className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-sm"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium glass-card text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
           >
             <Download className="w-4 h-4" />
             <span className="hidden sm:inline">Exporter</span>
           </button>
           <button
             onClick={() => setAddOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-500/20 transition-colors"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium bg-emerald-500 hover:bg-emerald-600 text-white shadow-md shadow-emerald-500/30 transition-colors"
           >
             <Plus className="w-4 h-4" />
             Nouveau prospect
           </button>
-        </motion.div>
+        </div>
       </div>
 
-      {/* Main Content Area */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
-        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-[2rem] shadow-sm flex flex-col overflow-hidden"
-      >
-        {/* Order-type tabs (migration_27).
-            Sits above the search/filter toolbar and applies on top of
-            the existing suivi + search filters. Counts are independent
-            of those filters so users always know how many catalog
-            orders exist. */}
-        <div className="px-6 pt-4 border-b border-slate-100 dark:border-slate-800">
-          <nav className="flex items-center gap-1 -mb-px overflow-x-auto" role="tablist">
-            {(
-              [
-                { key: 'all',      label: 'Tous',                  count: orderTabCounts.all },
-                { key: 'vehicle',  label: '🚗 Commandes véhicules', count: orderTabCounts.vehicle },
-                { key: 'preorder', label: '📦 Pré-commandes',       count: orderTabCounts.preorder },
-              ] as Array<{ key: 'all' | LeadOrderType; label: string; count: number }>
-            ).map((t) => {
-              const active = orderTab === t.key
-              return (
-                <button
-                  key={t.key}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  onClick={() => { setOrderTab(t.key); setPage(1) }}
-                  className={cn(
-                    'relative px-4 py-3 text-sm font-bold inline-flex items-center gap-2 whitespace-nowrap transition-colors border-b-2',
-                    active
-                      ? 'text-violet-600 border-violet-600 dark:text-violet-400 dark:border-violet-400'
-                      : 'text-slate-500 dark:text-slate-400 border-transparent hover:text-slate-700 dark:hover:text-slate-200',
-                  )}
-                >
-                  <span>{t.label}</span>
-                  <span className={cn(
-                    'inline-flex items-center justify-center min-w-6 h-5 px-1.5 text-[11px] font-black rounded-full',
-                    active
-                      ? 'bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300'
-                      : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
-                  )}>
-                    {t.count}
-                  </span>
-                </button>
-              )
-            })}
-          </nav>
+      {/* ── Order-type pill tabs (migration_27) ─────────────────── */}
+      <div className="glass-card inline-flex items-center gap-1 p-1 rounded-xl animate-fade-in animate-delay-1">
+        {(
+          [
+            { key: 'all',      label: 'Tous',                  count: orderTabCounts.all },
+            { key: 'vehicle',  label: '🚗 Commandes véhicules', count: orderTabCounts.vehicle },
+            { key: 'preorder', label: '📦 Pré-commandes',       count: orderTabCounts.preorder },
+          ] as Array<{ key: 'all' | LeadOrderType; label: string; count: number }>
+        ).map((t) => {
+          const active = orderTab === t.key
+          return (
+            <button
+              key={t.key}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => { setOrderTab(t.key); setPage(1) }}
+              className={cn(
+                'inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap',
+                active
+                  ? 'bg-emerald-500 text-white shadow-sm shadow-emerald-500/30'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-zinc-100 dark:hover:bg-white/[0.04]',
+              )}
+            >
+              <span>{t.label}</span>
+              <span className={cn(
+                'inline-flex items-center justify-center min-w-5 h-5 px-1.5 text-[10px] font-bold rounded-full',
+                active
+                  ? 'bg-white/20 text-white'
+                  : 'bg-zinc-200 text-zinc-700 dark:bg-white/[0.08] dark:text-zinc-300',
+              )}>
+                {t.count}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* ── Filters bar ─────────────────────────────────────────── */}
+      <div className="glass-card p-4 rounded-xl flex flex-col sm:flex-row items-stretch sm:items-center gap-3 animate-fade-in animate-delay-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1) }}
+            placeholder="Rechercher un nom, email, véhicule..."
+            className={cn(
+              'w-full pl-10 pr-4 py-2.5 rounded-xl text-sm',
+              'bg-zinc-50 border border-zinc-200 text-zinc-900 placeholder:text-zinc-400',
+              'dark:bg-white/[0.04] dark:border-white/[0.06] dark:text-white dark:placeholder:text-zinc-500',
+              'focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500/50 transition',
+            )}
+          />
         </div>
 
-        {/* Toolbar (Search & Filters) */}
-        <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="relative w-full sm:w-96">
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(1) }}
-              placeholder="Rechercher un nom, email, véhicule..."
-              className="w-full bg-slate-50 dark:bg-slate-950 border-none rounded-2xl pl-12 pr-6 py-3 text-sm focus:ring-2 focus:ring-indigo-500/20 dark:text-slate-100 placeholder:text-slate-400"
-            />
-            <Search className="absolute left-4 top-3.5 text-slate-400 w-5 h-5 pointer-events-none" />
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-secondary)] shrink-0">
+              Suivi
+            </span>
+            <select
+              value={suiviFilter}
+              onChange={(e) => { setSuiviFilter(e.target.value as 'all' | LeadSuivi); setPage(1) }}
+              className={cn(
+                'px-3 py-2 rounded-xl text-sm font-medium cursor-pointer transition',
+                'bg-zinc-50 border border-zinc-200 text-zinc-900',
+                'dark:bg-white/[0.04] dark:border-white/[0.06] dark:text-white',
+                'focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500/50',
+              )}
+            >
+              <option value="all">Tous</option>
+              {LEAD_SUIVI_VALUES.map((s) => (
+                <option key={s} value={s}>{LEAD_SUIVI_LABELS[s]}</option>
+              ))}
+            </select>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 shrink-0">
-                Suivi
+          {/* Temperature filter (migration_28). */}
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-secondary)] shrink-0">
+              Temp.
               </span>
-              <select
-                value={suiviFilter}
-                onChange={(e) => { setSuiviFilter(e.target.value as 'all' | LeadSuivi); setPage(1) }}
-                className="bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-              >
-                <option value="all">Tous</option>
-                {LEAD_SUIVI_VALUES.map((s) => (
-                  <option key={s} value={s}>{LEAD_SUIVI_LABELS[s]}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Temperature filter (migration_28). */}
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 shrink-0">
-                Temp.
-              </span>
-              <select
-                value={tempFilter}
-                onChange={(e) => { setTempFilter(e.target.value as 'all' | LeadTemperature); setPage(1) }}
-                className="bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-              >
-                <option value="all">Toutes</option>
-                <option value="chaud">🔥 Chauds</option>
-                <option value="tiede">🟡 Tièdes</option>
-                <option value="froid">🧊 Froids</option>
-              </select>
-            </div>
+            <select
+              value={tempFilter}
+              onChange={(e) => { setTempFilter(e.target.value as 'all' | LeadTemperature); setPage(1) }}
+              className={cn(
+                'px-3 py-2 rounded-xl text-sm font-medium cursor-pointer transition',
+                'bg-zinc-50 border border-zinc-200 text-zinc-900',
+                'dark:bg-white/[0.04] dark:border-white/[0.06] dark:text-white',
+                'focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500/50',
+              )}
+            >
+              <option value="all">Toutes</option>
+              <option value="chaud">🔥 Chauds</option>
+              <option value="tiede">🟡 Tièdes</option>
+              <option value="froid">🧊 Froids</option>
+            </select>
           </div>
         </div>
+      </div>
 
+      {/* ── Table card ──────────────────────────────────────────── */}
+      <div className="glass-card rounded-2xl overflow-hidden animate-fade-in animate-delay-3">
         {/* Table */}
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50">
-                <th className="pb-4 pt-4 px-6 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Contact</th>
-                <th className="pb-4 pt-4 px-6 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Véhicule & Source</th>
-                <th className="pb-4 pt-4 px-6 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Suivi</th>
-                <th className="pb-4 pt-4 px-6 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
+              <tr className="bg-zinc-50 dark:bg-white/[0.02] border-b border-zinc-200 dark:border-white/[0.06]">
+                <th className="px-5 py-3 text-xs uppercase tracking-wider font-medium text-zinc-500 dark:text-zinc-500">Contact</th>
+                <th className="px-5 py-3 text-xs uppercase tracking-wider font-medium text-zinc-500 dark:text-zinc-500">Véhicule & Source</th>
+                <th className="px-5 py-3 text-xs uppercase tracking-wider font-medium text-zinc-500 dark:text-zinc-500">Suivi</th>
+                <th className="px-5 py-3 text-xs uppercase tracking-wider font-medium text-zinc-500 dark:text-zinc-500">
                   <button
                     type="button"
                     onClick={() => {
@@ -544,10 +534,10 @@ export function ProspectsView() {
                       setPage(1)
                     }}
                     className={cn(
-                      'inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest transition-colors',
+                      'inline-flex items-center gap-1 text-xs uppercase tracking-wider font-medium transition-colors',
                       sortByTemp
-                        ? 'text-violet-600 dark:text-violet-400'
-                        : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300',
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300',
                     )}
                     title="Trier par température"
                   >
@@ -557,37 +547,39 @@ export function ProspectsView() {
                     </span>
                   </button>
                 </th>
-                <th className="pb-4 pt-4 px-6 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Date</th>
-                <th className="pb-4 pt-4 px-6 text-right"></th>
+                <th className="px-5 py-3 text-xs uppercase tracking-wider font-medium text-zinc-500 dark:text-zinc-500">Date</th>
+                <th className="px-5 py-3 text-right"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
-              {pageRows.map((prospect, idx) => (
-                <motion.tr
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.4 + (idx * 0.05) }}
+            <tbody className="divide-y divide-zinc-100 dark:divide-white/[0.04]">
+              {pageRows.map((prospect) => (
+                <tr
                   key={prospect.id}
                   onClick={() => {
                     const full = leads.find((l) => l.id === prospect.id)
                     if (full) setDetailLead(full)
                   }}
-                  className="group hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-colors cursor-pointer"
+                  className="group cursor-pointer hover:bg-zinc-50 dark:hover:bg-white/[0.03] transition-colors duration-150"
                 >
-                  <td className="py-4 px-6">
+                  <td className="py-4 px-5">
                     <div className="flex items-center gap-4">
                       <div className="relative">
-                        <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-black text-slate-600 dark:text-slate-300">
-                          {prospect.name.split(' ').map(n => n[0]).join('')}
+                        <div className={cn(
+                          'w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm',
+                          prospect.isLinked
+                            ? 'bg-gradient-to-br from-emerald-400 to-emerald-600 text-white shadow-md shadow-emerald-500/30'
+                            : 'bg-zinc-100 text-zinc-600 dark:bg-white/[0.06] dark:text-zinc-300',
+                        )}>
+                          {prospect.name.split(' ').map(n => n[0]).filter(Boolean).slice(0, 2).join('')}
                         </div>
                         {prospect.isVip && (
-                          <div className="absolute -top-1 -right-1 w-4 h-4 bg-amber-400 rounded-full flex items-center justify-center border-2 border-white dark:border-slate-900">
+                          <div className="absolute -top-1 -right-1 w-4 h-4 bg-amber-400 rounded-full flex items-center justify-center border-2 border-white dark:border-[var(--bg-surface)]">
                             <Star className="w-2.5 h-2.5 text-white fill-white" />
                           </div>
                         )}
                       </div>
                       <div>
-                        <div className="text-sm font-bold text-slate-900 dark:text-slate-100 inline-flex items-center gap-1.5">
+                        <div className="text-sm font-medium text-zinc-900 dark:text-white inline-flex items-center gap-1.5">
                           <span>{prospect.name}</span>
                           {prospect.escalated ? (
                             <span
@@ -610,41 +602,41 @@ export function ProspectsView() {
                             </span>
                           )}
                         </div>
-                        <div className="flex items-center gap-3 mt-1">
-                          <div className="flex items-center gap-1 text-slate-500" title={prospect.email}>
+                        <div className="flex items-center gap-3 mt-1 text-zinc-500 dark:text-zinc-400">
+                          <div className="flex items-center gap-1" title={prospect.email}>
                             <Mail className="w-3 h-3" />
-                            <span className="text-xs truncate max-w-[120px]">{prospect.email}</span>
+                            <span className="text-sm truncate max-w-[140px]">{prospect.email}</span>
                           </div>
-                          <div className="flex items-center gap-1 text-slate-500">
+                          <div className="flex items-center gap-1">
                             <Phone className="w-3 h-3" />
-                            <span className="text-xs">{prospect.phone}</span>
+                            <span className="text-sm">{prospect.phone}</span>
                           </div>
                         </div>
                       </div>
                     </div>
                   </td>
-                  <td className="py-4 px-6">
-                    <div className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2 flex-wrap">
+                  <td className="py-4 px-5">
+                    <div className="text-sm font-medium text-zinc-900 dark:text-white flex items-center gap-2 flex-wrap">
                       <span className="truncate">{prospect.car}</span>
                       {prospect.isLinked && (
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-500/20 shrink-0">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/30 shrink-0">
                           Lié
                         </span>
                       )}
                       {prospect.orderType === 'vehicle' && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300 border border-emerald-300/50 dark:border-emerald-500/30 shrink-0">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/30 shrink-0">
                           🚗 Véhicule
                         </span>
                       )}
                       {prospect.orderType === 'preorder' && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300 border border-amber-300/50 dark:border-amber-500/30 shrink-0">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-amber-500/15 text-amber-700 dark:text-amber-300 ring-1 ring-amber-500/30 shrink-0">
                           📦 Pré-commande
                         </span>
                       )}
                     </div>
-                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">{prospect.source}</div>
+                    <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">{prospect.source}</div>
                   </td>
-                  <td className="py-4 px-6 max-w-[220px]" onClick={(e) => e.stopPropagation()}>
+                  <td className="py-4 px-5 max-w-[220px]" onClick={(e) => e.stopPropagation()}>
                     <div className="relative inline-block">
                       <select
                         value={prospect.suivi ?? ''}
@@ -655,10 +647,10 @@ export function ProspectsView() {
                           )
                         }
                         className={cn(
-                          "appearance-none cursor-pointer pl-3 pr-7 py-1 rounded-full text-xs font-black uppercase tracking-widest border focus:outline-none focus:ring-2 focus:ring-indigo-500/30",
+                          'appearance-none cursor-pointer pl-3 pr-7 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wider border transition focus:outline-none focus:ring-2 focus:ring-emerald-500/30',
                           prospect.suivi
                             ? LEAD_SUIVI_BADGE_CLASSES[prospect.suivi]
-                            : "bg-slate-50 text-slate-400 border-slate-200 dark:bg-slate-800 dark:text-slate-500 dark:border-slate-700"
+                            : 'bg-zinc-100 text-zinc-500 border-zinc-200 dark:bg-white/[0.04] dark:text-zinc-400 dark:border-white/[0.06]',
                         )}
                       >
                         <option value="">—</option>
@@ -682,7 +674,7 @@ export function ProspectsView() {
                       </div>
                     )}
                   </td>
-                  <td className="py-4 px-6">
+                  <td className="py-4 px-5">
                     {prospect.temperature ? (
                       <span
                         className={cn(
@@ -701,10 +693,10 @@ export function ProspectsView() {
                       <span className="text-xs text-slate-400">—</span>
                     )}
                   </td>
-                  <td className="py-4 px-6 text-sm font-bold text-slate-500 dark:text-slate-400">
+                  <td className="py-4 px-5 text-sm text-zinc-500 dark:text-zinc-400">
                     {prospect.date}
                   </td>
-                  <td className="py-4 px-6 text-right" onClick={(e) => e.stopPropagation()}>
+                  <td className="py-4 px-5 text-right" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-2">
                       {(() => {
                         const intl = formatPhoneIntl(prospect.rawPhone)
@@ -727,8 +719,10 @@ export function ProspectsView() {
                                 aria-haspopup="menu"
                                 aria-expanded={contactPopover?.id === prospect.id && contactPopover?.kind === 'call'}
                                 className={cn(
-                                  "p-2 text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 rounded-xl transition-colors shadow-sm inline-flex items-center justify-center",
-                                  !hasPhone && "opacity-40 cursor-not-allowed hover:bg-indigo-50 dark:hover:bg-indigo-500/10"
+                                  'w-8 h-8 rounded-full inline-flex items-center justify-center transition-colors',
+                                  'bg-zinc-100 text-zinc-500 hover:bg-zinc-200 hover:text-emerald-600',
+                                  'dark:bg-white/[0.04] dark:text-zinc-400 dark:hover:bg-white/[0.08] dark:hover:text-emerald-400',
+                                  !hasPhone && 'opacity-40 cursor-not-allowed',
                                 )}
                                 title={
                                   hasPhone
@@ -743,12 +737,12 @@ export function ProspectsView() {
                               {hasPhone && contactPopover?.id === prospect.id && contactPopover?.kind === 'call' && (
                                 <div
                                   role="menu"
-                                  className="absolute right-0 top-full mt-1 z-30 w-52 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl py-1 text-left"
+                                  className="absolute right-0 top-full mt-2 z-30 w-52 rounded-xl border border-zinc-200 bg-white dark:border-white/[0.08] dark:bg-[#0a0a0e]/95 dark:backdrop-blur-xl shadow-2xl py-1 text-left"
                                 >
                                   <a
                                     href={`tel:${intl!.tel}`}
                                     onClick={() => setContactPopover(null)}
-                                    className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+                                    className="flex items-center gap-2 px-3 py-2 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-white/[0.06]"
                                   >
                                     <Phone className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                                     Appel téléphonique
@@ -758,7 +752,7 @@ export function ProspectsView() {
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     onClick={() => setContactPopover(null)}
-                                    className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+                                    className="flex items-center gap-2 px-3 py-2 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-white/[0.06]"
                                   >
                                     <MessageCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                                     Appel WhatsApp
@@ -782,8 +776,10 @@ export function ProspectsView() {
                                 aria-haspopup="menu"
                                 aria-expanded={contactPopover?.id === prospect.id && contactPopover?.kind === 'msg'}
                                 className={cn(
-                                  "p-2 text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-500/20 rounded-xl transition-colors shadow-sm inline-flex items-center justify-center",
-                                  !hasPhone && "opacity-40 cursor-not-allowed hover:bg-emerald-50 dark:hover:bg-emerald-500/10"
+                                  'w-8 h-8 rounded-full inline-flex items-center justify-center transition-colors',
+                                  'bg-zinc-100 text-zinc-500 hover:bg-zinc-200 hover:text-blue-600',
+                                  'dark:bg-white/[0.04] dark:text-zinc-400 dark:hover:bg-white/[0.08] dark:hover:text-blue-400',
+                                  !hasPhone && 'opacity-40 cursor-not-allowed',
                                 )}
                                 title={hasPhone ? `Message à ${prospect.rawPhone}` : noPhoneTitle}
                               >
@@ -792,12 +788,12 @@ export function ProspectsView() {
                               {hasPhone && contactPopover?.id === prospect.id && contactPopover?.kind === 'msg' && (
                                 <div
                                   role="menu"
-                                  className="absolute right-0 top-full mt-1 z-30 w-52 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl py-1 text-left"
+                                  className="absolute right-0 top-full mt-2 z-30 w-52 rounded-xl border border-zinc-200 bg-white dark:border-white/[0.08] dark:bg-[#0a0a0e]/95 dark:backdrop-blur-xl shadow-2xl py-1 text-left"
                                 >
                                   <a
                                     href={`sms:${intl!.tel}`}
                                     onClick={() => setContactPopover(null)}
-                                    className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+                                    className="flex items-center gap-2 px-3 py-2 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-white/[0.06]"
                                   >
                                     <MessageSquare className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                                     SMS
@@ -807,7 +803,7 @@ export function ProspectsView() {
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     onClick={() => setContactPopover(null)}
-                                    className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+                                    className="flex items-center gap-2 px-3 py-2 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-white/[0.06]"
                                   >
                                     <MessageCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                                     WhatsApp
@@ -821,7 +817,7 @@ export function ProspectsView() {
                       <div className="relative" data-lead-menu>
                         <button
                           onClick={() => setMenuOpenId(menuOpenId === prospect.id ? null : prospect.id)}
-                          className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                          className="w-8 h-8 rounded-full inline-flex items-center justify-center bg-zinc-100 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-700 dark:bg-white/[0.04] dark:text-zinc-400 dark:hover:bg-white/[0.08] dark:hover:text-white transition-colors"
                           aria-label="Options"
                           aria-haspopup="menu"
                           aria-expanded={menuOpenId === prospect.id}
@@ -831,7 +827,7 @@ export function ProspectsView() {
                         {menuOpenId === prospect.id && (
                           <div
                             role="menu"
-                            className="absolute right-0 top-full mt-1 z-30 w-44 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl py-1 text-left"
+                            className="absolute right-0 top-full mt-2 z-30 w-44 rounded-xl border border-zinc-200 bg-white dark:border-white/[0.08] dark:bg-[#0a0a0e]/95 dark:backdrop-blur-xl shadow-2xl py-1 text-left"
                           >
                             <button
                               type="button"
@@ -840,7 +836,7 @@ export function ProspectsView() {
                                 if (full) setDetailLead(full)
                                 setMenuOpenId(null)
                               }}
-                              className="flex items-center gap-2 px-3 py-2 text-sm w-full text-left text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+                              className="flex items-center gap-2 px-3 py-2 text-sm w-full text-left text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-white/[0.06]"
                             >
                               <Eye className="w-4 h-4" />
                               Voir la fiche
@@ -852,7 +848,7 @@ export function ProspectsView() {
                                 if (full) setEditingLead(full)
                                 setMenuOpenId(null)
                               }}
-                              className="flex items-center gap-2 px-3 py-2 text-sm w-full text-left text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+                              className="flex items-center gap-2 px-3 py-2 text-sm w-full text-left text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-white/[0.06]"
                             >
                               <Pencil className="w-4 h-4" />
                               Modifier
@@ -870,52 +866,75 @@ export function ProspectsView() {
                       </div>
                     </div>
                   </td>
-                </motion.tr>
+                </tr>
               ))}
             </tbody>
           </table>
+
+          {/* Empty state */}
+          {pageRows.length === 0 && (
+            <div className="px-6 py-16 flex flex-col items-center text-center gap-2">
+              <div className="w-14 h-14 rounded-2xl bg-zinc-100 dark:bg-white/[0.04] flex items-center justify-center">
+                <Users className="w-7 h-7 text-zinc-400 dark:text-zinc-500" />
+              </div>
+              <p className="text-base font-medium text-zinc-700 dark:text-zinc-300 mt-2">Aucun prospect trouvé</p>
+              <p className="text-sm text-zinc-500 dark:text-zinc-500">
+                Ajustez vos filtres ou créez un nouveau prospect pour commencer.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Pagination */}
-        <div className="p-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50">
-          <span className="text-xs font-bold text-slate-500">
-            Affichage de {fromLabel} à {toLabel} sur {total}
+        <div className="px-5 py-3 border-t border-zinc-100 dark:border-white/[0.06] flex items-center justify-between gap-3 flex-wrap">
+          <span className="text-sm text-zinc-500 dark:text-zinc-500">
+            Affichage de <span className="font-medium text-zinc-700 dark:text-zinc-300">{fromLabel}</span> à <span className="font-medium text-zinc-700 dark:text-zinc-300">{toLabel}</span> sur <span className="font-medium text-zinc-700 dark:text-zinc-300">{total}</span>
           </span>
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-2">
               <select
                 value={pageSize}
                 onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1) }}
-                className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                className={cn(
+                  'px-2 py-1 rounded-lg text-xs font-medium cursor-pointer transition',
+                  'bg-zinc-50 border border-zinc-200 text-zinc-700',
+                  'dark:bg-white/[0.04] dark:border-white/[0.06] dark:text-zinc-200',
+                  'focus:outline-none focus:ring-2 focus:ring-emerald-500/30',
+                )}
               >
                 {PAGE_SIZE_OPTIONS.map((n) => (
                   <option key={n} value={n}>{n}</option>
                 ))}
               </select>
-              <span className="text-xs font-bold text-slate-500">éléments</span>
+              <span className="text-xs text-zinc-500 dark:text-zinc-500">par page</span>
             </div>
             <div className="flex gap-1">
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={safePage === 1}
-                className="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-400 hover:text-slate-600 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+                className="w-8 h-8 rounded-lg inline-flex items-center justify-center text-xs font-medium bg-zinc-100 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-700 dark:bg-white/[0.04] dark:text-zinc-400 dark:hover:bg-white/[0.08] dark:hover:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                aria-label="Page précédente"
               >
-                Précédent
+                ‹
               </button>
-              <button className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm border border-slate-200 dark:border-slate-700">
+              <button
+                aria-current="page"
+                className="w-8 h-8 rounded-lg inline-flex items-center justify-center text-xs font-semibold bg-emerald-500 text-white shadow-sm shadow-emerald-500/30"
+              >
                 {safePage}
               </button>
               <button
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={safePage === totalPages}
-                className="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+                className="w-8 h-8 rounded-lg inline-flex items-center justify-center text-xs font-medium bg-zinc-100 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-700 dark:bg-white/[0.04] dark:text-zinc-400 dark:hover:bg-white/[0.08] dark:hover:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                aria-label="Page suivante"
               >
-                Suivant
+                ›
               </button>
             </div>
           </div>
         </div>
-      </motion.div>
+      </div>
 
       <AddLeadModal
         open={addOpen}
