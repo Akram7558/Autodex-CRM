@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -53,96 +53,110 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* ─────────────────────────────────────────────────────────────────────
+   AutoDex design tokens — FoCar-inspired, emerald-only.
+   The shadcn tokens (`--background`, `--card`, `--primary`, …) are
+   bound to the new surfaces so legacy components keep rendering
+   without any code change.
+   ───────────────────────────────────────────────────────────────────── */
 :root {
-  /* AutoDex design system — light mode (FoCar-inspired, emerald accent) */
-  --background:           #f8f9fc;
-  --foreground:           #111118;
-  --card:                 #ffffff;
-  --card-foreground:      #111118;
-  --popover:              #ffffff;
-  --popover-foreground:   #111118;
-  --primary:              #10b981;
+  /* ── FoCar surfaces + accent (light) ─────────────────────────────── */
+  --bg-main:        #f0f2f5;
+  --bg-surface:     #ffffff;
+  --bg-elevated:    #f8f9fc;
+  --bg-sidebar:     #ffffff;
+  --text-primary:   #0f172a;
+  --text-secondary: #64748b;
+  --accent:         #10b981;
+  --accent-hover:   #059669;
+  --accent-glow:    rgba(16, 185, 129, 0.15);
+  --accent-subtle:  rgba(16, 185, 129, 0.08);
+  --card-shadow:    0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+
+  /* ── shadcn token bindings (mapped to the FoCar palette) ─────────── */
+  --background:           var(--bg-main);
+  --foreground:           var(--text-primary);
+  --card:                 var(--bg-surface);
+  --card-foreground:      var(--text-primary);
+  --popover:              var(--bg-surface);
+  --popover-foreground:   var(--text-primary);
+  --primary:              var(--accent);
   --primary-foreground:   #ffffff;
   --secondary:            #f0f1f5;
-  --secondary-foreground: #111118;
+  --secondary-foreground: var(--text-primary);
   --muted:                #f0f1f5;
-  --muted-foreground:     #6b6b7b;
-  --accent:               #ecfdf5;
+  --muted-foreground:     var(--text-secondary);
+  /* `accent` (shadcn) is the soft tint used by selected items; we keep
+     it readable by using a derived emerald wash instead of the same
+     value as `--accent`. */
+  --accent-fill:          rgba(16, 185, 129, 0.10);
   --accent-foreground:    #047857;
   --destructive:          oklch(0.577 0.245 27.325);
   --border:               rgba(0, 0, 0, 0.08);
   --input:                #e4e4e7;
-  --ring:                 #10b981;
+  --ring:                 var(--accent);
   --chart-1:              #10b981;
   --chart-2:              #34d399;
-  --chart-3:              #f59e0b;
-  --chart-4:              #6366f1;
+  --chart-3:              #6ee7b7;
+  --chart-4:              #fbbf24;
   --chart-5:              #f43f5e;
   --radius:               0.75rem;
-  --sidebar:                       #ffffff;
-  --sidebar-foreground:            #111118;
-  --sidebar-primary:               #10b981;
+  --sidebar:                       var(--bg-sidebar);
+  --sidebar-foreground:            var(--text-primary);
+  --sidebar-primary:               var(--accent);
   --sidebar-primary-foreground:    #ffffff;
-  --sidebar-accent:                #ecfdf5;
+  --sidebar-accent:                rgba(16, 185, 129, 0.08);
   --sidebar-accent-foreground:     #047857;
   --sidebar-border:                #e5e7eb;
-  --sidebar-ring:                  #10b981;
-
-  /* Layered surfaces + glass tokens (FoCar mapping) */
-  --bg-main:        #f8f9fc;
-  --bg-surface:     #ffffff;
-  --bg-elevated:    #f0f1f5;
-  --text-primary:   #111118;
-  --text-secondary: #6b6b7b;
-  --accent-hover:   #059669;
-  --accent-glow:    rgba(16, 185, 129, 0.18);
-  --glass-bg:       rgba(255, 255, 255, 0.7);
-  --glass-border:   rgba(0, 0, 0, 0.06);
+  --sidebar-ring:                  var(--accent);
 }
 
 .dark {
-  /* AutoDex design system — dark mode (FoCar-inspired, emerald accent) */
-  --background:           #0a0a0f;
-  --foreground:           #f0f0f5;
-  --card:                 #111118;
-  --card-foreground:      #f0f0f5;
-  --popover:              #111118;
-  --popover-foreground:   #f0f0f5;
-  --primary:              #34d399;
+  /* ── FoCar surfaces (dark — primary mode) ─────────────────────────── */
+  --bg-main:        #050507;
+  --bg-surface:     #0c0c10;
+  --bg-elevated:    #131318;
+  --bg-sidebar:     #0a0a0e;
+  --text-primary:   #f1f5f9;
+  --text-secondary: #64748b;
+  --accent:         #10b981;
+  --accent-hover:   #34d399;
+  --accent-glow:    rgba(16, 185, 129, 0.20);
+  --accent-subtle:  rgba(16, 185, 129, 0.06);
+  --card-shadow:    0 4px 30px rgba(0, 0, 0, 0.4);
+
+  /* shadcn re-bindings */
+  --background:           var(--bg-main);
+  --foreground:           var(--text-primary);
+  --card:                 var(--bg-surface);
+  --card-foreground:      var(--text-primary);
+  --popover:              var(--bg-surface);
+  --popover-foreground:   var(--text-primary);
+  --primary:              var(--accent);
   --primary-foreground:   #062a1e;
-  --secondary:            #1a1a24;
-  --secondary-foreground: #f0f0f5;
-  --muted:                #111118;
-  --muted-foreground:     #8a8a99;
-  --accent:               rgba(16, 185, 129, 0.12);
+  --secondary:            #131318;
+  --secondary-foreground: var(--text-primary);
+  --muted:                var(--bg-surface);
+  --muted-foreground:     var(--text-secondary);
+  --accent-fill:          rgba(16, 185, 129, 0.12);
   --accent-foreground:    #34d399;
   --destructive:          oklch(0.704 0.191 22.216);
   --border:               rgba(255, 255, 255, 0.06);
-  --input:                #1a1a24;
-  --ring:                 #34d399;
-  --chart-1:              #34d399;
-  --chart-2:              #10b981;
-  --chart-3:              #fbbf24;
-  --chart-4:              #818cf8;
+  --input:                #131318;
+  --ring:                 var(--accent);
+  --chart-1:              #10b981;
+  --chart-2:              #34d399;
+  --chart-3:              #6ee7b7;
+  --chart-4:              #fbbf24;
   --chart-5:              #fb7185;
-  --sidebar:                       #0d0d14;
-  --sidebar-foreground:            #f0f0f5;
-  --sidebar-primary:               #34d399;
+  --sidebar:                       var(--bg-sidebar);
+  --sidebar-foreground:            var(--text-primary);
+  --sidebar-primary:               var(--accent);
   --sidebar-primary-foreground:    #062a1e;
-  --sidebar-accent:                rgba(16, 185, 129, 0.12);
+  --sidebar-accent:                rgba(16, 185, 129, 0.10);
   --sidebar-accent-foreground:     #34d399;
   --sidebar-border:                rgba(255, 255, 255, 0.04);
-  --sidebar-ring:                  #34d399;
-
-  --bg-main:        #0a0a0f;
-  --bg-surface:     #111118;
-  --bg-elevated:    #1a1a24;
-  --text-primary:   #f0f0f5;
-  --text-secondary: #8a8a99;
-  --accent-hover:   #6ee7b7;
-  --accent-glow:    rgba(52, 211, 153, 0.25);
-  --glass-bg:       rgba(17, 17, 24, 0.7);
-  --glass-border:   rgba(255, 255, 255, 0.06);
+  --sidebar-ring:                  var(--accent);
 }
 
 @layer base {
@@ -150,7 +164,9 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+    background: var(--bg-main);
+    color: var(--text-primary);
     transition:
       background-color 300ms ease,
       color 300ms ease,
@@ -161,111 +177,122 @@
   }
 }
 
+/* ─────────────────────────────────────────────────────────────────────
+   Glass / KPI / animation utilities
+   ───────────────────────────────────────────────────────────────────── */
 @layer utilities {
-  .sidebar-gradient {
-    background: linear-gradient(180deg, #0a0a0f 0%, #111118 100%);
-  }
-  .stat-card {
-    box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05), 0 4px 6px -2px rgba(0,0,0,0.02);
-  }
-  .theme-transition,
-  .theme-transition * {
-    transition:
-      background-color 300ms ease,
-      border-color 300ms ease,
-      color 300ms ease,
-      fill 300ms ease,
-      stroke 300ms ease;
-  }
-  .card-elevated {
-    box-shadow:
-      0 1px 2px rgba(15, 23, 42, 0.04),
-      0 8px 24px -12px rgba(15, 23, 42, 0.08);
-  }
-  .dark .card-elevated {
-    box-shadow:
-      0 0 0 1px rgba(255, 255, 255, 0.03),
-      0 1px 2px rgba(0, 0, 0, 0.3),
-      0 12px 28px -14px rgba(0, 0, 0, 0.5);
-  }
-
-  /* ── Glassmorphism cards (FoCar-style) ──────────────────────────── */
+  /* Glassmorphism card. In dark mode the surface goes translucent +
+     backdrop-blur; the @supports fallback drops the blur on browsers
+     that don't support it. */
   .glass-card {
-    background: var(--glass-bg);
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: var(--card-shadow);
+  }
+  .dark .glass-card {
+    background: rgba(12, 12, 16, 0.8);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
-    border: 1px solid var(--glass-border);
-    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.06);
   }
-  /* Solid-color fallback when backdrop-filter isn't supported. */
   @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-    .glass-card {
-      background: var(--bg-surface);
-    }
+    .dark .glass-card { background: #0c0c10; }
   }
 
-  /* ── KPI card gradient border (emerald rim) ─────────────────────── */
+  /* KPI card with an emerald gradient rim (top bar in dark / brighter
+     stripe in light). Padding lives on the consumer so layouts can
+     vary; this only handles the chrome. */
   .kpi-card {
     position: relative;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
     overflow: hidden;
+    box-shadow: var(--card-shadow);
   }
   .kpi-card::before {
-    content: "";
+    content: '';
     position: absolute;
-    inset: 0;
-    padding: 1px;
-    border-radius: inherit;
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.4), rgba(255, 255, 255, 0) 60%);
-    -webkit-mask:
-      linear-gradient(#fff 0 0) content-box,
-      linear-gradient(#fff 0 0);
-    -webkit-mask-composite: xor;
-            mask-composite: exclude;
-    pointer-events: none;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #10b981, #34d399, #6ee7b7);
+  }
+  .dark .kpi-card {
+    background: rgba(12, 12, 16, 0.8);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+  }
+  .dark .kpi-card::before {
+    height: 2px;
+    background: linear-gradient(90deg, #10b981, #34d399);
+    opacity: 0.85;
+  }
+  @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+    .dark .kpi-card { background: #0c0c10; }
   }
 
-  /* ── Hide scrollbar (horizontal car listings) ───────────────────── */
+  /* Hover lift used by KPI + listings */
+  .lift-on-hover {
+    transition:
+      transform 300ms cubic-bezier(0.4, 0, 0.2, 1),
+      box-shadow 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .lift-on-hover:hover {
+    transform: translateY(-2px);
+    box-shadow:
+      0 10px 30px -10px var(--accent-glow),
+      var(--card-shadow);
+  }
+
+  /* No-scrollbar (used by the horizontal vehicle listings) */
   .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
   .no-scrollbar::-webkit-scrollbar { display: none; }
+
+  /* Subtle inner divider used inside glass cards */
+  .glass-divider { border-color: var(--border); }
 }
 
-/* ── Animations ────────────────────────────────────────────────────── */
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0);  }
-}
-@keyframes slideIn {
-  from { opacity: 0; transform: translateX(-12px); }
-  to   { opacity: 1; transform: translateX(0);     }
-}
-@keyframes scaleIn {
-  from { opacity: 0; transform: scale(0.95); }
-  to   { opacity: 1; transform: scale(1);    }
+/* ─────────────────────────────────────────────────────────────────────
+   Animations
+   ───────────────────────────────────────────────────────────────────── */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0);    }
 }
 @keyframes shimmer {
   0%   { background-position: -200% 0; }
   100% { background-position:  200% 0; }
 }
-@keyframes glow {
-  0%, 100% { box-shadow: 0 0 0 0 var(--accent-glow); }
-  50%      { box-shadow: 0 0 24px 4px var(--accent-glow); }
+@keyframes glowPulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(16, 185, 129, 0.10); }
+  50%      { box-shadow: 0 0 30px rgba(16, 185, 129, 0.22); }
+}
+@keyframes pulseDot {
+  0%, 100% { transform: scale(1);   opacity: 1;   }
+  50%      { transform: scale(1.6); opacity: 0.6; }
 }
 
 @layer utilities {
-  .animate-fade-in   { animation: fadeIn   400ms ease-out both; }
-  .animate-slide-in  { animation: slideIn  300ms ease-out both; }
-  .animate-scale-in  { animation: scaleIn  350ms ease-out both; }
-  .animate-shimmer   {
+  .animate-fade-in    { opacity: 0; animation: fadeInUp 0.5s ease-out forwards; }
+  .animate-glow-pulse { animation: glowPulse 2.4s ease-in-out infinite; }
+  .animate-pulse-dot  { animation: pulseDot 1.6s ease-in-out infinite; }
+  .animate-shimmer    {
     background-image: linear-gradient(
       90deg,
       transparent 0%,
-      rgba(255, 255, 255, 0.06) 40%,
+      rgba(255, 255, 255, 0.05) 40%,
       rgba(255, 255, 255, 0.12) 50%,
-      rgba(255, 255, 255, 0.06) 60%,
+      rgba(255, 255, 255, 0.05) 60%,
       transparent 100%
     );
     background-size: 200% 100%;
     animation: shimmer 1.6s linear infinite;
   }
-  .animate-glow      { animation: glow 2.4s ease-in-out infinite; }
+  .animate-delay-1 { animation-delay:  80ms; }
+  .animate-delay-2 { animation-delay: 160ms; }
+  .animate-delay-3 { animation-delay: 240ms; }
+  .animate-delay-4 { animation-delay: 320ms; }
+  .animate-delay-5 { animation-delay: 400ms; }
 }

@@ -338,39 +338,39 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       {/* ── Main content ────────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Top bar */}
-        <header className="flex items-center justify-between h-20 px-4 md:px-10 bg-background flex-shrink-0">
+        {/* Top bar — kept slim so the dashboard pages own the headline. */}
+        <header className="flex items-center justify-between h-16 px-4 md:px-10 bg-[var(--bg-main)] flex-shrink-0 border-b border-[var(--border)]">
           <div className="flex items-center gap-3 min-w-0">
             {/* Hamburger — mobile only */}
             <button
               onClick={() => setMobileOpen(true)}
-              className="md:hidden p-2 -ml-2 rounded-xl text-zinc-500 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+              className="md:hidden p-2 -ml-2 rounded-xl text-zinc-500 hover:text-zinc-900 dark:hover:text-white hover:bg-white/[0.04] transition-colors"
               aria-label="Ouvrir le menu"
             >
               <Menu className="w-5 h-5" />
             </button>
-            <div className="flex flex-col min-w-0">
-              <h1 className="text-xl font-black uppercase tracking-tighter text-zinc-900 dark:text-white truncate">
+            <div className="hidden md:flex flex-col min-w-0">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[var(--text-secondary)] truncate">
                 {pageTitle}
-              </h1>
-              <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
+              </p>
+              <p className="text-[10px] text-[var(--text-secondary)] truncate">
                 {updatedLabel}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-3">
             <ThemeToggle />
             <NotificationBell userId={userId} />
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-emerald-500/20">
+            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-white font-bold text-[13px] shadow-lg shadow-emerald-500/30 ring-2 ring-emerald-500/20">
               {userInitial}
             </div>
           </div>
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto animate-in fade-in duration-300">
+        <main className="flex-1 overflow-y-auto">
           {children}
-          <footer className="mt-16 pb-10 text-center text-zinc-500 text-[10px] font-bold uppercase tracking-[0.3em]">
+          <footer className="mt-16 pb-10 text-center text-zinc-500 text-[10px] font-semibold uppercase tracking-[0.3em]">
             &copy; 2026 AutoDex • All Systems Operations Optimal
           </footer>
         </main>
