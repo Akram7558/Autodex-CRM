@@ -211,39 +211,64 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </button>
       </div>
 
-      {/* Navigation — FoCar-style: subtle emerald tint + 3px left rail
-          for the active item; everything else stays muted. */}
+      {/* Navigation — FoCar-style. Active item picked by longest-prefix
+          match over all visible items so a parent + its sub-link can
+          never both light up emerald at once. */}
       <nav className="flex-1 px-3 pt-2 pb-2 space-y-0.5 overflow-y-auto">
-        {activeNavItems.map((item, idx) => {
-          const Icon = item.icon
+        {(() => {
+          // Resolve the single active href via longest-prefix match.
           // Roots (/dashboard, /dashboard/super-admin) match exactly so
-          // their child routes don't keep highlighting the parent. All
-          // other items match either exactly or as a sub-path.
-          const isRoot = item.href === '/dashboard' || item.href === '/dashboard/super-admin'
-          const isActive = isRoot
-            ? pathname === item.href
-            : pathname === item.href || pathname.startsWith(item.href + '/')
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={() => setMobileOpen(false)}
-              style={{ animationDelay: `${idx * 30}ms` }}
-              className={cn(
-                'group relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-200',
-                isActive
-                  ? 'bg-emerald-500 text-white font-semibold shadow-md shadow-emerald-500/30'
-                  : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-white/[0.04] dark:hover:text-zinc-100',
-              )}
-            >
-              <Icon className={cn(
-                'w-4 h-4 flex-shrink-0 transition-colors',
-                isActive ? 'text-white' : '',
-              )} />
-              {item.label}
-            </Link>
+          // their child routes don't keep highlighting the parent.
+          const ROOT = new Set(['/dashboard', '/dashboard/super-admin'])
+          const candidates = activeNavItems
+            .map((it) => it.href)
+            .filter((href) => {
+              if (ROOT.has(href)) return pathname === href
+              return pathname === href || pathname.startsWith(href + '/')
+            })
+          const activeHref = candidates.reduce<string | null>(
+            (best, h) => (best == null || h.length > best.length ? h : best),
+            null,
           )
-        })}
+
+          return activeNavItems.map((item, idx) => {
+            const Icon = item.icon
+            const isActive = item.href === activeHref
+            // Insert a hairline separator before the first rental item
+            // so the rental section reads as its own group (matches the
+            // footer's border-t style above Paramètres / Déconnexion).
+            const prev = activeNavItems[idx - 1]
+            const isFirstRental = item.href.startsWith('/dashboard/location') &&
+              (!prev || !prev.href.startsWith('/dashboard/location'))
+
+            return (
+              <div key={item.href}>
+                {isFirstRental && (
+                  <div
+                    aria-hidden="true"
+                    className="my-2 mx-1 border-t border-zinc-100 dark:border-white/5"
+                  />
+                )}
+                <Link
+                  href={item.href}
+                  onClick={() => setMobileOpen(false)}
+                  className={cn(
+                    'group relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-colors duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40',
+                    isActive
+                      ? 'bg-emerald-500 text-white font-semibold shadow-md shadow-emerald-500/30'
+                      : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-white/[0.04] dark:hover:text-zinc-100',
+                  )}
+                >
+                  <Icon className={cn(
+                    'w-4 h-4 flex-shrink-0',
+                    isActive ? 'text-white' : '',
+                  )} />
+                  {item.label}
+                </Link>
+              </div>
+            )
+          })
+        })()}
       </nav>
 
       {/* Footer */}
@@ -254,7 +279,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               href="/dashboard/parametres"
               onClick={() => setMobileOpen(false)}
               className={cn(
-                'group relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-200',
+                'group relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-colors duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40',
                 pathname === '/dashboard/parametres'
                   ? 'bg-emerald-500 text-white font-semibold shadow-md shadow-emerald-500/30'
                   : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-white/[0.04] dark:hover:text-zinc-100',
@@ -267,7 +292,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               href="/dashboard/settings/integrations"
               onClick={() => setMobileOpen(false)}
               className={cn(
-                'group relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-200',
+                'group relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-colors duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40',
                 pathname.startsWith('/dashboard/settings/integrations')
                   ? 'bg-emerald-500 text-white font-semibold shadow-md shadow-emerald-500/30'
                   : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-white/[0.04] dark:hover:text-zinc-100',
@@ -280,7 +305,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         )}
         <button
           onClick={handleLogout}
-          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800/40 dark:hover:text-zinc-100 transition-all duration-200"
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-white/[0.04] dark:hover:text-zinc-100 transition-colors duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40"
         >
           <LogOut className="w-4 h-4" />
           Déconnexion
