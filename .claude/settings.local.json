@@ -23,7 +23,9 @@
       "Bash(git commit -m ' *)",
       "Bash(echo \"exit=$?\")",
       "Bash(echo \"EXIT=$?\")",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(echo \"tsc=$?\")",
+      "Bash(npm run *)"
     ]
   }
 }

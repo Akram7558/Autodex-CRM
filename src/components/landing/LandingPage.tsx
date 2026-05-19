@@ -1,50 +1,39 @@
 'use client'
 // ─────────────────────────────────────────────────────────────────────
-// LandingPage — scaffold for the FoCar-inspired landing redesign.
+// LandingPage — composition root for the public landing.
 // ─────────────────────────────────────────────────────────────────────
-// Chunk 1: infrastructure only — sections are placeholders. Chunks 2
-// and 3 will fill <Nav />, <Hero />, <Marquee />, <Problem />,
-// <Features />, <Pricing />, <FAQ />, <DemoCTA />, <Footer />.
-//
-// Reads CSS variables exposed by `:root[data-theme="…"]` in
-// globals.css so dark/light + FR/AR toggles work end-to-end before
-// any section markup ships.
+// Chunk 2 wires Nav + Hero + Marquee + Problem + Features.
+// Chunks 3 owns <Pricing /> · <FAQ /> · <DemoCTA /> · <Footer />.
 // ─────────────────────────────────────────────────────────────────────
 
-import ThemeToggle from '@/components/landing/ThemeToggle'
-import LocaleToggle from '@/components/landing/LocaleToggle'
+import Nav from '@/components/landing/Nav'
+import Hero from '@/components/landing/Hero'
+import Marquee from '@/components/landing/Marquee'
+import Problem from '@/components/landing/Problem'
+import Features from '@/components/landing/Features'
 
 export default function LandingPage() {
   return (
-    <main
+    <div
       className="min-h-screen"
       style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
     >
-      {/* TODO chunk 2: <Nav /> */}
-      <Placeholder id="hero" label="Hero" />
-      {/* TODO chunk 2: <Hero /> */}
-      <Placeholder id="marquee" label="Marquee" />
-      {/* TODO chunk 2: <Marquee /> */}
-      <Placeholder id="problem" label="Problem" />
-      {/* TODO chunk 2: <Problem /> */}
-      <Placeholder id="features" label="Features" />
-      {/* TODO chunk 2: <Features /> */}
-      <Placeholder id="tarifs" label="Pricing" />
-      {/* TODO chunk 3: <Pricing /> */}
-      <Placeholder id="faq" label="FAQ" />
-      {/* TODO chunk 3: <FAQ /> */}
-      <Placeholder id="demo" label="DemoCTA" />
-      {/* TODO chunk 3: <DemoCTA /> */}
-      <Placeholder id="footer" label="Footer" />
-      {/* TODO chunk 3: <Footer /> */}
-
-      {/* Floating controls so chunks 2 + 3 can verify both toggles
-          before the real Nav lands. */}
-      <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2">
-        <LocaleToggle />
-        <ThemeToggle />
-      </div>
-    </main>
+      <Nav />
+      <main>
+        <Hero />
+        <Marquee />
+        <Problem />
+        <Features />
+        {/* TODO chunk 3: <Pricing /> at #tarifs */}
+        <Placeholder id="tarifs" label="Pricing — chunk 3" />
+        {/* TODO chunk 3: <FAQ /> at #faq */}
+        <Placeholder id="faq" label="FAQ — chunk 3" />
+        {/* TODO chunk 3: <DemoCTA /> */}
+        <Placeholder id="demo" label="Demo CTA — chunk 3" />
+        {/* TODO chunk 3: <Footer /> */}
+        <Placeholder id="footer" label="Footer — chunk 3" />
+      </main>
+    </div>
   )
 }
 
@@ -63,9 +52,6 @@ function Placeholder({ id, label }: { id: string; label: string }) {
         style={{ color: 'var(--text-muted)' }}
       >
         {label}
-      </p>
-      <p className="mt-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
-        Placeholder — section lands in chunk {id === 'tarifs' || id === 'faq' || id === 'demo' || id === 'footer' ? 3 : 2}.
       </p>
     </section>
   )
