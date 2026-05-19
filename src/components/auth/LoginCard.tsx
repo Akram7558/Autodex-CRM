@@ -14,15 +14,12 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import {
-  Mail, Lock, Eye, EyeOff, Loader2, Sparkles, AlertCircle, CheckCircle2,
+  Mail, Lock, Eye, EyeOff, Loader2, AlertCircle, CheckCircle2,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useTranslations } from '@/hooks/useTranslations'
 import ThemeToggle from '@/components/landing/ThemeToggle'
 import LocaleToggle from '@/components/landing/LocaleToggle'
-
-const DEMO_EMAIL    = 'demo@autodex.store'
-const DEMO_PASSWORD = 'demo123'
 
 export default function LoginCard() {
   const { t } = useTranslations()
@@ -57,12 +54,6 @@ export default function LoginCard() {
       return
     }
     await routeAfterLogin(data.user.id)
-  }
-
-  function fillDemo() {
-    setEmail(DEMO_EMAIL)
-    setPassword(DEMO_PASSWORD)
-    setError('')
   }
 
   // Role-based redirect with a hard navigation so middleware sees the
@@ -331,46 +322,6 @@ export default function LoginCard() {
               )}
             </button>
           </form>
-
-          {/* Divider */}
-          <div className="mt-8 flex items-center gap-3">
-            <span className="flex-1 h-px" style={{ background: 'var(--border)' }} />
-            <span
-              className="text-xs uppercase tracking-widest px-1"
-              style={{ color: 'var(--text-muted)' }}
-            >
-              {t('login.or')}
-            </span>
-            <span className="flex-1 h-px" style={{ background: 'var(--border)' }} />
-          </div>
-
-          {/* Demo */}
-          <button
-            type="button"
-            onClick={fillDemo}
-            disabled={loading}
-            className="mt-6 w-full inline-flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium transition-colors disabled:opacity-60"
-            style={{
-              background: 'transparent',
-              border: '1px solid var(--border)',
-              color: 'var(--text-primary)',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'var(--bg-elevated)'
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'transparent'
-            }}
-          >
-            <Sparkles className="w-4 h-4" style={{ color: 'var(--accent)' }} />
-            {t('login.demo')}
-          </button>
-          <p
-            className="mt-3 text-xs text-center"
-            style={{ color: 'var(--text-muted)' }}
-          >
-            <bdi>{t('login.demo_hint')}</bdi>
-          </p>
 
           {/* Sign-up footer */}
           <div
