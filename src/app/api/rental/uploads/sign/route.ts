@@ -2,19 +2,24 @@
 // POST /api/rental/uploads/sign
 // ─────────────────────────────────────────────────────────────────────
 // Returns a short-lived signed upload URL for the `rental-documents`
-// bucket. The path is rooted at the caller's showroom_id so the
-// storage RLS policies enforce tenant isolation even if the client
-// tampers with it.
+// bucket. The path is always rooted at the caller's showroom_id so
+// the storage RLS policies (migration 40) enforce tenant isolation
+// even if the client tampers with it.
 //
-// Body:
-//   { kind: 'cin' | 'permis', customer_id?: string, file_ext?: string }
+// Body union:
+//   { kind: 'cin' | 'permis',     customer_id?: string, file_ext?: string }
+//   { kind: 'vehicle_photo',      vehicle_id?:  string, slot?: number,
+//                                  file_ext?: string }
 //
-// customer_id is optional — during the wizard the client passes a
-// crypto.randomUUID() and persists the resulting path; the customer
-// row is created later with the path stored on the appropriate
-// *_photo_url column. Orphaned uploads can be GC'd later.
+// `customer_id` / `vehicle_id` are optional during create — the
+// uploader passes `temp-{uuid}` so the file is namespaced; the row
+// is created later with the resulting `path` persisted on its
+// *_url column. Orphaned uploads are GC'd by a future cron.
 //
-// File extensions whitelisted: jpg/jpeg/png/webp/pdf.
+// File extension whitelists (per kind):
+//   cin/permis      → jpg / jpeg / png / webp / pdf
+//   vehicle_photo   → jpg / jpeg / png / webp     (no pdf)
+// Max size is enforced client-side (5 MB).
 // ─────────────────────────────────────────────────────────────────────
 
 import { NextResponse, type NextRequest } from 'next/server'
@@ -22,10 +27,10 @@ import { ApiError, errorResponse, requireShowroomMember } from '@/lib/api-auth'
 
 export const runtime = 'nodejs'
 
-const ALLOWED_EXT = new Set(['jpg', 'jpeg', 'png', 'webp', 'pdf'])
-const ALLOWED_KINDS = new Set(['cin', 'permis'])
+const KINDS = new Set(['cin', 'permis', 'vehicle_photo'])
+const DOC_EXT     = new Set(['jpg', 'jpeg', 'png', 'webp', 'pdf'])
+const PHOTO_EXT   = new Set(['jpg', 'jpeg', 'png', 'webp'])
 const ALLOWED_ROLES = new Set(['owner', 'manager', 'closer', 'super_admin'])
-
 const UUID_RX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export async function POST(req: NextRequest) {
@@ -34,25 +39,49 @@ export async function POST(req: NextRequest) {
     if (!ctx.showroomId) throw new ApiError(403, 'Aucun showroom associé à votre compte.')
     if (!ALLOWED_ROLES.has(ctx.role)) throw new ApiError(403, 'Accès refusé.')
 
-    const body = await req.json().catch(() => ({})) as Record<string, unknown>
+    const body = (await req.json().catch(() => ({}))) as Record<string, unknown>
     const kind = String(body.kind ?? '')
-    if (!ALLOWED_KINDS.has(kind)) {
-      throw new ApiError(400, "kind doit être 'cin' ou 'permis'.")
-    }
-    const fileExt = String(body.file_ext ?? 'jpg').toLowerCase().replace(/^\./, '')
-    if (!ALLOWED_EXT.has(fileExt)) {
-      throw new ApiError(400, 'Format de fichier non autorisé (jpg/png/webp/pdf).')
-    }
-    const customerId = body.customer_id ? String(body.customer_id) : null
-    if (customerId && !UUID_RX.test(customerId)) {
-      throw new ApiError(400, 'customer_id invalide.')
+    if (!KINDS.has(kind)) {
+      throw new ApiError(400, "kind doit être 'cin', 'permis' ou 'vehicle_photo'.")
     }
 
-    // Compose the path. Either a real customer_id (edit flow) or a
-    // temp UUID (create flow — orphans cleaned later).
-    const folder = customerId ?? `temp-${crypto.randomUUID()}`
-    const filename = `${kind}-${Date.now()}.${fileExt}`
-    const path = `${ctx.showroomId}/customers/${folder}/${filename}`
+    const fileExt = String(body.file_ext ?? 'jpg').toLowerCase().replace(/^\./, '')
+    const allowedExt = kind === 'vehicle_photo' ? PHOTO_EXT : DOC_EXT
+    if (!allowedExt.has(fileExt)) {
+      throw new ApiError(
+        400,
+        kind === 'vehicle_photo'
+          ? 'Format de fichier non autorisé (jpg/png/webp).'
+          : 'Format de fichier non autorisé (jpg/png/webp/pdf).',
+      )
+    }
+
+    // ── Path construction (per kind) ──────────────────────────
+    let path: string
+    if (kind === 'vehicle_photo') {
+      const vehicleId = body.vehicle_id ? String(body.vehicle_id) : null
+      if (vehicleId && !UUID_RX.test(vehicleId)) {
+        throw new ApiError(400, 'vehicle_id invalide.')
+      }
+      // Slot index is purely cosmetic in the filename — RLS only
+      // checks the showroom_id prefix. Clamp to [1, 99].
+      const slotRaw = Number(body.slot ?? 1)
+      const slot = Number.isFinite(slotRaw)
+        ? Math.max(1, Math.min(99, Math.floor(slotRaw)))
+        : 1
+      const folder = vehicleId ?? `temp-${crypto.randomUUID()}`
+      const filename = `photo-${slot}-${Date.now()}.${fileExt}`
+      path = `${ctx.showroomId}/vehicles/${folder}/${filename}`
+    } else {
+      // cin / permis
+      const customerId = body.customer_id ? String(body.customer_id) : null
+      if (customerId && !UUID_RX.test(customerId)) {
+        throw new ApiError(400, 'customer_id invalide.')
+      }
+      const folder = customerId ?? `temp-${crypto.randomUUID()}`
+      const filename = `${kind}-${Date.now()}.${fileExt}`
+      path = `${ctx.showroomId}/customers/${folder}/${filename}`
+    }
 
     const { data, error } = await ctx.authSb.storage
       .from('rental-documents')

@@ -448,6 +448,19 @@ export const translations: Record<Locale, TranslationDict> = {
     'rental.upload.error_size':                 'Fichier trop volumineux (max 5 Mo).',
     'rental.upload.error_format':               'Format non supporté (jpg, png, webp ou pdf).',
     'rental.upload.error_failed':               'Échec du téléversement. Réessayez.',
+    'rental.upload.error_generic':              'Échec du téléversement. Réessayez.',
+    'rental.upload.error_size_5mb':             'Fichier trop volumineux (max 5 Mo).',
+    'rental.upload.error_format_image':         'Format non supporté (jpg, png, webp).',
+
+    // ── Vehicle photos uploader ────────────────────────────────
+    'rental.vehicle.photos.section_title':      'Photos du véhicule',
+    'rental.vehicle.photos.helper':
+      'Ajoutez jusqu’à {max} photos. La première sera la photo principale.',
+    'rental.vehicle.photos.add':                'Ajouter',
+    'rental.vehicle.photos.count':              '{n}/{max} photos',
+    'rental.vehicle.photos.reorder_hint':       'Glissez pour réorganiser',
+    'rental.vehicle.photos.main_badge':         'Photo principale',
+    'rental.vehicle.photos.delete_confirm':     'Supprimer cette photo ?',
   },
 
   ar: {
@@ -884,5 +897,18 @@ export const translations: Record<Locale, TranslationDict> = {
     'rental.upload.error_size':                 'الملف كبير جدا (5 ميغا كحد أقصى).',
     'rental.upload.error_format':               'صيغة غير مدعومة (jpg, png, webp أو pdf).',
     'rental.upload.error_failed':               'فشل التحميل. حاول مرة أخرى.',
+    'rental.upload.error_generic':              'فشل التحميل. حاول مرة أخرى.',
+    'rental.upload.error_size_5mb':             'الملف كبير جدا (5 ميغا كحد أقصى).',
+    'rental.upload.error_format_image':         'صيغة غير مدعومة (jpg, png, webp).',
+
+    // ── Vehicle photos uploader ────────────────────────────────
+    'rental.vehicle.photos.section_title':      'صور السيارة',
+    'rental.vehicle.photos.helper':
+      'أضف حتى {max} صور. ستكون الصورة الأولى هي الصورة الرئيسية.',
+    'rental.vehicle.photos.add':                'إضافة',
+    'rental.vehicle.photos.count':              '{n}/{max} صور',
+    'rental.vehicle.photos.reorder_hint':       'اسحب لإعادة الترتيب',
+    'rental.vehicle.photos.main_badge':         'الصورة الرئيسية',
+    'rental.vehicle.photos.delete_confirm':     'حذف هذه الصورة؟',
   },
 }

@@ -8,6 +8,7 @@
 
 import { useEffect, useState } from 'react'
 import { CheckCircle2, Loader2, X } from 'lucide-react'
+import VehiclePhotoUploader from '@/components/rental/VehiclePhotoUploader'
 
 type FuelType = 'essence' | 'diesel' | 'hybride' | 'electrique' | 'gpl'
 type BoxType  = 'manuelle' | 'automatique'
@@ -81,9 +82,9 @@ export default function RentalVehicleFormModal({
   onPlanLimitReached: () => void
 }) {
   const [form, setForm]       = useState<Form>(() => buildInitial(initial))
-  const [photo1, setPhoto1]   = useState(initial?.photos_urls?.[0] ?? '')
-  const [photo2, setPhoto2]   = useState(initial?.photos_urls?.[1] ?? '')
-  const [photo3, setPhoto3]   = useState(initial?.photos_urls?.[2] ?? '')
+  // photos_urls hoisted out of `Form` — it's a string[] managed by
+  // VehiclePhotoUploader, which controls the actual storage flow.
+  const [photoPaths, setPhotoPaths] = useState<string[]>(initial?.photos_urls ?? [])
   const [saving, setSaving]   = useState(false)
   const [error, setError]     = useState('')
   const isEdit = !!initial?.id
@@ -136,7 +137,7 @@ export default function RentalVehicleFormModal({
       deposit_amount:       form.deposit_amount ? Number(form.deposit_amount) : 0,
       km_included_per_day:  form.km_included_per_day ? Number(form.km_included_per_day) : null,
       extra_km_rate:        form.extra_km_rate ? Number(form.extra_km_rate) : null,
-      photos_urls:          [photo1, photo2, photo3].map((p) => p.trim()).filter(Boolean),
+      photos_urls:          photoPaths,
     }
 
     const url    = isEdit ? `/api/rental/vehicles/${initial!.id}` : '/api/rental/vehicles'
@@ -255,16 +256,19 @@ export default function RentalVehicleFormModal({
             </div>
           </section>
 
-          {/* Photos (URL inputs — proper upload comes Phase 2) */}
+          {/* Photos — real Supabase Storage uploads, multi-file, reorderable */}
           <section>
-            <Subhead>Photos (URLs)</Subhead>
+            <Subhead>Photos du véhicule</Subhead>
             <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-              Saisissez jusqu&apos;à 3 URLs. Upload direct disponible en Phase 2.
+              Ajoutez jusqu&apos;à 10 photos. La première sera la photo principale.
             </p>
-            <div className="mt-3 space-y-2">
-              <Input value={photo1} onChange={setPhoto1} placeholder="https://…/photo-1.jpg" />
-              <Input value={photo2} onChange={setPhoto2} placeholder="https://…/photo-2.jpg" />
-              <Input value={photo3} onChange={setPhoto3} placeholder="https://…/photo-3.jpg" />
+            <div className="mt-3">
+              <VehiclePhotoUploader
+                value={photoPaths}
+                onChange={setPhotoPaths}
+                vehicleId={initial?.id ?? null}
+                maxPhotos={10}
+              />
             </div>
           </section>
 

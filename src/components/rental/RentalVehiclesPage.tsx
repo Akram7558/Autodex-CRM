@@ -14,6 +14,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Plus, Search, Pencil, Trash2, MoreVertical, Car as CarIcon } from 'lucide-react'
 import RentalVehicleFormModal from '@/components/rental/RentalVehicleFormModal'
 import UpgradeModal from '@/components/rental/UpgradeModal'
+import { getSignedReadUrl } from '@/lib/rental/storage'
 
 const CLASSIQUE_LIMIT = 5
 
@@ -249,19 +250,7 @@ export default function RentalVehiclesPage({
               key={v.id}
               className="glass-card rounded-2xl overflow-hidden flex flex-col lift-on-hover"
             >
-              <div
-                className="relative aspect-[4/3]"
-                style={{
-                  background: v.photos_urls?.[0]
-                    ? `url(${v.photos_urls[0]}) center / cover no-repeat`
-                    : 'linear-gradient(135deg, color-mix(in srgb, var(--accent) 25%, transparent), color-mix(in srgb, var(--accent) 5%, transparent))',
-                }}
-              >
-                {!v.photos_urls?.[0] && (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <CarIcon className="w-10 h-10" style={{ color: 'var(--accent)', opacity: 0.45 }} />
-                  </div>
-                )}
+              <VehicleCardImage path={v.photos_urls?.[0] ?? null}>
                 <span
                   className="absolute top-2 end-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ring-1"
                   style={{
@@ -272,7 +261,7 @@ export default function RentalVehiclesPage({
                 >
                   {v.is_active ? 'Actif' : 'Inactif'}
                 </span>
-              </div>
+              </VehicleCardImage>
               <div className="p-4 flex-1 flex flex-col gap-2">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
@@ -404,6 +393,48 @@ export default function RentalVehiclesPage({
           {toast}
         </div>
       )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Card image — lazy-resolves a 1h signed read URL from the storage
+// path stored on `rental_vehicles.photos_urls[0]`. While the URL
+// resolves (or when the vehicle has no photos), shows the emerald
+// gradient + Car icon placeholder used in Phase 1.
+// ─────────────────────────────────────────────────────────────────────
+
+function VehicleCardImage({
+  path, children,
+}: { path: string | null; children?: React.ReactNode }) {
+  const [url, setUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    if (!path) { setUrl(null); return }
+    ;(async () => {
+      const u = await getSignedReadUrl(path)
+      if (!cancelled) setUrl(u)
+    })()
+    return () => { cancelled = true }
+  }, [path])
+
+  return (
+    <div
+      className="relative aspect-[4/3] overflow-hidden"
+      style={{
+        background: 'linear-gradient(135deg, color-mix(in srgb, var(--accent) 25%, transparent), color-mix(in srgb, var(--accent) 5%, transparent))',
+      }}
+    >
+      {url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={url} alt="" loading="lazy" className="absolute inset-0 w-full h-full object-cover" />
+      ) : (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <CarIcon className="w-10 h-10" style={{ color: 'var(--accent)', opacity: 0.45 }} />
+        </div>
+      )}
+      {children}
     </div>
   )
 }
