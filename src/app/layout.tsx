@@ -24,8 +24,15 @@ export const metadata: Metadata = {
   description: "CRM commercial automobile pour showrooms en Algérie",
 };
 
-// Blocking inline script — sets `.dark` on <html> BEFORE hydration to avoid FOUC.
-const themeBootstrap = `(function(){try{var k='autodex-theme';var s=localStorage.getItem(k);var m=window.matchMedia('(prefers-color-scheme: dark)').matches;var d=s==='dark'||((s==null||s==='system')&&m);var r=document.documentElement;if(d){r.classList.add('dark');}else{r.classList.remove('dark');}}catch(e){}})();`;
+// Blocking inline script — sets the resolved theme on <html> BEFORE
+// hydration to avoid FOUC. Writes BOTH:
+//   • the legacy `.dark` class (existing dashboard CSS depends on it)
+//   • the new `data-theme` attribute (landing CSS variables read it)
+const themeBootstrap = `(function(){try{var k='autodex-theme';var s=localStorage.getItem(k);var m=window.matchMedia('(prefers-color-scheme: dark)').matches;var d=s==='dark'||((s==null||s==='system')&&m);var r=document.documentElement;r.setAttribute('data-theme',d?'dark':'light');if(d){r.classList.add('dark');}else{r.classList.remove('dark');}}catch(e){document.documentElement.setAttribute('data-theme','dark');document.documentElement.classList.add('dark');}})();`;
+
+// Locale bootstrap — sets lang + dir on <html> before paint so the
+// landing's RTL switch doesn't flash.
+const localeBootstrap = `(function(){try{var l=localStorage.getItem('autodex-locale')||'fr';document.documentElement.setAttribute('lang',l);document.documentElement.setAttribute('dir',l==='ar'?'rtl':'ltr');}catch(e){}})();`;
 
 // ── Marketing pixel snippets ────────────────────────────────────────
 // Loaded via next/script with `afterInteractive`. Each one only mounts
@@ -56,6 +63,7 @@ export default function RootLayout({
       <head>
         <meta name="facebook-domain-verification" content="k0sj47yiz1pmpqoezq4iqzi0n0q5w2" />
         <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
+        <script dangerouslySetInnerHTML={{ __html: localeBootstrap }} />
       </head>
       <body className="h-full">
         <ThemeProvider>{children}</ThemeProvider>

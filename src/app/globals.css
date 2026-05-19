@@ -178,7 +178,52 @@
   }
   html {
     @apply font-sans;
+    /* Smooth theme-switch transition for the landing's data-theme system. */
+    transition:
+      background-color 0.3s ease,
+      color 0.3s ease;
   }
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   Landing-page theme tokens (chunk 1, FoCar redesign).
+   Selectors are scoped by `[data-theme="…"]` on <html>. The existing
+   `.dark` block above still drives the dashboard untouched; the
+   landing reads from these new vars (--bg-primary, --text-secondary,
+   …) via plain `var()` references.
+   ───────────────────────────────────────────────────────────────────── */
+:root[data-theme="dark"] {
+  --bg-primary:     #050507;
+  --bg-surface:     #0a0a0e;
+  --bg-elevated:    #111116;
+  --border:         rgba(255, 255, 255, 0.06);
+  --border-strong:  rgba(255, 255, 255, 0.12);
+  --text-primary:   #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted:     #64748b;
+  --accent:         #10b981;
+  --accent-hover:   #34d399;
+  --accent-glow:    rgba(16, 185, 129, 0.25);
+  --shadow-glass:
+    0 4px 30px rgba(0, 0, 0, 0.50),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+:root[data-theme="light"] {
+  --bg-primary:     #fafafa;
+  --bg-surface:     #ffffff;
+  --bg-elevated:    #f4f4f5;
+  --border:         rgba(0, 0, 0, 0.08);
+  --border-strong:  rgba(0, 0, 0, 0.14);
+  --text-primary:   #0a0a0e;
+  --text-secondary: #52525b;
+  --text-muted:     #71717a;
+  --accent:         #10b981;
+  --accent-hover:   #059669;
+  --accent-glow:    rgba(16, 185, 129, 0.18);
+  --shadow-glass:
+    0 1px 3px rgba(0, 0, 0, 0.06),
+    0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 /* ─────────────────────────────────────────────────────────────────────

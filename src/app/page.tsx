@@ -14,7 +14,7 @@ import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@supabase/ssr'
-import Landing from '@/components/landing/Landing'
+import LandingPage from '@/components/landing/LandingPage'
 
 export const metadata: Metadata = {
   title: 'AutoDex — Le CRM des concessionnaires algériens',
@@ -89,5 +89,5 @@ export default async function HomePage() {
   }
 
   // Unauthenticated → render the public landing.
-  return <Landing />
+  return <LandingPage />
 }
