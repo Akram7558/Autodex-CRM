@@ -31,6 +31,11 @@ const ROUTE_ACL: Array<{ prefix: string; allow: AppRole[] }> = [
   { prefix: '/dashboard/alerts',                   allow: ['super_admin', 'owner', 'manager'] },
   { prefix: '/dashboard/ventes',                   allow: ['super_admin', 'owner', 'manager'] },
   { prefix: '/dashboard/precommandes',             allow: ['super_admin', 'owner', 'manager'] },
+  // Module Location — Owner only for pricing settings, Owner+Manager
+  // for fleet, Owner+Manager+Closer for the dashboard hub.
+  { prefix: '/dashboard/location/tarifs',          allow: ['super_admin', 'owner'] },
+  { prefix: '/dashboard/location/vehicules',       allow: ['super_admin', 'owner', 'manager'] },
+  { prefix: '/dashboard/location',                 allow: ['super_admin', 'owner', 'manager', 'closer'] },
   // migration_32 — restrict Pipeline (/prospects), Véhicules, Activités
   // to owner+manager. Rendez-vous stays open to closer. Prospecteur is
   // limited to Tableau de bord + Prospects (/leads).

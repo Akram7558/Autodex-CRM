@@ -259,6 +259,89 @@ export const translations: Record<Locale, TranslationDict> = {
     'login.copyright':          '© 2026 AutoDex · Tous droits réservés',
     'login.error_generic':      'Connexion échouée. Vérifiez vos identifiants.',
     'login.reset_success':      'Mot de passe mis à jour. Vous pouvez maintenant vous connecter.',
+
+    // ── Sidebar (rental module — keys ready for dashboard i18n) ──
+    'sidebar.rental.title':       'Location',
+    'sidebar.rental.dashboard':   'Tableau de bord',
+    'sidebar.rental.calendar':    'Calendrier',
+    'sidebar.rental.vehicles':    'Flotte location',
+    'sidebar.rental.pricing':     'Tarifs location',
+
+    // ── Rental — dashboard hub ──────────────────────────────────
+    'rental.dashboard.title':              'Tableau de bord — Location',
+    'rental.dashboard.subtitle':
+      "La gestion de votre flotte est active. Le module complet (contrats, calendrier, inspections, paiements) arrive en Phase 2.",
+    'rental.dashboard.stat.contracts':     'Contrats actifs',
+    'rental.dashboard.stat.available':     'Véhicules disponibles',
+    'rental.dashboard.stat.revenue':       'Revenus du mois',
+    'rental.dashboard.stat.today':         "Pickups / retours aujourd'hui",
+    'rental.dashboard.phase2_tooltip':     'Disponible en Phase 2',
+
+    // ── Rental — vehicles list ──────────────────────────────────
+    'rental.vehicles.title':               'Flotte de location',
+    'rental.vehicles.subtitle':            'Gérez les véhicules disponibles à la location.',
+    'rental.vehicles.add_button':          'Ajouter un véhicule',
+    'rental.vehicles.search_placeholder':  'Rechercher par marque, modèle ou immatriculation…',
+    'rental.vehicles.count_label':         '{count} véhicules',
+    'rental.vehicles.empty_title':         'Aucun véhicule pour le moment',
+    'rental.vehicles.empty_desc':          'Ajoutez votre premier véhicule de location pour démarrer.',
+    'rental.vehicles.status_active':       'Actif',
+    'rental.vehicles.status_inactive':     'Inactif',
+    'rental.vehicles.per_day':             '/ jour',
+
+    // ── Rental — vehicle form ───────────────────────────────────
+    'rental.vehicle_form.create':          'Ajouter un véhicule',
+    'rental.vehicle_form.edit':            'Modifier le véhicule',
+    'rental.vehicle_form.identity':        'Identité du véhicule',
+    'rental.vehicle_form.pricing':         'Tarification',
+    'rental.vehicle_form.photos':          'Photos (URLs)',
+    'rental.vehicle_form.photos_hint':
+      'Saisissez jusqu’à 3 URLs. Upload direct disponible en Phase 2.',
+    'rental.vehicle_form.marque':          'Marque',
+    'rental.vehicle_form.modele':          'Modèle',
+    'rental.vehicle_form.annee':           'Année',
+    'rental.vehicle_form.immatriculation': 'Immatriculation',
+    'rental.vehicle_form.couleur':         'Couleur',
+    'rental.vehicle_form.nb_places':       'Nombre de places',
+    'rental.vehicle_form.carburant':       'Carburant',
+    'rental.vehicle_form.boite':           'Boîte de vitesse',
+    'rental.vehicle_form.daily_rate':      'Tarif / jour (DZD)',
+    'rental.vehicle_form.weekly_rate':     'Tarif / semaine',
+    'rental.vehicle_form.monthly_rate':    'Tarif / mois',
+    'rental.vehicle_form.deposit':        'Caution (DZD)',
+    'rental.vehicle_form.km_included':    'Km inclus / jour',
+    'rental.vehicle_form.extra_km':       'Km supplémentaire (DZD)',
+    'rental.vehicle_form.description':    'Description',
+    'rental.vehicle_form.submit':         'Enregistrer',
+    'rental.vehicle_form.cancel':         'Annuler',
+
+    // ── Rental — settings (tarifs) ──────────────────────────────
+    'rental.settings.title':              'Tarifs & règles de location',
+    'rental.settings.subtitle':
+      'Frais par défaut appliqués à tous les nouveaux contrats de location.',
+    'rental.settings.late_fee':           'Frais retard / heure (DZD)',
+    'rental.settings.fuel_charge':        'Frais carburant / quart (DZD)',
+    'rental.settings.min_days':           'Durée min. de location (jours)',
+    'rental.settings.max_days':           'Durée max. de location (jours)',
+    'rental.settings.contract_terms':     'Conditions par défaut du contrat',
+    'rental.settings.submit':             'Enregistrer',
+    'rental.settings.success':            'Tarifs mis à jour',
+
+    // ── Rental — upgrade modal ──────────────────────────────────
+    'rental.upgrade.title':               'Limite Classique atteinte',
+    'rental.upgrade.body':
+      'Votre plan Classique permet jusqu’à 5 véhicules louables. Passez à La Totale pour la flotte illimitée et toutes les fonctionnalités premium.',
+    'rental.upgrade.benefit1':            'Véhicules louables illimités',
+    'rental.upgrade.benefit2':            'AI Chatbot WhatsApp (darija + français) 24/7',
+    'rental.upgrade.benefit3':            'WhatsApp Drip Campaigns + re-engagement auto',
+    'rental.upgrade.benefit4':            'AI Car Matching + Predictive Close Rate',
+    'rental.upgrade.benefit5':            'Support prioritaire H24',
+    'rental.upgrade.cta':                 'Voir les plans',
+    'rental.upgrade.later':               'Plus tard',
+
+    // ── Rental — errors ─────────────────────────────────────────
+    'rental.errors.plan_limit_reached':   'Limite Classique de 5 véhicules atteinte.',
+    'rental.errors.duplicate_imm':        'Cette immatriculation existe déjà.',
   },
 
   ar: {
@@ -507,5 +590,88 @@ export const translations: Record<Locale, TranslationDict> = {
     'login.copyright':          '© 2026 AutoDex · جميع الحقوق محفوظة',
     'login.error_generic':      'فشل تسجيل الدخول. تحقق من بياناتك.',
     'login.reset_success':      'تم تحديث كلمة المرور. يمكنك الآن تسجيل الدخول.',
+
+    // ── Sidebar (rental module) ──────────────────────────────────
+    'sidebar.rental.title':       'الكراء',
+    'sidebar.rental.dashboard':   'لوحة التحكم',
+    'sidebar.rental.calendar':    'الأجندة',
+    'sidebar.rental.vehicles':    'أسطول الكراء',
+    'sidebar.rental.pricing':     'تسعيرة الكراء',
+
+    // ── Rental — dashboard hub ──────────────────────────────────
+    'rental.dashboard.title':              'لوحة التحكم — الكراء',
+    'rental.dashboard.subtitle':
+      'إدارة الأسطول جاهزة. الوحدة الكاملة (العقود، الأجندة، الفحوصات، الدفع) متوفرة في المرحلة 2.',
+    'rental.dashboard.stat.contracts':     'العقود النشطة',
+    'rental.dashboard.stat.available':     'السيارات المتوفرة',
+    'rental.dashboard.stat.revenue':       'إيرادات الشهر',
+    'rental.dashboard.stat.today':         'الاستلام / الإرجاع اليوم',
+    'rental.dashboard.phase2_tooltip':     'متوفر في المرحلة 2',
+
+    // ── Rental — vehicles list ──────────────────────────────────
+    'rental.vehicles.title':               'أسطول الكراء',
+    'rental.vehicles.subtitle':            'إدارة السيارات المتوفرة للكراء.',
+    'rental.vehicles.add_button':          'إضافة سيارة',
+    'rental.vehicles.search_placeholder':  'البحث بالعلامة، النموذج أو رقم اللوحة…',
+    'rental.vehicles.count_label':         '{count} سيارة',
+    'rental.vehicles.empty_title':         'لا توجد سيارات بعد',
+    'rental.vehicles.empty_desc':          'أضف أول سيارة كراء للبدء.',
+    'rental.vehicles.status_active':       'نشط',
+    'rental.vehicles.status_inactive':     'غير نشط',
+    'rental.vehicles.per_day':             '/ يوم',
+
+    // ── Rental — vehicle form ───────────────────────────────────
+    'rental.vehicle_form.create':          'إضافة سيارة',
+    'rental.vehicle_form.edit':            'تعديل السيارة',
+    'rental.vehicle_form.identity':        'هوية السيارة',
+    'rental.vehicle_form.pricing':         'التسعيرة',
+    'rental.vehicle_form.photos':          'الصور (روابط)',
+    'rental.vehicle_form.photos_hint':
+      'أدخل حتى 3 روابط. التحميل المباشر متوفر في المرحلة 2.',
+    'rental.vehicle_form.marque':          'العلامة',
+    'rental.vehicle_form.modele':          'النموذج',
+    'rental.vehicle_form.annee':           'السنة',
+    'rental.vehicle_form.immatriculation': 'رقم اللوحة',
+    'rental.vehicle_form.couleur':         'اللون',
+    'rental.vehicle_form.nb_places':       'عدد المقاعد',
+    'rental.vehicle_form.carburant':       'الوقود',
+    'rental.vehicle_form.boite':           'علبة السرعات',
+    'rental.vehicle_form.daily_rate':      'السعر / يوم (دج)',
+    'rental.vehicle_form.weekly_rate':     'السعر / أسبوع',
+    'rental.vehicle_form.monthly_rate':    'السعر / شهر',
+    'rental.vehicle_form.deposit':        'الضمان (دج)',
+    'rental.vehicle_form.km_included':    'الكلم المتضمن / يوم',
+    'rental.vehicle_form.extra_km':       'الكلم الإضافي (دج)',
+    'rental.vehicle_form.description':    'الوصف',
+    'rental.vehicle_form.submit':         'حفظ',
+    'rental.vehicle_form.cancel':         'إلغاء',
+
+    // ── Rental — settings (tarifs) ──────────────────────────────
+    'rental.settings.title':              'التسعيرة وقواعد الكراء',
+    'rental.settings.subtitle':
+      'الرسوم الافتراضية المطبقة على كل عقود الكراء الجديدة.',
+    'rental.settings.late_fee':           'رسوم التأخير / ساعة (دج)',
+    'rental.settings.fuel_charge':        'رسوم الوقود / ربع (دج)',
+    'rental.settings.min_days':           'المدة الدنيا للكراء (أيام)',
+    'rental.settings.max_days':           'المدة القصوى للكراء (أيام)',
+    'rental.settings.contract_terms':     'الشروط الافتراضية للعقد',
+    'rental.settings.submit':             'حفظ',
+    'rental.settings.success':            'تم تحديث التسعيرة',
+
+    // ── Rental — upgrade modal ──────────────────────────────────
+    'rental.upgrade.title':               'تم الوصول لحد باقة Classique',
+    'rental.upgrade.body':
+      'باقة Classique تسمح بـ 5 سيارات كراء كحد أقصى. انتقل إلى La Totale للحصول على أسطول غير محدود وجميع الميزات المتقدمة.',
+    'rental.upgrade.benefit1':            'سيارات كراء غير محدودة',
+    'rental.upgrade.benefit2':            'مساعد ذكي على واتساب (دارجة + فرنسية) 24/24',
+    'rental.upgrade.benefit3':            'حملات تنقيط على واتساب + إعادة تفعيل تلقائية',
+    'rental.upgrade.benefit4':            'مطابقة سيارات بالذكاء الاصطناعي + توقع معدّل الإغلاق',
+    'rental.upgrade.benefit5':            'دعم أولوية 24/24',
+    'rental.upgrade.cta':                 'عرض الباقات',
+    'rental.upgrade.later':               'لاحقا',
+
+    // ── Rental — errors ─────────────────────────────────────────
+    'rental.errors.plan_limit_reached':   'تم الوصول إلى حد Classique (5 سيارات).',
+    'rental.errors.duplicate_imm':        'رقم اللوحة هذا موجود مسبقا.',
   },
 }

@@ -1,0 +1,208 @@
+-- ============================================================
+-- Migration 37: Rental module — schema (6 tables + triggers)
+-- ============================================================
+-- Phase 1 of the Rental ("Module Location") feature. Separate fleet
+-- from the sales `vehicles` table:
+--   • rental_vehicles      — rentable fleet
+--   • rental_customers     — drivers (separate from sales `leads`)
+--   • rentals              — contracts (draft → active → completed)
+--   • rental_inspections   — pickup + return state-of-vehicle
+--   • rental_payments      — deposit / rental / extra charges
+--   • rental_settings      — per-showroom rental defaults
+--
+-- Idempotent. Wrapped in BEGIN/COMMIT.
+-- ============================================================
+
+BEGIN;
+
+-- ── Shared updated_at trigger function (idempotent) ─────────
+CREATE OR REPLACE FUNCTION public.rental_touch_updated_at()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.updated_at := now();
+  RETURN NEW;
+END;
+$$;
+
+-- ── 1. rental_vehicles ──────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.rental_vehicles (
+  id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  showroom_id           uuid NOT NULL REFERENCES public.showrooms(id) ON DELETE CASCADE,
+  marque                text NOT NULL,
+  modele                text NOT NULL,
+  annee                 integer NOT NULL,
+  immatriculation       text NOT NULL,
+  couleur               text,
+  type_carburant        text CHECK (type_carburant IN ('essence','diesel','hybride','electrique','gpl')),
+  boite_vitesse         text CHECK (boite_vitesse IN ('manuelle','automatique')),
+  nb_places             integer CHECK (nb_places BETWEEN 1 AND 9),
+  photos_urls           text[] NOT NULL DEFAULT '{}',
+  description           text,
+  daily_rate            numeric NOT NULL CHECK (daily_rate >= 0),
+  weekly_rate           numeric CHECK (weekly_rate IS NULL OR weekly_rate >= 0),
+  monthly_rate          numeric CHECK (monthly_rate IS NULL OR monthly_rate >= 0),
+  deposit_amount        numeric NOT NULL DEFAULT 0 CHECK (deposit_amount >= 0),
+  km_included_per_day   integer DEFAULT 200,
+  extra_km_rate         numeric DEFAULT 0,
+  current_km            integer DEFAULT 0,
+  fuel_level            text CHECK (fuel_level IN ('empty','1/4','1/2','3/4','full')),
+  is_active             boolean NOT NULL DEFAULT true,
+  created_at            timestamptz NOT NULL DEFAULT now(),
+  updated_at            timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT rental_vehicles_uniq_imm UNIQUE (showroom_id, immatriculation)
+);
+CREATE INDEX IF NOT EXISTS idx_rental_vehicles_showroom_active
+  ON public.rental_vehicles (showroom_id, is_active);
+
+DROP TRIGGER IF EXISTS trg_rental_vehicles_touch ON public.rental_vehicles;
+CREATE TRIGGER trg_rental_vehicles_touch
+  BEFORE UPDATE ON public.rental_vehicles
+  FOR EACH ROW EXECUTE FUNCTION public.rental_touch_updated_at();
+
+-- ── 2. rental_customers ─────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.rental_customers (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  showroom_id     uuid NOT NULL REFERENCES public.showrooms(id) ON DELETE CASCADE,
+  full_name       text NOT NULL,
+  phone           text NOT NULL,
+  email           text,
+  cin_number      text,
+  cin_photo_url   text,
+  permis_number   text,
+  permis_photo_url text,
+  permis_expiry   date,
+  address         text,
+  wilaya          text,
+  date_naissance  date,
+  blacklisted     boolean NOT NULL DEFAULT false,
+  blacklist_reason text,
+  total_rentals   integer NOT NULL DEFAULT 0,
+  total_spent     numeric NOT NULL DEFAULT 0,
+  notes           text,
+  created_by      uuid REFERENCES public.users(id),
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  updated_at      timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT rental_customers_uniq_phone UNIQUE (showroom_id, phone)
+);
+CREATE INDEX IF NOT EXISTS idx_rental_customers_phone
+  ON public.rental_customers (showroom_id, phone);
+CREATE INDEX IF NOT EXISTS idx_rental_customers_blacklist
+  ON public.rental_customers (showroom_id, blacklisted);
+
+DROP TRIGGER IF EXISTS trg_rental_customers_touch ON public.rental_customers;
+CREATE TRIGGER trg_rental_customers_touch
+  BEFORE UPDATE ON public.rental_customers
+  FOR EACH ROW EXECUTE FUNCTION public.rental_touch_updated_at();
+
+-- ── 3. rentals ──────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.rentals (
+  id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  showroom_id           uuid NOT NULL REFERENCES public.showrooms(id) ON DELETE CASCADE,
+  rental_vehicle_id     uuid NOT NULL REFERENCES public.rental_vehicles(id) ON DELETE RESTRICT,
+  customer_id           uuid NOT NULL REFERENCES public.rental_customers(id) ON DELETE RESTRICT,
+  assigned_to           uuid REFERENCES public.users(id) ON DELETE SET NULL,
+  contract_number       text UNIQUE,           -- auto-generated by trigger in Phase 2 (migration 40)
+  start_date            date NOT NULL,
+  start_time            time NOT NULL DEFAULT '09:00',
+  end_date              date NOT NULL,
+  end_time              time NOT NULL DEFAULT '18:00',
+  duration_days         integer NOT NULL CHECK (duration_days > 0),
+  daily_rate_snapshot   numeric NOT NULL,
+  total_rental_amount   numeric NOT NULL CHECK (total_rental_amount >= 0),
+  deposit_amount        numeric NOT NULL DEFAULT 0,
+  status                text NOT NULL DEFAULT 'draft'
+    CHECK (status IN ('draft','confirmed','active','completed','overdue','cancelled')),
+  cancellation_reason   text,
+  signed_at             timestamptz,
+  contract_pdf_url      text,
+  notes                 text,
+  created_by            uuid REFERENCES public.users(id),
+  created_at            timestamptz NOT NULL DEFAULT now(),
+  updated_at            timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT rentals_dates_check CHECK (end_date >= start_date)
+);
+CREATE INDEX IF NOT EXISTS idx_rentals_showroom_status_date
+  ON public.rentals (showroom_id, status, start_date);
+CREATE INDEX IF NOT EXISTS idx_rentals_vehicle_status
+  ON public.rentals (rental_vehicle_id, status);
+CREATE INDEX IF NOT EXISTS idx_rentals_assigned_status
+  ON public.rentals (assigned_to, status);
+CREATE INDEX IF NOT EXISTS idx_rentals_customer
+  ON public.rentals (customer_id);
+
+DROP TRIGGER IF EXISTS trg_rentals_touch ON public.rentals;
+CREATE TRIGGER trg_rentals_touch
+  BEFORE UPDATE ON public.rentals
+  FOR EACH ROW EXECUTE FUNCTION public.rental_touch_updated_at();
+
+-- ── 4. rental_inspections ───────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.rental_inspections (
+  id                      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  rental_id               uuid NOT NULL REFERENCES public.rentals(id) ON DELETE CASCADE,
+  type                    text NOT NULL CHECK (type IN ('pickup','return')),
+  km_reading              integer NOT NULL,
+  fuel_level              text NOT NULL CHECK (fuel_level IN ('empty','1/4','1/2','3/4','full')),
+  body_condition_notes    text,
+  damage_notes            text,
+  photos_urls             text[] NOT NULL DEFAULT '{}',
+  signature_url           text,
+  created_by              uuid NOT NULL REFERENCES public.users(id),
+  created_at              timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT rental_inspections_uniq UNIQUE (rental_id, type)
+);
+CREATE INDEX IF NOT EXISTS idx_rental_inspections_rental
+  ON public.rental_inspections (rental_id, type);
+
+-- ── 5. rental_payments ──────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.rental_payments (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  rental_id    uuid NOT NULL REFERENCES public.rentals(id) ON DELETE CASCADE,
+  type         text NOT NULL
+    CHECK (type IN ('deposit','rental_payment','extra_charge','refund','km_excess','late_fee','damage_fee','fuel_charge')),
+  amount       numeric NOT NULL,
+  method       text NOT NULL CHECK (method IN ('cash','ccp','baridimob','bank_transfer')),
+  reference    text,
+  notes        text,
+  created_by   uuid NOT NULL REFERENCES public.users(id),
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_rental_payments_rental
+  ON public.rental_payments (rental_id);
+
+-- ── 6. rental_settings ──────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.rental_settings (
+  id                          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  showroom_id                 uuid NOT NULL UNIQUE REFERENCES public.showrooms(id) ON DELETE CASCADE,
+  late_return_hourly_fee      numeric NOT NULL DEFAULT 1000,
+  min_rental_days             integer NOT NULL DEFAULT 1 CHECK (min_rental_days >= 1),
+  max_rental_days             integer NOT NULL DEFAULT 90 CHECK (max_rental_days <= 365),
+  fuel_charge_per_quarter     numeric NOT NULL DEFAULT 500,
+  default_contract_terms      text,
+  created_at                  timestamptz NOT NULL DEFAULT now(),
+  updated_at                  timestamptz NOT NULL DEFAULT now()
+);
+
+DROP TRIGGER IF EXISTS trg_rental_settings_touch ON public.rental_settings;
+CREATE TRIGGER trg_rental_settings_touch
+  BEFORE UPDATE ON public.rental_settings
+  FOR EACH ROW EXECUTE FUNCTION public.rental_touch_updated_at();
+
+-- ── Verification ─────────────────────────────────────────────
+DO $$
+DECLARE
+  v_tables int;
+BEGIN
+  SELECT count(*) INTO v_tables
+    FROM information_schema.tables
+   WHERE table_schema = 'public'
+     AND table_name IN (
+       'rental_vehicles', 'rental_customers', 'rentals',
+       'rental_inspections', 'rental_payments', 'rental_settings'
+     );
+  RAISE NOTICE 'Migration 37: created/verified % of 6 rental tables.', v_tables;
+  IF v_tables < 6 THEN
+    RAISE EXCEPTION 'Migration 37 failed: expected 6 rental tables, got %', v_tables;
+  END IF;
+END$$;
+
+COMMIT;

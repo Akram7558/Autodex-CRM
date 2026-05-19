@@ -22,6 +22,9 @@ import {
   ScrollText,
   Shield,
   Package,
+  KeyRound,
+  CarFront,
+  Tag,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
@@ -44,6 +47,10 @@ const navItems: Array<{ href: string; label: string; icon: typeof LayoutDashboar
   { href: '/dashboard/ventes',       label: 'Ventes',          icon: BadgeDollarSign, roles: ['owner','manager'] },
   { href: '/dashboard/vehicules',    label: 'Véhicules',       icon: Car,             roles: ['owner','manager'] },
   { href: '/dashboard/precommandes', label: 'Pré-commandes',   icon: Package,         roles: ['owner','manager'] },
+  // Module Location (Phase 1) — separate fleet from sales vehicles.
+  { href: '/dashboard/location',           label: 'Location',         icon: KeyRound,  roles: ['owner','manager','closer'] },
+  { href: '/dashboard/location/vehicules', label: 'Flotte location',  icon: CarFront,  roles: ['owner','manager'] },
+  { href: '/dashboard/location/tarifs',    label: 'Tarifs location',  icon: Tag,       roles: ['owner'] },
   { href: '/dashboard/activites',    label: 'Activités',       icon: Activity,        roles: ['owner','manager'] },
   { href: '/dashboard/alerts',       label: 'Alertes',         icon: BellRing,        roles: ['owner','manager'] },
   // `Paramètres` is rendered in the sidebar footer (`!isInternalTeam`
