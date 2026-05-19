@@ -50,6 +50,7 @@ const navItems: Array<{ href: string; label: string; icon: typeof LayoutDashboar
   // Module Location (Phase 1) — separate fleet from sales vehicles.
   { href: '/dashboard/location',           label: 'Location',         icon: KeyRound,  roles: ['owner','manager','closer'] },
   { href: '/dashboard/location/vehicules', label: 'Flotte location',  icon: CarFront,  roles: ['owner','manager'] },
+  { href: '/dashboard/location/clients',   label: 'Clients location', icon: Users,     roles: ['owner','manager'] },
   { href: '/dashboard/location/tarifs',    label: 'Tarifs location',  icon: Tag,       roles: ['owner'] },
   { href: '/dashboard/activites',    label: 'Activités',       icon: Activity,        roles: ['owner','manager'] },
   { href: '/dashboard/alerts',       label: 'Alertes',         icon: BellRing,        roles: ['owner','manager'] },

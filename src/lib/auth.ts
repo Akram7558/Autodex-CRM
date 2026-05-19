@@ -149,6 +149,7 @@ const ROUTE_ACL: Array<{ prefix: string; allow: AppRole[] }> = [
   // Module Location (Phase 1)
   { prefix: '/dashboard/location/tarifs',        allow: ['super_admin', 'owner'] },
   { prefix: '/dashboard/location/vehicules',     allow: ['super_admin', 'owner', 'manager'] },
+  { prefix: '/dashboard/location/clients',       allow: ['super_admin', 'owner', 'manager'] },
   { prefix: '/dashboard/location',               allow: ['super_admin', 'owner', 'manager', 'closer'] },
 
   // migration_32 — restrict Pipeline (/prospects), Véhicules, Activités

@@ -265,6 +265,7 @@ export const translations: Record<Locale, TranslationDict> = {
     'sidebar.rental.dashboard':   'Tableau de bord',
     'sidebar.rental.calendar':    'Calendrier',
     'sidebar.rental.vehicles':    'Flotte location',
+    'sidebar.rental.customers':   'Clients location',
     'sidebar.rental.pricing':     'Tarifs location',
 
     // ── Rental — dashboard hub ──────────────────────────────────
@@ -342,6 +343,111 @@ export const translations: Record<Locale, TranslationDict> = {
     // ── Rental — errors ─────────────────────────────────────────
     'rental.errors.plan_limit_reached':   'Limite Classique de 5 véhicules atteinte.',
     'rental.errors.duplicate_imm':        'Cette immatriculation existe déjà.',
+    'rental.errors.network_error':        'Connexion perdue. Réessayez.',
+    'rental.errors.server_error':         'Erreur serveur. Réessayez plus tard.',
+
+    // ── Rental customers — list ─────────────────────────────────
+    'rental.customers.title':             'Clients location',
+    'rental.customers.subtitle':          'Gérez vos clients de location.',
+    'rental.customers.count_label':       '{count} clients',
+    'rental.customers.add_button':        'Nouveau client',
+    'rental.customers.search_placeholder':'Rechercher par nom ou téléphone…',
+    'rental.customers.sort_recent':       'Récents',
+    'rental.customers.sort_name':         'Nom (A → Z)',
+    'rental.customers.sort_most_active':  'Plus actifs',
+    'rental.customers.filter_all':        'Tous',
+    'rental.customers.filter_blacklisted':'Blacklistés',
+    'rental.customers.empty_title':       'Aucun client pour le moment',
+    'rental.customers.empty_desc':        'Ajoutez votre premier client de location pour démarrer.',
+
+    // Card meta
+    'rental.customer.card.rentals_label':     'location(s)',
+    'rental.customer.card.total_spent_label': 'Total',
+    'rental.customer.card.blacklisted_badge': 'Blacklisté',
+
+    // ── Customer detail ─────────────────────────────────────────
+    'rental.customer.detail.action.edit':       'Modifier',
+    'rental.customer.detail.action.blacklist':  'Blacklister',
+    'rental.customer.detail.action.unblacklist':'Lever blacklist',
+    'rental.customer.detail.action.delete':     'Supprimer',
+    'rental.customer.detail.kpi.total_rentals': 'Total locations',
+    'rental.customer.detail.kpi.total_spent':   'Total dépensé',
+    'rental.customer.detail.kpi.member_since':  'Membre depuis',
+    'rental.customer.detail.kpi.last_rental':   'Dernière location',
+    'rental.customer.detail.documents_title':   'Documents officiels',
+    'rental.customer.detail.history_title':     'Historique des locations',
+    'rental.customer.detail.history_empty':     'Aucune location enregistrée pour ce client.',
+    'rental.customer.detail.cin_label':         'CIN',
+    'rental.customer.detail.permis_label':      'Permis',
+    'rental.customer.detail.cin_placeholder':   'Aucune CIN enregistrée',
+    'rental.customer.detail.permis_placeholder':'Aucun permis enregistré',
+    'rental.customer.detail.permis_expires_on': 'Expire le {date}',
+    'rental.customer.detail.permis_expired':    'Expiré',
+    'rental.customer.detail.open_document':     'Ouvrir',
+    'rental.customer.detail.replace_document':  'Remplacer',
+    'rental.customer.detail.blacklist_reason_prefix': 'Raison',
+
+    // ── Customer form ───────────────────────────────────────────
+    'rental.customer.form.modal_title_create':  'Nouveau client',
+    'rental.customer.form.modal_title_edit':    'Modifier le client',
+    'rental.customer.form.section_identity':    'Identité',
+    'rental.customer.form.section_documents':   'Documents officiels',
+    'rental.customer.form.section_notes':       'Notes internes',
+    'rental.customer.form.full_name':           'Nom complet',
+    'rental.customer.form.full_name_placeholder':'Ex. Karim Bensalem',
+    'rental.customer.form.phone':               'Téléphone',
+    'rental.customer.form.phone_placeholder':   '+213 555 12 34 56',
+    'rental.customer.form.email':               'Email',
+    'rental.customer.form.email_placeholder':   'ex@email.com',
+    'rental.customer.form.dob':                 'Date de naissance',
+    'rental.customer.form.wilaya':              'Wilaya',
+    'rental.customer.form.address':             'Adresse',
+    'rental.customer.form.address_placeholder': 'Adresse complète',
+    'rental.customer.form.cin_number':          'N° CIN',
+    'rental.customer.form.permis_number':       'N° Permis',
+    'rental.customer.form.permis_expiry':       'Date d\'expiration du permis',
+    'rental.customer.form.notes_placeholder':
+      'Détails internes (couleur permis, dépôt déjà versé, contraintes…).',
+    'rental.customer.form.submit_create':       'Créer',
+    'rental.customer.form.submit_edit':         'Enregistrer',
+    'rental.customer.form.cancel':              'Annuler',
+    'rental.customer.form.error_name_required':
+      'Nom complet requis (≥ 2 caractères).',
+    'rental.customer.form.error_phone_required':'Téléphone requis.',
+    'rental.customer.form.error_phone_format':  'Téléphone invalide.',
+    'rental.customer.form.error_email_format':  'Email invalide.',
+    'rental.customer.form.phone_already_exists':'Un client avec ce téléphone existe déjà.',
+    'rental.customer.form.use_existing':        'Utiliser ce client existant',
+
+    // ── Blacklist confirm modal ─────────────────────────────────
+    'rental.customer.blacklist.modal_title':    'Blacklister ce client',
+    'rental.customer.blacklist.reason_label':
+      'Indiquez la raison pour laquelle ce client est blacklisté. Cette note sera visible par toute votre équipe.',
+    'rental.customer.blacklist.reason_placeholder':
+      'ex. Retour véhicule en mauvais état, dégradations non-payées…',
+    'rental.customer.blacklist.confirm':        'Confirmer',
+    'rental.customer.blacklist.cancel':         'Annuler',
+    'rental.customer.blacklist.success':        'Client blacklisté',
+    'rental.customer.blacklist.removed':        'Blacklist levé',
+
+    // ── Delete confirm modal ────────────────────────────────────
+    'rental.customer.delete.confirm_title':     'Supprimer ce client ?',
+    'rental.customer.delete.confirm_body':
+      '{name} sera supprimé définitivement. Cette action est irréversible.',
+    'rental.customer.delete.confirm_button':    'Supprimer',
+    'rental.customer.delete.cannot_delete_has_rentals':
+      'Impossible : le client a des contrats actifs.',
+
+    // ── Upload UX ───────────────────────────────────────────────
+    'rental.upload.drop_zone_label':            'Cliquer pour téléverser le {label}',
+    'rental.upload.formats_hint':               'JPG, PNG, WebP, PDF — 5 Mo max',
+    'rental.upload.uploading':                  'Téléversement en cours…',
+    'rental.upload.uploaded_label':             '{label} · téléversé',
+    'rental.upload.replace':                    'Remplacer',
+    'rental.upload.remove':                     'Retirer',
+    'rental.upload.error_size':                 'Fichier trop volumineux (max 5 Mo).',
+    'rental.upload.error_format':               'Format non supporté (jpg, png, webp ou pdf).',
+    'rental.upload.error_failed':               'Échec du téléversement. Réessayez.',
   },
 
   ar: {
@@ -596,6 +702,7 @@ export const translations: Record<Locale, TranslationDict> = {
     'sidebar.rental.dashboard':   'لوحة التحكم',
     'sidebar.rental.calendar':    'الأجندة',
     'sidebar.rental.vehicles':    'أسطول الكراء',
+    'sidebar.rental.customers':   'عملاء الكراء',
     'sidebar.rental.pricing':     'تسعيرة الكراء',
 
     // ── Rental — dashboard hub ──────────────────────────────────
@@ -673,5 +780,109 @@ export const translations: Record<Locale, TranslationDict> = {
     // ── Rental — errors ─────────────────────────────────────────
     'rental.errors.plan_limit_reached':   'تم الوصول إلى حد Classique (5 سيارات).',
     'rental.errors.duplicate_imm':        'رقم اللوحة هذا موجود مسبقا.',
+    'rental.errors.network_error':        'فقد الاتصال. حاول مرة أخرى.',
+    'rental.errors.server_error':         'خطأ في الخادم. حاول لاحقا.',
+
+    // ── Rental customers — list ─────────────────────────────────
+    'rental.customers.title':             'عملاء الكراء',
+    'rental.customers.subtitle':          'إدارة عملاء الكراء.',
+    'rental.customers.count_label':       '{count} عميل',
+    'rental.customers.add_button':        'عميل جديد',
+    'rental.customers.search_placeholder':'البحث بالاسم أو الهاتف…',
+    'rental.customers.sort_recent':       'الأحدث',
+    'rental.customers.sort_name':         'الاسم (أ → ي)',
+    'rental.customers.sort_most_active':  'الأكثر نشاطا',
+    'rental.customers.filter_all':        'الكل',
+    'rental.customers.filter_blacklisted':'المحظورون',
+    'rental.customers.empty_title':       'لا يوجد عملاء بعد',
+    'rental.customers.empty_desc':        'أضف أول عميل كراء للبدء.',
+
+    'rental.customer.card.rentals_label':     'عقد(عقود)',
+    'rental.customer.card.total_spent_label': 'المجموع',
+    'rental.customer.card.blacklisted_badge': 'محظور',
+
+    // ── Customer detail ─────────────────────────────────────────
+    'rental.customer.detail.action.edit':       'تعديل',
+    'rental.customer.detail.action.blacklist':  'حظر',
+    'rental.customer.detail.action.unblacklist':'رفع الحظر',
+    'rental.customer.detail.action.delete':     'حذف',
+    'rental.customer.detail.kpi.total_rentals': 'إجمالي العقود',
+    'rental.customer.detail.kpi.total_spent':   'إجمالي المصاريف',
+    'rental.customer.detail.kpi.member_since':  'عضو منذ',
+    'rental.customer.detail.kpi.last_rental':   'آخر كراء',
+    'rental.customer.detail.documents_title':   'الوثائق الرسمية',
+    'rental.customer.detail.history_title':     'سجل العقود',
+    'rental.customer.detail.history_empty':     'لا يوجد سجل عقود لهذا العميل.',
+    'rental.customer.detail.cin_label':         'بطاقة التعريف',
+    'rental.customer.detail.permis_label':      'رخصة السياقة',
+    'rental.customer.detail.cin_placeholder':   'لم يتم تسجيل بطاقة التعريف',
+    'rental.customer.detail.permis_placeholder':'لم يتم تسجيل رخصة السياقة',
+    'rental.customer.detail.permis_expires_on': 'تنتهي في {date}',
+    'rental.customer.detail.permis_expired':    'منتهية',
+    'rental.customer.detail.open_document':     'فتح',
+    'rental.customer.detail.replace_document':  'استبدال',
+    'rental.customer.detail.blacklist_reason_prefix': 'السبب',
+
+    // ── Customer form ───────────────────────────────────────────
+    'rental.customer.form.modal_title_create':  'عميل جديد',
+    'rental.customer.form.modal_title_edit':    'تعديل العميل',
+    'rental.customer.form.section_identity':    'الهوية',
+    'rental.customer.form.section_documents':   'الوثائق الرسمية',
+    'rental.customer.form.section_notes':       'ملاحظات داخلية',
+    'rental.customer.form.full_name':           'الاسم الكامل',
+    'rental.customer.form.full_name_placeholder':'مثال: كريم بن سالم',
+    'rental.customer.form.phone':               'الهاتف',
+    'rental.customer.form.phone_placeholder':   '+213 555 12 34 56',
+    'rental.customer.form.email':               'البريد الإلكتروني',
+    'rental.customer.form.email_placeholder':   'ex@email.com',
+    'rental.customer.form.dob':                 'تاريخ الميلاد',
+    'rental.customer.form.wilaya':              'الولاية',
+    'rental.customer.form.address':             'العنوان',
+    'rental.customer.form.address_placeholder': 'العنوان الكامل',
+    'rental.customer.form.cin_number':          'رقم بطاقة التعريف',
+    'rental.customer.form.permis_number':       'رقم رخصة السياقة',
+    'rental.customer.form.permis_expiry':       'تاريخ انتهاء الرخصة',
+    'rental.customer.form.notes_placeholder':
+      'تفاصيل داخلية (لون الرخصة، عربون مدفوع، قيود…).',
+    'rental.customer.form.submit_create':       'إنشاء',
+    'rental.customer.form.submit_edit':         'حفظ',
+    'rental.customer.form.cancel':              'إلغاء',
+    'rental.customer.form.error_name_required':
+      'الاسم الكامل مطلوب (حرفان على الأقل).',
+    'rental.customer.form.error_phone_required':'الهاتف مطلوب.',
+    'rental.customer.form.error_phone_format':  'رقم هاتف غير صالح.',
+    'rental.customer.form.error_email_format':  'بريد إلكتروني غير صالح.',
+    'rental.customer.form.phone_already_exists':'يوجد عميل بهذا الرقم.',
+    'rental.customer.form.use_existing':        'استخدم هذا العميل',
+
+    // ── Blacklist confirm modal ─────────────────────────────────
+    'rental.customer.blacklist.modal_title':    'حظر هذا العميل',
+    'rental.customer.blacklist.reason_label':
+      'حدد سبب حظر هذا العميل. ستظهر هذه الملاحظة لكامل فريقك.',
+    'rental.customer.blacklist.reason_placeholder':
+      'مثال: إرجاع سيارة في حالة سيئة، أضرار غير مدفوعة…',
+    'rental.customer.blacklist.confirm':        'تأكيد',
+    'rental.customer.blacklist.cancel':         'إلغاء',
+    'rental.customer.blacklist.success':        'تم حظر العميل',
+    'rental.customer.blacklist.removed':        'تم رفع الحظر',
+
+    // ── Delete confirm modal ────────────────────────────────────
+    'rental.customer.delete.confirm_title':     'حذف هذا العميل؟',
+    'rental.customer.delete.confirm_body':
+      'سيتم حذف {name} نهائيا. هذا الإجراء غير قابل للإلغاء.',
+    'rental.customer.delete.confirm_button':    'حذف',
+    'rental.customer.delete.cannot_delete_has_rentals':
+      'غير ممكن: العميل لديه عقود نشطة.',
+
+    // ── Upload UX ───────────────────────────────────────────────
+    'rental.upload.drop_zone_label':            'انقر لتحميل {label}',
+    'rental.upload.formats_hint':               'JPG, PNG, WebP, PDF — 5 ميغا كحد أقصى',
+    'rental.upload.uploading':                  'جارٍ التحميل…',
+    'rental.upload.uploaded_label':             '{label} · تم التحميل',
+    'rental.upload.replace':                    'استبدال',
+    'rental.upload.remove':                     'إزالة',
+    'rental.upload.error_size':                 'الملف كبير جدا (5 ميغا كحد أقصى).',
+    'rental.upload.error_format':               'صيغة غير مدعومة (jpg, png, webp أو pdf).',
+    'rental.upload.error_failed':               'فشل التحميل. حاول مرة أخرى.',
   },
 }
