@@ -26,7 +26,8 @@
       "Bash(git commit *)",
       "Bash(echo \"tsc=$?\")",
       "Bash(npm run *)",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(node -e \"const m=require\\('lucide-react'\\); console.log\\('Facebook:', !!m.Facebook\\); console.log\\('Instagram:', !!m.Instagram\\); console.log\\('FacebookIcon:', !!m.FacebookIcon\\); console.log\\('Available F~:', Object.keys\\(m\\).filter\\(k=>k.startsWith\\('Face'\\)\\).slice\\(0,5\\)\\)\")"
     ]
   }
 }

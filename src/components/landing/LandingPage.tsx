@@ -2,16 +2,24 @@
 // ─────────────────────────────────────────────────────────────────────
 // LandingPage — composition root for the public landing.
 // ─────────────────────────────────────────────────────────────────────
-// Chunk 2 wires Nav + Hero + Marquee + Problem + Features.
-// Chunks 3 owns <Pricing /> · <FAQ /> · <DemoCTA /> · <Footer />.
+// Final order (post chunk 3):
+//   Nav → Hero → Marquee → Problem → Features → Pricing → FAQ →
+//   DemoCTA → Footer.
+//
+// The entire tree is wrapped in <LocaleProvider> so every section
+// reactively re-renders on locale flips (chunk 3 fix).
 // ─────────────────────────────────────────────────────────────────────
 
 import { LocaleProvider } from '@/components/landing/LocaleProvider'
-import Nav from '@/components/landing/Nav'
-import Hero from '@/components/landing/Hero'
-import Marquee from '@/components/landing/Marquee'
-import Problem from '@/components/landing/Problem'
+import Nav      from '@/components/landing/Nav'
+import Hero     from '@/components/landing/Hero'
+import Marquee  from '@/components/landing/Marquee'
+import Problem  from '@/components/landing/Problem'
 import Features from '@/components/landing/Features'
+import Pricing  from '@/components/landing/Pricing'
+import FAQ      from '@/components/landing/FAQ'
+import DemoCTA  from '@/components/landing/DemoCTA'
+import Footer   from '@/components/landing/Footer'
 
 export default function LandingPage() {
   return (
@@ -26,36 +34,12 @@ export default function LandingPage() {
           <Marquee />
           <Problem />
           <Features />
-          {/* TODO chunk 3: <Pricing /> at #tarifs */}
-          <Placeholder id="tarifs" label="Pricing — chunk 3" />
-          {/* TODO chunk 3: <FAQ /> at #faq */}
-          <Placeholder id="faq" label="FAQ — chunk 3" />
-          {/* TODO chunk 3: <DemoCTA /> */}
-          <Placeholder id="demo" label="Demo CTA — chunk 3" />
-          {/* TODO chunk 3: <Footer /> */}
-          <Placeholder id="footer" label="Footer — chunk 3" />
+          <Pricing />
+          <FAQ />
+          <DemoCTA />
         </main>
+        <Footer />
       </div>
     </LocaleProvider>
-  )
-}
-
-function Placeholder({ id, label }: { id: string; label: string }) {
-  return (
-    <section
-      id={id}
-      className="border-y px-6 py-20 text-center"
-      style={{
-        borderColor: 'var(--border)',
-        background: 'var(--bg-surface)',
-      }}
-    >
-      <p
-        className="text-[10px] uppercase tracking-[0.3em] font-semibold"
-        style={{ color: 'var(--text-muted)' }}
-      >
-        {label}
-      </p>
-    </section>
   )
 }
