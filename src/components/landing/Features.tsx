@@ -174,7 +174,7 @@ function ScoringMock() {
             />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
-                {t(l.key)}
+                <bdi>{t(l.key)}</bdi>
               </p>
               <span
                 className="mt-1 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold"
@@ -188,7 +188,7 @@ function ScoringMock() {
               </span>
             </div>
             <span className="text-lg font-bold tabular-nums" style={{ color: 'var(--text-primary)' }}>
-              {l.score}
+              <bdi>{l.score}</bdi>
             </span>
           </div>
         )
@@ -213,9 +213,9 @@ function ScoringMock() {
           <span style={{ background: '#60a5fa', width: '28%' }} />
         </div>
         <div className="mt-2 flex items-center justify-between text-[10px]" style={{ color: 'var(--text-muted)' }}>
-          <span>🔥 38%</span>
-          <span>🌡️ 34%</span>
-          <span>❄️ 28%</span>
+          <span>🔥 <bdi>38%</bdi></span>
+          <span>🌡️ <bdi>34%</bdi></span>
+          <span>❄️ <bdi>28%</bdi></span>
         </div>
       </div>
     </div>
@@ -275,7 +275,7 @@ function MessagingMock() {
               color: 'var(--text-primary)',
             }}
           >
-            {t('features.f2.mock.bubble.1')}
+            <bdi>{t('features.f2.mock.bubble.1')}</bdi>
           </div>
         </div>
         <div className="flex justify-end">
@@ -285,7 +285,7 @@ function MessagingMock() {
               background: '#25D366',
             }}
           >
-            {t('features.f2.mock.bubble.2')}
+            <bdi>{t('features.f2.mock.bubble.2')}</bdi>
           </div>
         </div>
         <div className="flex justify-start">
@@ -297,7 +297,7 @@ function MessagingMock() {
               color: 'var(--text-primary)',
             }}
           >
-            {t('features.f2.mock.bubble.3')}
+            <bdi>{t('features.f2.mock.bubble.3')}</bdi>
           </div>
         </div>
       </div>
@@ -369,13 +369,13 @@ function CatalogMock() {
                 className="text-xs font-semibold truncate"
                 style={{ color: 'var(--text-primary)' }}
               >
-                {t(`features.f3.mock.car.${i}`)}
+                <bdi>{t(`features.f3.mock.car.${i}`)}</bdi>
               </p>
               <p
                 className="mt-0.5 text-xs font-bold tabular-nums"
                 style={{ color: 'var(--accent)' }}
               >
-                {t(`features.f3.mock.price.${i}`)}
+                <bdi>{t(`features.f3.mock.price.${i}`)}</bdi>
               </p>
               <span
                 className="mt-1 inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold"

@@ -1,54 +1,65 @@
 'use client'
 // ─────────────────────────────────────────────────────────────────────
-// useTranslations — client-side locale + translator hook.
+// useTranslations — locale + translator hook (reactive).
 // ─────────────────────────────────────────────────────────────────────
-// Reads the initial locale from localStorage (or 'fr' fallback) on
-// mount, applies it to the document (lang + dir), and returns:
+// Reads from the LocaleProvider context so every consumer re-renders
+// the moment the locale flips. Returns:
 //   • locale  — current locale ('fr' | 'ar')
-//   • setLocale — switch + persist + re-render
-//   • t(key, fallback?) — look up the key in the active dictionary,
-//       fallback to the FR string, then to the literal key.
+//   • setLocale — switch + persist + apply DOM attrs (via provider)
+//   • t(key, vars?) — dotted-path lookup with FR fallback + {var}
+//       interpolation. Examples:
+//         t('hero.title.before')
+//         t('pricing.cta.classique', { months: 3 })
 //   • dir — 'ltr' | 'rtl' for inline styling convenience.
+//
+// Translations dictionary is a flat `Record<string, string>` per
+// locale, but `t()` also supports nested objects when present — both
+// shapes coexist so callers can pick whichever reads best.
 // ─────────────────────────────────────────────────────────────────────
 
-import { useCallback, useEffect, useState } from 'react'
-import { type Locale, getInitialLocale, applyLocale } from '@/lib/i18n'
+import { useLocale } from '@/components/landing/LocaleProvider'
 import { translations } from '@/lib/landing/translations'
 
-export function useTranslations() {
-  const [locale, setLocaleState] = useState<Locale>('fr')
+type Vars = Record<string, string | number>
 
-  // Hydrate the persisted locale on mount; also re-apply the document
-  // attrs (the inline boot script does this synchronously to avoid
-  // FOUC, but re-applying keeps client + server in lockstep).
-  useEffect(() => {
-    const initial = getInitialLocale()
-    setLocaleState(initial)
-    applyLocale(initial)
-  }, [])
+function interpolate(str: string, vars?: Vars): string {
+  if (!vars) return str
+  return str.replace(/\{(\w+)\}/g, (_, k) => {
+    const v = vars[k]
+    return v == null ? `{${k}}` : String(v)
+  })
+}
 
-  const setLocale = useCallback((next: Locale) => {
-    setLocaleState(next)
-    applyLocale(next)
-  }, [])
-
-  const t = useCallback(
-    (key: string, fallback?: string): string => {
-      const dict = translations[locale] ?? {}
-      if (dict[key]) return dict[key]
-      // Fallback to French (default copy) before defaulting to the
-      // literal key — useful while we're populating dictionaries.
-      const fr = translations.fr?.[key]
-      if (fr) return fr
-      return fallback ?? key
-    },
-    [locale],
-  )
-
-  return {
-    locale,
-    setLocale,
-    t,
-    dir: (locale === 'ar' ? 'rtl' : 'ltr') as 'ltr' | 'rtl',
+// Resolve a dotted key like 'features.f1.bullet.1' against a dict
+// that may be either a flat `Record<string,string>` (current shape)
+// OR a nested object. Returns the matched string or undefined.
+function lookup(dict: unknown, key: string): string | undefined {
+  if (dict == null || typeof dict !== 'object') return undefined
+  // Fast path: flat dict.
+  const flat = (dict as Record<string, unknown>)[key]
+  if (typeof flat === 'string') return flat
+  // Slow path: walk segments.
+  const parts = key.split('.')
+  let cur: unknown = dict
+  for (const p of parts) {
+    if (cur == null || typeof cur !== 'object') return undefined
+    cur = (cur as Record<string, unknown>)[p]
   }
+  return typeof cur === 'string' ? cur : undefined
+}
+
+export function useTranslations() {
+  const { locale, setLocale, dir } = useLocale()
+  const dict = translations[locale] ?? translations.fr
+
+  function t(key: string, vars?: Vars): string {
+    const hit = lookup(dict, key)
+    if (hit != null) return interpolate(hit, vars)
+    // Fallback to FR before defaulting to the literal key.
+    const fr = lookup(translations.fr, key)
+    if (fr != null) return interpolate(fr, vars)
+    return key
+  }
+
+  return { locale, setLocale, t, dir }
 }

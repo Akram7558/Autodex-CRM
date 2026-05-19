@@ -6,6 +6,7 @@
 // Chunks 3 owns <Pricing /> · <FAQ /> · <DemoCTA /> · <Footer />.
 // ─────────────────────────────────────────────────────────────────────
 
+import { LocaleProvider } from '@/components/landing/LocaleProvider'
 import Nav from '@/components/landing/Nav'
 import Hero from '@/components/landing/Hero'
 import Marquee from '@/components/landing/Marquee'
@@ -14,26 +15,28 @@ import Features from '@/components/landing/Features'
 
 export default function LandingPage() {
   return (
-    <div
-      className="min-h-screen"
-      style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
-    >
-      <Nav />
-      <main>
-        <Hero />
-        <Marquee />
-        <Problem />
-        <Features />
-        {/* TODO chunk 3: <Pricing /> at #tarifs */}
-        <Placeholder id="tarifs" label="Pricing — chunk 3" />
-        {/* TODO chunk 3: <FAQ /> at #faq */}
-        <Placeholder id="faq" label="FAQ — chunk 3" />
-        {/* TODO chunk 3: <DemoCTA /> */}
-        <Placeholder id="demo" label="Demo CTA — chunk 3" />
-        {/* TODO chunk 3: <Footer /> */}
-        <Placeholder id="footer" label="Footer — chunk 3" />
-      </main>
-    </div>
+    <LocaleProvider>
+      <div
+        className="min-h-screen"
+        style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+      >
+        <Nav />
+        <main>
+          <Hero />
+          <Marquee />
+          <Problem />
+          <Features />
+          {/* TODO chunk 3: <Pricing /> at #tarifs */}
+          <Placeholder id="tarifs" label="Pricing — chunk 3" />
+          {/* TODO chunk 3: <FAQ /> at #faq */}
+          <Placeholder id="faq" label="FAQ — chunk 3" />
+          {/* TODO chunk 3: <DemoCTA /> */}
+          <Placeholder id="demo" label="Demo CTA — chunk 3" />
+          {/* TODO chunk 3: <Footer /> */}
+          <Placeholder id="footer" label="Footer — chunk 3" />
+        </main>
+      </div>
+    </LocaleProvider>
   )
 }
 

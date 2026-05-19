@@ -94,7 +94,7 @@ export default function Hero() {
                 className="text-2xl md:text-3xl font-bold tabular-nums"
                 style={{ color: 'var(--text-primary)' }}
               >
-                {t(`hero.stat.value.${i}`)}
+                <bdi>{t(`hero.stat.value.${i}`)}</bdi>
               </span>
               <span
                 className="mt-1 text-xs md:text-sm font-medium"
@@ -231,14 +231,14 @@ function DashboardMock() {
                     className="text-[10px] font-bold tabular-nums"
                     style={{ color: 'var(--accent)' }}
                   >
-                    {t(`hero.mock.kpi.${i}.delta`)} ↑
+                    <bdi>{t(`hero.mock.kpi.${i}.delta`)} ↑</bdi>
                   </span>
                 </div>
                 <p
                   className="mt-2 text-2xl font-bold tabular-nums"
                   style={{ color: 'var(--text-primary)' }}
                 >
-                  {t(`hero.mock.kpi.${i}.value`)}
+                  <bdi>{t(`hero.mock.kpi.${i}.value`)}</bdi>
                 </p>
                 <svg
                   viewBox="0 0 100 28"
