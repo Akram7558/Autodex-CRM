@@ -1,31 +1,48 @@
 'use client'
 // ─────────────────────────────────────────────────────────────────────
-// VehiclePhotoUploader — multi-photo grid for rental_vehicles.photos_urls.
+// VehiclePhotoUploader — reusable multi-photo grid (rental + sales).
 // ─────────────────────────────────────────────────────────────────────
-// Stores STORAGE PATHS (not public URLs) on the row. Reads resolve to
-// 1-hour signed URLs via `getSignedReadUrl`. Supports:
-//   • multi-file selection (parallel uploads)
-//   • per-slot remove
-//   • HTML5 drag-and-drop reorder (no extra dependency)
-//   • inline upload spinner per pending file
-//   • 5 MB / jpg|png|webp validation
+// The component is storage-agnostic via a pluggable `adapter`:
+//   • upload(file)      — push one file, return the value stored on the
+//                         row (a private storage PATH for rental, or a
+//                         PUBLIC URL for sales).
+//   • resolveUrl(value) — turn a stored value into something an <img>
+//                         can render (a 1-hour signed URL for rental,
+//                         or the public URL as-is for sales).
 //
-// First path in the array = main photo (small "Photo principale"
-// badge). Reordering is purely a client-side state op until the
-// caller submits the form.
+// Defaults to the RENTAL behavior (signed uploads to the private
+// `rental-documents` bucket) so existing rental callers keep working
+// unchanged. Sales passes a public-bucket adapter (see
+// `@/lib/vehicles/photo-storage`).
+//
+// Supports: multi-file selection (parallel uploads), per-slot remove,
+// HTML5 drag-and-drop reorder (no extra dependency), per-file upload
+// spinner, and 5 MB / jpg|png|webp validation. First entry in the array
+// = main photo (small "Principale" badge). Reordering is a client-side
+// state op until the caller submits the form.
 // ─────────────────────────────────────────────────────────────────────
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Camera, Loader2, Star, Trash2 } from 'lucide-react'
 import {
   extOf, getSignedReadUrl, MAX_UPLOAD_BYTES, uploadViaSignedUrl, validatePhotoFile,
 } from '@/lib/rental/storage'
+
+// A storage backend for the uploader. `upload` returns the value to
+// persist on the row; `resolveUrl` turns that value into a displayable
+// URL (sync for public buckets, async for signed reads).
+export type PhotoStorageAdapter = {
+  upload:     (file: File, opts: { index: number; ext: string }) => Promise<string>
+  resolveUrl: (stored: string) => Promise<string | null> | string
+}
 
 type Props = {
   value:        string[]
   onChange:     (paths: string[]) => void
   vehicleId?:   string | null
   maxPhotos?:   number
+  /** Override the storage backend. Defaults to rental signed-URL flow. */
+  adapter?:     PhotoStorageAdapter
 }
 
 type Pending = { id: string; localUrl: string }
@@ -33,14 +50,23 @@ type Pending = { id: string; localUrl: string }
 const ACCEPT = 'image/jpeg,image/jpg,image/png,image/webp'
 
 export default function VehiclePhotoUploader({
-  value, onChange, vehicleId, maxPhotos = 10,
+  value, onChange, vehicleId, maxPhotos = 10, adapter: adapterProp,
 }: Props) {
   const fileRef = useRef<HTMLInputElement>(null)
   const [pending, setPending] = useState<Pending[]>([])
   const [error, setError]     = useState<string | null>(null)
 
-  // Resolved signed read URLs for `value` — keyed by path so we
-  // don't refetch on every reorder.
+  // Default adapter = rental: signed uploads + 1-hour signed reads,
+  // namespaced by the (optional) vehicle id.
+  const adapter = useMemo<PhotoStorageAdapter>(() => adapterProp ?? {
+    upload: (file, { index, ext }) => uploadViaSignedUrl(file, {
+      kind: 'vehicle_photo', vehicle_id: vehicleId ?? null, slot: index, file_ext: ext,
+    }),
+    resolveUrl: (stored) => getSignedReadUrl(stored),
+  }, [adapterProp, vehicleId])
+
+  // Resolved read URLs for `value` — keyed by stored value so we don't
+  // re-resolve on every reorder.
   const [urlMap, setUrlMap] = useState<Record<string, string | null>>({})
   useEffect(() => {
     let cancelled = false
@@ -48,7 +74,7 @@ export default function VehiclePhotoUploader({
       const missing = value.filter((p) => !(p in urlMap))
       if (missing.length === 0) return
       const entries = await Promise.all(
-        missing.map(async (p) => [p, await getSignedReadUrl(p)] as const),
+        missing.map(async (p) => [p, await Promise.resolve(adapter.resolveUrl(p))] as const),
       )
       if (cancelled) return
       setUrlMap((prev) => {
@@ -58,7 +84,7 @@ export default function VehiclePhotoUploader({
       })
     })()
     return () => { cancelled = true }
-  }, [value, urlMap])
+  }, [value, urlMap, adapter])
 
   // ── Upload flow ─────────────────────────────────────────────
   async function onFiles(e: React.ChangeEvent<HTMLInputElement>) {
@@ -106,12 +132,7 @@ export default function VehiclePhotoUploader({
       const baseSlot = value.length + 1
       const results = await Promise.allSettled(
         files.map((f, i) =>
-          uploadViaSignedUrl(f, {
-            kind: 'vehicle_photo',
-            vehicle_id: vehicleId ?? null,
-            slot: baseSlot + i,
-            file_ext: extOf(f) || 'jpg',
-          }),
+          adapter.upload(f, { index: baseSlot + i, ext: extOf(f) || 'jpg' }),
         ),
       )
 

@@ -155,6 +155,10 @@ export type Vehicle = {
   status: 'available' | 'reserved' | 'sold'
   created_at: string
   image_url: string | null
+  // migration_42_sales_vehicle_photos.sql — multi-photo gallery (PUBLIC
+  // URLs in the `vehicules` bucket). image_url stays in sync with
+  // photos_urls[0] (the main photo) for the catalog + legacy reads.
+  photos_urls: string[] | null
   reserved_by_lead_id: string | null
   kilometrage: number | null
   etat_carrosserie: string | null

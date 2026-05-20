@@ -6,6 +6,9 @@ import { getCurrentShowroomId } from '@/lib/auth'
 import { VEHICLE_STATUS_LABELS, type Vehicle } from '@/lib/types'
 import { ALGERIA_BRANDS, MODELS_BY_BRAND, YEARS, type Brand } from '@/lib/vehicle-catalog'
 import { generateUniqueVehicleReference } from '@/lib/vehicle-reference'
+import VehiclePhotoUploader from '@/components/rental/VehiclePhotoUploader'
+import { salesPhotoAdapter } from '@/lib/vehicles/photo-storage'
+import PhotoLightbox from '@/components/ui/PhotoLightbox'
 // Brand kept for the modal's known-brand model dropdown; filter uses dynamic DB values.
 import {
   Car, Plus, MoreVertical, Loader2, Search, User,
@@ -47,6 +50,7 @@ function isMissingColumnError(err: unknown): boolean {
   const msg = (e.message ?? '').toLowerCase()
   return (
     msg.includes('image_url') ||
+    msg.includes('photos_urls') ||
     msg.includes('reserved_by_lead_id') ||
     msg.includes('kilometrage') ||
     msg.includes('etat_carrosserie') ||
@@ -217,11 +221,23 @@ function AddVehicleModal({
   const [customBrandMode, setCustomBrandMode] = useState(false)
   const [customModelMode, setCustomModelMode] = useState(false)
 
+  // Multi-photo gallery. Seed from photos_urls, falling back to the
+  // legacy single image_url so editing an old vehicle keeps its photo.
+  const seedPhotos = () =>
+    (initial?.photos_urls && initial.photos_urls.length > 0)
+      ? initial.photos_urls
+      : (initial?.image_url ? [initial.image_url] : [])
+  const [photos, setPhotos] = useState<string[]>(seedPhotos)
+  // Sales photos live in the PUBLIC `vehicules` bucket (public URLs),
+  // unlike rental's signed private bucket.
+  const salesAdapter = useMemo(() => salesPhotoAdapter(initial?.id ?? null), [initial?.id])
+
   // Reseed when opened with a different vehicle
   useEffect(() => {
     if (open) {
       const seeded = seedForm()
       setForm(seeded)
+      setPhotos(seedPhotos())
       setError('')
       // When editing a vehicle whose brand/model aren't in the catalog, start in custom mode.
       const knownBrand = (ALGERIA_BRANDS as readonly string[]).includes(seeded.brand)
@@ -260,6 +276,10 @@ function AddVehicleModal({
       carte_grise:      form.carte_grise.trim() || null,
       type_moteur:      form.type_moteur || null,
       motorisation:     form.motorisation.trim() || null,
+      // Multi-photo gallery + keep legacy single column in sync with the
+      // main photo (photos[0]) so the public catalog + legacy reads work.
+      photos_urls:      photos,
+      image_url:        photos[0] ?? null,
     }
 
     let err: { message: string } | null = null
@@ -303,7 +323,7 @@ function AddVehicleModal({
     // that field was NOT persisted. Reference / reserved_by_lead_id are
     // expected when running on an older DB and don't matter for the user.
     if (stripped.length > 0) {
-      const ignorable = new Set(['reserved_by_lead_id', 'reference'])
+      const ignorable = new Set(['reserved_by_lead_id', 'reference', 'photos_urls'])
       const meaningful = stripped.filter(c => !ignorable.has(c))
       if (meaningful.length > 0) {
         console.warn(
@@ -333,6 +353,7 @@ function AddVehicleModal({
         type_moteur: 'Essence',
         motorisation: '',
       })
+      setPhotos([])
       setCustomBrandMode(false)
       setCustomModelMode(false)
     }
@@ -548,6 +569,22 @@ function AddVehicleModal({
               />
             </div>
           </div>
+
+          {/* Photos — multi-photo, drag-to-reorder, first = main. Uploads
+              go to the PUBLIC `vehicules` bucket (same as the legacy
+              single photo) so the public catalog can render them. */}
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-2">
+              Photos du véhicule
+            </label>
+            <VehiclePhotoUploader
+              value={photos}
+              onChange={setPhotos}
+              adapter={salesAdapter}
+              maxPhotos={10}
+            />
+          </div>
+
           {error && <p className="text-red-500 text-xs">{error}</p>}
           <div className="flex justify-end gap-2 pt-1">
             <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted transition">Annuler</button>
@@ -962,7 +999,7 @@ function VehicleCard({
   lead: LeadLite | null
   menuOpenId: string | null
   setMenuOpenId: (id: string | null) => void
-  onImageUpdated: (id: string, url: string) => void
+  onImageUpdated: (id: string, url: string, photos?: string[]) => void
   onStatusChangeRequest: (v: Vehicle, next: Vehicle['status']) => void
   onImmediateStatusChange: (v: Vehicle, next: Vehicle['status']) => Promise<void>
   onEdit: (v: Vehicle) => void
@@ -975,14 +1012,22 @@ function VehicleCard({
   const fileRef = useRef<HTMLInputElement | null>(null)
   const [uploading, setUploading] = useState(false)
   const [imgError, setImgError] = useState<string | null>(null)
+  const [lightboxOpen, setLightboxOpen] = useState(false)
+
+  // The vehicle's photo gallery: prefer the multi-photo array, fall back
+  // to the legacy single image_url so older rows still render.
+  const photos = (v.photos_urls && v.photos_urls.length > 0)
+    ? v.photos_urls
+    : (v.image_url ? [v.image_url] : [])
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    // Snapshot before resetting: input.files is a live FileList.
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
     if (!file.type.startsWith('image/')) return
 
-    const prev = v.image_url
+    const prevPhotos = photos
     const safeFilename = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
     const path = `${v.id}/${Date.now()}-${safeFilename}`
 
@@ -1000,22 +1045,34 @@ function VehicleCard({
     const { data: pub } = supabase.storage.from('vehicules').getPublicUrl(path)
     const publicUrl = pub.publicUrl
 
-    // Optimistic
-    onImageUpdated(v.id, publicUrl)
+    // Append to the gallery; main photo stays photos[0] (or becomes this
+    // one when the gallery was empty).
+    const nextPhotos = [...prevPhotos, publicUrl]
+    const mainUrl = nextPhotos[0]
 
+    // Optimistic
+    onImageUpdated(v.id, mainUrl, nextPhotos)
+
+    // Persist both columns; if photos_urls isn't migrated yet, retry with
+    // image_url alone so the quick-upload still works pre-migration.
     let { error: updErr } = await supabase
       .from('vehicles')
-      .update({ image_url: publicUrl })
+      .update({ image_url: mainUrl, photos_urls: nextPhotos })
       .eq('id', v.id)
 
     if (updErr && isMissingColumnError(updErr)) {
-      // column missing — revert and warn
-      onImageUpdated(v.id, prev ?? '')
-      setImgError('Colonne image_url manquante. Exécutez migration_04.')
-      alert('La colonne image_url n\'existe pas encore. Exécutez migration_04_vehicles_images.sql dans Supabase.')
-      updErr = null
+      const retry = await supabase
+        .from('vehicles')
+        .update({ image_url: mainUrl })
+        .eq('id', v.id)
+      updErr = retry.error
+      if (updErr) {
+        onImageUpdated(v.id, prevPhotos[0] ?? '', prevPhotos)
+        setImgError(updErr.message)
+        alert(`Erreur DB : ${updErr.message}`)
+      }
     } else if (updErr) {
-      onImageUpdated(v.id, prev ?? '')
+      onImageUpdated(v.id, prevPhotos[0] ?? '', prevPhotos)
       setImgError(updErr.message)
       alert(`Erreur DB : ${updErr.message}`)
     }
@@ -1037,16 +1094,24 @@ function VehicleCard({
           : 'border-border hover:border-primary/40')
       }
     >
-      {/* Image area (click to upload) */}
-      <button
-        type="button"
-        onClick={() => fileRef.current?.click()}
-        className="group relative aspect-[4/3] bg-gradient-to-br from-muted/60 to-muted/20 flex items-center justify-center overflow-hidden cursor-pointer"
-        aria-label="Changer l'image"
+      {/* Image area — click opens the photo lightbox (or upload when empty) */}
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label={photos.length > 0 ? 'Voir les photos' : 'Ajouter une image'}
+        onClick={() => { if (photos.length > 0) setLightboxOpen(true); else fileRef.current?.click() }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            if (photos.length > 0) setLightboxOpen(true)
+            else fileRef.current?.click()
+          }
+        }}
+        className="group relative aspect-[4/3] bg-gradient-to-br from-muted/60 to-muted/20 flex items-center justify-center overflow-hidden cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
       >
-        {v.image_url ? (
+        {photos.length > 0 ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={v.image_url} alt={`${v.brand} ${v.model}`} className="absolute inset-0 w-full h-full object-cover" />
+          <img src={photos[0]} alt={`${v.brand} ${v.model}`} className="absolute inset-0 w-full h-full object-cover" />
         ) : (
           <Car className="w-14 h-14 text-muted-foreground/40" />
         )}
@@ -1057,9 +1122,27 @@ function VehicleCard({
           </span>
         )}
 
+        {/* Photo count badge (multi-photo only) */}
+        {photos.length > 1 && (
+          <span className="absolute top-2 left-2 inline-flex items-center gap-1 rounded-md bg-background/75 backdrop-blur px-2 py-0.5 text-[11px] font-semibold text-foreground z-10">
+            <Camera className="w-3 h-3" />
+            {photos.length}
+          </span>
+        )}
+
+        {/* Upload button — add/change photos without opening the lightbox */}
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); fileRef.current?.click() }}
+          aria-label="Ajouter une photo"
+          className="absolute bottom-2 right-2 z-20 w-8 h-8 rounded-lg inline-flex items-center justify-center bg-background/80 backdrop-blur text-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition"
+        >
+          <Camera className="w-4 h-4" />
+        </button>
+
         {/* Hover hint */}
         <span className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded-md bg-background/80 backdrop-blur px-2 py-1 text-[11px] text-foreground opacity-0 group-hover:opacity-100 transition pointer-events-none">
-          {v.image_url ? "Changer l'image" : 'Ajouter une image'}
+          {photos.length > 0 ? 'Voir les photos' : 'Ajouter une image'}
         </span>
 
         {uploading && (
@@ -1073,9 +1156,19 @@ function VehicleCard({
           type="file"
           accept="image/*"
           onChange={handleFile}
-          className="hidden"
+          className="sr-only"
+          tabIndex={-1}
         />
-      </button>
+      </div>
+
+      {/* Fullscreen photo lightbox for this vehicle */}
+      <PhotoLightbox
+        open={lightboxOpen}
+        photos={photos}
+        startIndex={0}
+        onClose={() => setLightboxOpen(false)}
+        alt={`${v.brand} ${v.model}`}
+      />
 
       {imgError && (
         <p className="px-4 pt-2 text-[11px] text-red-500">{imgError}</p>
@@ -1356,8 +1449,10 @@ export default function VehiculesPage() {
     })
   }, [vehicles, statusFilter, marque, modele, annee, search])
 
-  function handleImageUpdated(id: string, url: string) {
-    setVehicles(prev => prev.map(x => x.id === id ? { ...x, image_url: url || null } : x))
+  function handleImageUpdated(id: string, url: string, photos?: string[]) {
+    setVehicles(prev => prev.map(x => x.id === id
+      ? { ...x, image_url: url || null, ...(photos ? { photos_urls: photos } : {}) }
+      : x))
   }
 
   async function handleImmediateStatusChange(v: Vehicle, next: Vehicle['status']) {
