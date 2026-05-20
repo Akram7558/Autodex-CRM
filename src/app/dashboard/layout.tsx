@@ -109,6 +109,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [userId, setUserId] = useState<string | null>(null)
   const [userRole, setUserRole] = useState<AppRole | null>(null)
   const [mobileOpen, setMobileOpen] = useState(false)
+  // Optimistic active-nav override. `usePathname()` only updates after a
+  // navigation commits, so on slower (data-fetching) routes the green
+  // highlight visibly trails the click. We snap it to the clicked href
+  // immediately and let the real pathname take over once it catches up.
+  const [optimisticHref, setOptimisticHref] = useState<string | null>(null)
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data }) => {
@@ -136,6 +141,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const activeNavItems = navItemsForRole(userRole)
 
+  // Effective path used for active-state computation: the optimistic
+  // override while a navigation is in flight, otherwise the real path.
+  const effectivePath = optimisticHref ?? pathname
+
   // Internal-team roles (super_admin, commercial, prospecteur_saas) have
   // their own Paramètres / Intégrations entries inside `activeNavItems`,
   // so hiding the showroom-side footer links keeps the sidebar from
@@ -150,9 +159,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const canSeeShowroomSettings =
     userRole === 'owner' || userRole === 'manager'
 
-  // Close the mobile drawer whenever the route changes.
+  // On every committed route change: close the mobile drawer and drop the
+  // optimistic override so the real pathname becomes the source of truth
+  // again (handles browser back/forward and redirects too).
   useEffect(() => {
     setMobileOpen(false)
+    setOptimisticHref(null)
   }, [pathname])
 
   // Lock body scroll while the mobile drawer is open.
@@ -234,8 +246,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           const candidates = activeNavItems
             .map((it) => it.href)
             .filter((href) => {
-              if (ROOT.has(href)) return pathname === href
-              return pathname === href || pathname.startsWith(href + '/')
+              if (ROOT.has(href)) return effectivePath === href
+              return effectivePath === href || effectivePath.startsWith(href + '/')
             })
           const activeHref = candidates.reduce<string | null>(
             (best, h) => (best == null || h.length > best.length ? h : best),
@@ -262,9 +274,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 )}
                 <Link
                   href={item.href}
-                  onClick={() => setMobileOpen(false)}
+                  onClick={() => { setOptimisticHref(item.href); setMobileOpen(false) }}
+                  aria-current={isActive ? 'page' : undefined}
                   className={cn(
-                    'group relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-colors duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40',
+                    'group relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-colors duration-150 ease-out motion-reduce:transition-none outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40',
                     isActive
                       ? 'bg-emerald-500 text-white font-semibold shadow-md shadow-emerald-500/30'
                       : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-white/[0.04] dark:hover:text-zinc-100',
@@ -288,28 +301,30 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <>
             <Link
               href="/dashboard/parametres"
-              onClick={() => setMobileOpen(false)}
+              onClick={() => { setOptimisticHref('/dashboard/parametres'); setMobileOpen(false) }}
+              aria-current={effectivePath === '/dashboard/parametres' ? 'page' : undefined}
               className={cn(
-                'group relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-colors duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40',
-                pathname === '/dashboard/parametres'
+                'group relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-colors duration-150 ease-out motion-reduce:transition-none outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40',
+                effectivePath === '/dashboard/parametres'
                   ? 'bg-emerald-500 text-white font-semibold shadow-md shadow-emerald-500/30'
                   : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-white/[0.04] dark:hover:text-zinc-100',
               )}
             >
-              <Settings className={cn('w-4 h-4', pathname === '/dashboard/parametres' ? 'text-white' : '')} />
+              <Settings className={cn('w-4 h-4', effectivePath === '/dashboard/parametres' ? 'text-white' : '')} />
               Paramètres
             </Link>
             <Link
               href="/dashboard/settings/integrations"
-              onClick={() => setMobileOpen(false)}
+              onClick={() => { setOptimisticHref('/dashboard/settings/integrations'); setMobileOpen(false) }}
+              aria-current={effectivePath.startsWith('/dashboard/settings/integrations') ? 'page' : undefined}
               className={cn(
-                'group relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-colors duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40',
-                pathname.startsWith('/dashboard/settings/integrations')
+                'group relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-colors duration-150 ease-out motion-reduce:transition-none outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40',
+                effectivePath.startsWith('/dashboard/settings/integrations')
                   ? 'bg-emerald-500 text-white font-semibold shadow-md shadow-emerald-500/30'
                   : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-white/[0.04] dark:hover:text-zinc-100',
               )}
             >
-              <Plug className={cn('w-4 h-4', pathname.startsWith('/dashboard/settings/integrations') ? 'text-white' : '')} />
+              <Plug className={cn('w-4 h-4', effectivePath.startsWith('/dashboard/settings/integrations') ? 'text-white' : '')} />
               Intégrations
             </Link>
           </>
