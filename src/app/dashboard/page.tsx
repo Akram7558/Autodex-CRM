@@ -161,7 +161,16 @@ export default function DashboardPage() {
   }, [])
 
   // ── Window helpers (this month vs last month for deltas) ────────
+  // `now` here is used purely as the anchor for "this month vs last
+  // month" math — date-of-render is what matters, not the exact ms,
+  // so a useMemo on the first render is fine and stays SSR-stable.
   const now = useMemo(() => new Date(), [])
+  // `displayNow` drives the visible "Bonjour, … — Mercredi 12 mai 2026"
+  // line. Server-rendering a date string risks a cross-midnight
+  // mismatch with the client's first paint, so we paint nothing on SSR
+  // and let the post-mount effect set the displayed date.
+  const [displayNow, setDisplayNow] = useState<Date | null>(null)
+  useEffect(() => { setDisplayNow(new Date()) }, [])
   const monthStart = useMemo(() => startOfMonth(now), [now])
   const prevMonthStart = useMemo(() => startOfMonth(subMonths(now, 1)), [now])
   const prevMonthEnd   = useMemo(() => {
@@ -363,7 +372,12 @@ export default function DashboardPage() {
           Bonjour, <span className="text-emerald-500 dark:text-emerald-400">{userName}</span>{' '}
           <span className="inline-block animate-pulse-dot">👋</span>
         </h1>
-        <p className="text-sm text-[var(--text-secondary)]">{frenchDateLong(now)}</p>
+        <p
+          className="text-sm text-[var(--text-secondary)]"
+          suppressHydrationWarning
+        >
+          {displayNow ? frenchDateLong(displayNow) : ' '}
+        </p>
       </div>
 
       {/* ── KPI cards ──────────────────────────────────────────── */}

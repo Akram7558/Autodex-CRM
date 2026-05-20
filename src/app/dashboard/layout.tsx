@@ -176,12 +176,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return 'Tableau de bord'
   })()
 
-  const updatedLabel = (() => {
-    const now = new Date()
-    const hh = now.getHours().toString().padStart(2, '0')
-    const mm = now.getMinutes().toString().padStart(2, '0')
-    return `Mise à jour : Aujourd'hui, ${hh}:${mm}`
-  })()
+  // Render-time `new Date()` in the SSR pass diverges from the client
+  // first paint (different minute), which trips React #418 across every
+  // dashboard route. We render a stable placeholder on SSR and replace
+  // it post-mount via useEffect (refreshed every 60s).
+  const [updatedLabel, setUpdatedLabel] = useState<string | null>(null)
+  useEffect(() => {
+    const tick = () => {
+      const d  = new Date()
+      const hh = d.getHours().toString().padStart(2, '0')
+      const mm = d.getMinutes().toString().padStart(2, '0')
+      setUpdatedLabel(`Mise à jour : Aujourd'hui, ${hh}:${mm}`)
+    }
+    tick()
+    const id = setInterval(tick, 60_000)
+    return () => clearInterval(id)
+  }, [])
 
   async function handleLogout() {
     await supabase.auth.signOut()
@@ -376,8 +386,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[var(--text-secondary)] truncate">
                 {pageTitle}
               </p>
-              <p className="text-[10px] text-[var(--text-secondary)] truncate">
-                {updatedLabel}
+              <p
+                className="text-[10px] text-[var(--text-secondary)] truncate"
+                suppressHydrationWarning
+              >
+                {updatedLabel ?? 'Mise à jour : —'}
               </p>
             </div>
           </div>
