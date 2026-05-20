@@ -115,9 +115,14 @@ export default function RentalCustomerDetail({
     () => formatDistanceToNow(new Date(customer.created_at), { addSuffix: true, locale: fr }),
     [customer.created_at],
   )
-  const permisExpired = useMemo(() => {
-    if (!customer.permis_expiry) return false
-    return new Date(customer.permis_expiry + 'T00:00:00') < new Date(new Date().toDateString())
+  // permisExpired depends on `new Date()` — defer to a post-mount
+  // useEffect so the server's "today" and the client's "today" can't
+  // disagree across midnight and trigger React #418.
+  const [permisExpired, setPermisExpired] = useState(false)
+  useEffect(() => {
+    if (!customer.permis_expiry) { setPermisExpired(false); return }
+    const expiry = new Date(customer.permis_expiry + 'T00:00:00')
+    setPermisExpired(expiry < new Date(new Date().toDateString()))
   }, [customer.permis_expiry])
 
   const onSaved = useCallback((updated: { id: string; full_name: string }) => {

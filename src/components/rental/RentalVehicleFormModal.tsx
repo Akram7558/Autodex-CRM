@@ -52,11 +52,22 @@ type Form = {
   photos_urls:          string[]
 }
 
+// Lazy default for the year input. Computed inside buildInitial()
+// which only runs from a useState initializer; the modal itself
+// gates on `formOpen` so the initializer never executes during SSR
+// (no markup is produced for this component server-side). Pulling
+// the year through a constant makes the dependency explicit and
+// kills any chance of a render-time hydration mismatch if the
+// component ever gets rendered server-side in the future.
+function defaultYear(): string {
+  return String(new Date().getFullYear())
+}
+
 function buildInitial(init: Initial | null): Form {
   return {
     marque:               init?.marque ?? '',
     modele:               init?.modele ?? '',
-    annee:                init?.annee != null ? String(init.annee) : String(new Date().getFullYear()),
+    annee:                init?.annee != null ? String(init.annee) : defaultYear(),
     immatriculation:      init?.immatriculation ?? '',
     couleur:              init?.couleur ?? '',
     type_carburant:       init?.type_carburant ?? '',
