@@ -76,6 +76,11 @@ export async function middleware(req: NextRequest) {
   // Only gate /dashboard/*. Everything else (/, /privacy, /terms, /api) flows through.
   if (!pathname.startsWith('/dashboard')) return res
 
+  // TEMP perf instrumentation — only for the rental section so Vercel logs
+  // stay focused. Remove once the latency budget is dialed in.
+  const perfRental = pathname.startsWith('/dashboard/location')
+  const mwStart = perfRental ? performance.now() : 0
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -97,7 +102,9 @@ export async function middleware(req: NextRequest) {
     },
   )
 
+  const tGetUser = perfRental ? performance.now() : 0
   const { data: { user } } = await supabase.auth.getUser()
+  if (perfRental) console.log(`[perf] rental:mw:getUser ${(performance.now() - tGetUser).toFixed(0)}ms`)
 
   if (DEBUG) {
     console.log('[mw]', pathname, '· user:', user?.id ?? 'none', '· email:', user?.email ?? 'none')
@@ -113,11 +120,13 @@ export async function middleware(req: NextRequest) {
   }
 
   // 2. Look up the role.
+  const tRole = perfRental ? performance.now() : 0
   const { data: roleRow, error: roleErr } = await supabase
     .from('user_roles')
     .select('role')
     .eq('user_id', user.id)
     .maybeSingle()
+  if (perfRental) console.log(`[perf] rental:mw:role ${(performance.now() - tRole).toFixed(0)}ms`)
 
   if (DEBUG) {
     console.log('[mw] role lookup:', roleRow?.role ?? 'none', '· err:', roleErr?.message ?? 'none')
@@ -144,6 +153,7 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(url)
   }
 
+  if (perfRental) console.log(`[perf] rental:mw:total ${(performance.now() - mwStart).toFixed(0)}ms`)
   if (DEBUG) console.log('[mw] allow', pathname, `(role=${role})`)
   return res
 }

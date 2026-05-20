@@ -108,7 +108,10 @@ function validateCreate(body: unknown): CreateBody {
 
 export async function GET(req: NextRequest) {
   try {
+    // TEMP perf instrumentation — remove once the latency budget is tuned.
+    const tAuth = performance.now()
     const ctx = await requireShowroomMember(req)
+    console.log(`[perf] rental:api:vehicles:auth ${(performance.now() - tAuth).toFixed(0)}ms`)
     if (!ctx.showroomId && !ctx.isSuperAdmin) {
       throw new ApiError(403, 'Aucun showroom associé à votre compte.')
     }
@@ -116,10 +119,14 @@ export async function GET(req: NextRequest) {
     const search   = req.nextUrl.searchParams.get('search')?.trim() ?? ''
     const activeQS = req.nextUrl.searchParams.get('is_active')
 
+    // select('*') is intentional: the rows feed the edit modal's initial
+    // values, not just the cards. Bounded with limit(50) — pagination UI
+    // can come later (fleets are small; Classique caps at 5).
     let q = ctx.authSb
       .from('rental_vehicles')
       .select('*')
       .order('created_at', { ascending: false })
+      .limit(50)
 
     if (ctx.showroomId) q = q.eq('showroom_id', ctx.showroomId)
     if (activeQS === 'true')  q = q.eq('is_active', true)
@@ -132,7 +139,9 @@ export async function GET(req: NextRequest) {
       )
     }
 
+    const tQuery = performance.now()
     const { data, error } = await q
+    console.log(`[perf] rental:api:vehicles:query ${(performance.now() - tQuery).toFixed(0)}ms`)
     if (error) throw new ApiError(500, error.message)
     return NextResponse.json({ vehicles: data ?? [] })
   } catch (err) {

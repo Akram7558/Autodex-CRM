@@ -17,7 +17,10 @@ const ALLOWED_ROLES = new Set(['owner', 'manager', 'closer', 'super_admin'])
 
 export async function GET(req: NextRequest) {
   try {
+    // TEMP perf instrumentation — remove once the latency budget is tuned.
+    const tAuth = performance.now()
     const ctx = await requireShowroomMember(req)
+    console.log(`[perf] rental:api:customers:auth ${(performance.now() - tAuth).toFixed(0)}ms`)
     if (!ctx.showroomId && !ctx.isSuperAdmin) {
       throw new ApiError(403, 'Aucun showroom associé à votre compte.')
     }
@@ -49,7 +52,9 @@ export async function GET(req: NextRequest) {
     else if (sortBy === 'most_active') q = q.order('total_rentals', { ascending: false })
     else                            q = q.order('created_at',  { ascending: false })
 
+    const tQuery = performance.now()
     const { data, error, count } = await q
+    console.log(`[perf] rental:api:customers:query ${(performance.now() - tQuery).toFixed(0)}ms`)
     if (error) throw new ApiError(500, error.message)
     return NextResponse.json({ customers: data ?? [], total: count ?? 0 })
   } catch (err) {

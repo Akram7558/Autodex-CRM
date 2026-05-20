@@ -1,40 +1,16 @@
 // ─────────────────────────────────────────────────────────────────────
-// /dashboard/location/tarifs — Owner only (middleware enforces the
-// same ACL, this is belt-and-suspenders).
+// /dashboard/location/tarifs — Owner + super_admin only.
+// ─────────────────────────────────────────────────────────────────────
+// Access is enforced by middleware (src/middleware.ts ROUTE_ACL gates
+// /dashboard/location/tarifs to owner/super_admin) AND by RLS on
+// rental_settings. The page used to re-run getUser() + a user_roles
+// lookup purely as "belt-and-suspenders", duplicating the middleware's
+// two Supabase round trips on every load. Removed — middleware + RLS are
+// the source of truth, so this server component now does zero round trips.
 // ─────────────────────────────────────────────────────────────────────
 
-import { cookies } from 'next/headers'
-import { redirect } from 'next/navigation'
-import { createServerClient } from '@supabase/ssr'
 import RentalSettingsForm from '@/components/rental/RentalSettingsForm'
 
-export default async function Page() {
-  const cookieStore = await cookies()
-  const url  = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-  if (url && anon) {
-    const supabase = createServerClient(url, anon, {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll().map(({ name, value }) => ({ name, value }))
-        },
-        setAll() {},
-      },
-    })
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) redirect('/login?redirect=/dashboard/location/tarifs')
-
-    const { data: roleRow } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', user.id)
-      .maybeSingle()
-    const role = (roleRow?.role as string | undefined) ?? null
-    if (role !== 'owner' && role !== 'super_admin') {
-      redirect('/dashboard/location')
-    }
-  }
-
+export default function Page() {
   return <RentalSettingsForm />
 }
