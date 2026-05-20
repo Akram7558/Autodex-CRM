@@ -169,13 +169,20 @@ export default function VehiclePhotoUploader({
 
   return (
     <div>
+      {/* Visually hidden but kept in layout flow (`sr-only`, NOT
+          `display:none`). A display:none file input opens the picker on a
+          programmatic .click() yet some engines (Safari/WebKit) then drop
+          the `change` event entirely — so onChange never fires and the
+          upload silently no-ops. sr-only keeps it rendered so change
+          fires reliably across browsers. */}
       <input
         ref={fileRef}
         type="file"
         accept={ACCEPT}
         multiple
         onChange={onFiles}
-        className="hidden"
+        className="sr-only"
+        tabIndex={-1}
         aria-label="Ajouter des photos"
       />
 
