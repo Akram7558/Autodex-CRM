@@ -736,7 +736,10 @@ export default function ProspectsPage() {
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)   // side panel
   const [modalOpen,    setModalOpen]    = useState(false)
   const [refreshing,   setRefreshing]   = useState(false)
-  const [lastRefresh,  setLastRefresh]  = useState<Date>(new Date())
+  // null until hydrated — a `new Date()` initializer runs during SSR too,
+  // so the displayed HH:mm would mismatch the client's first paint and
+  // trip React #418. Set post-mount via the effect below.
+  const [lastRefresh,  setLastRefresh]  = useState<Date | null>(null)
   const [dndError,     setDndError]     = useState<string | null>(null)
   const intervalRef = useRef<ReturnType<typeof setInterval>>(null)
 
@@ -762,6 +765,10 @@ export default function ProspectsPage() {
     setLoading(false)
     setRefreshing(false)
   }, [])
+
+  // Seed the refresh timestamp client-side only (avoids the SSR/client
+  // mismatch); fetchLeads() overwrites it with the fetch-completion time.
+  useEffect(() => { setLastRefresh(new Date()) }, [])
 
   useEffect(() => {
     fetchLeads()
@@ -870,10 +877,11 @@ export default function ProspectsPage() {
 
         <div className="flex items-center gap-3">
           <button onClick={() => fetchLeads(true)} disabled={refreshing}
-            title={`Actualisé à ${format(lastRefresh, 'HH:mm:ss')}`}
+            suppressHydrationWarning
+            title={lastRefresh ? `Actualisé à ${format(lastRefresh, 'HH:mm:ss')}` : undefined}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest text-zinc-500 hover:text-zinc-900 dark:hover:text-white hover:border-zinc-300 dark:hover:border-zinc-700 transition border border-zinc-200 dark:border-zinc-800 disabled:opacity-60">
             <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-            {refreshing ? 'Actualisation…' : format(lastRefresh, 'HH:mm')}
+            {refreshing ? 'Actualisation…' : (lastRefresh ? format(lastRefresh, 'HH:mm') : '—')}
           </button>
 
           <button onClick={() => setModalOpen(true)}
