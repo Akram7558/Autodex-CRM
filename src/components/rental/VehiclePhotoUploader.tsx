@@ -62,9 +62,14 @@ export default function VehiclePhotoUploader({
 
   // ── Upload flow ─────────────────────────────────────────────
   async function onFiles(e: React.ChangeEvent<HTMLInputElement>) {
-    const list = e.target.files
-    e.target.value = ''
-    if (!list || list.length === 0) return
+    const input = e.target
+    // `input.files` is a *live* FileList: resetting `input.value` below
+    // empties that same object. Snapshot to a plain array FIRST, then
+    // clear the input — otherwise the captured list reads zero files and
+    // the whole upload silently no-ops (counter stays 0, no request).
+    const picked = input.files ? Array.from(input.files) : []
+    input.value = ''
+    if (picked.length === 0) return
     setError(null)
 
     const room = maxPhotos - value.length - pending.length
@@ -72,7 +77,7 @@ export default function VehiclePhotoUploader({
       setError('Limite atteinte.')
       return
     }
-    const files = Array.from(list).slice(0, room)
+    const files = picked.slice(0, room)
 
     // Validate up-front; reject the whole batch on any failure so the
     // user can fix and retry.
@@ -97,33 +102,46 @@ export default function VehiclePhotoUploader({
     }))
     setPending((cur) => [...cur, ...items])
 
-    const baseSlot = value.length + 1
-    const results = await Promise.allSettled(
-      files.map((f, i) =>
-        uploadViaSignedUrl(f, {
-          kind: 'vehicle_photo',
-          vehicle_id: vehicleId ?? null,
-          slot: baseSlot + i,
-          file_ext: extOf(f) || 'jpg',
-        }),
-      ),
-    )
+    try {
+      const baseSlot = value.length + 1
+      const results = await Promise.allSettled(
+        files.map((f, i) =>
+          uploadViaSignedUrl(f, {
+            kind: 'vehicle_photo',
+            vehicle_id: vehicleId ?? null,
+            slot: baseSlot + i,
+            file_ext: extOf(f) || 'jpg',
+          }),
+        ),
+      )
 
-    const newPaths: string[] = []
-    let firstFailure: string | null = null
-    results.forEach((r, i) => {
-      if (r.status === 'fulfilled') {
-        newPaths.push(r.value)
-      } else if (!firstFailure) {
-        firstFailure = r.reason instanceof Error ? r.reason.message : 'upload_failed'
-      }
-      // Release the blob URL — preview is replaced by the signed read.
-      URL.revokeObjectURL(items[i].localUrl)
-    })
+      const newPaths: string[] = []
+      let firstFailure: string | null = null
+      results.forEach((r, i) => {
+        if (r.status === 'fulfilled') {
+          newPaths.push(r.value)
+        } else if (!firstFailure) {
+          firstFailure = r.reason instanceof Error ? r.reason.message : 'upload_failed'
+          console.error('[VehiclePhotoUploader] upload failed:', r.reason)
+        }
+        // Release the blob URL — preview is replaced by the signed read.
+        URL.revokeObjectURL(items[i].localUrl)
+      })
 
-    if (newPaths.length > 0) onChange([...value, ...newPaths])
-    setPending((cur) => cur.filter((p) => !items.some((it) => it.id === p.id)))
-    if (firstFailure) setError('Échec du téléversement. Réessayez.')
+      if (newPaths.length > 0) onChange([...value, ...newPaths])
+      // Surface the real server message (e.g. "Aucun showroom associé…",
+      // "Format de fichier non autorisé") instead of a generic blurb.
+      if (firstFailure) setError(`Échec du téléversement : ${firstFailure}`)
+    } catch (err) {
+      // Defensive: anything that escapes the per-file settle surfaces
+      // here rather than dying as an unhandled rejection.
+      console.error('[VehiclePhotoUploader] unexpected upload error:', err)
+      for (const it of items) URL.revokeObjectURL(it.localUrl)
+      setError(err instanceof Error ? err.message : 'Échec du téléversement. Réessayez.')
+    } finally {
+      // Always clear this batch's optimistic pending slots.
+      setPending((cur) => cur.filter((p) => !items.some((it) => it.id === p.id)))
+    }
   }
 
   function removeAt(idx: number) {
