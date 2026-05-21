@@ -68,19 +68,17 @@ export default function RentalDashboardPage() {
 
       {/* CTAs */}
       <div className="flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          disabled
-          title="Disponible en Phase 2"
-          className="inline-flex items-center gap-2 h-11 px-5 rounded-xl text-sm font-semibold text-white opacity-60 cursor-not-allowed"
+        <Link
+          href="/dashboard/location/contrats/nouveau"
+          className="inline-flex items-center gap-2 h-11 px-5 rounded-xl text-sm font-semibold text-white hover:-translate-y-0.5 transition-transform"
           style={{
             background: 'var(--accent)',
             boxShadow: '0 8px 22px -10px var(--accent-glow)',
           }}
         >
-          ➕ Nouveau contrat
-          <span className="text-[10px] font-bold uppercase tracking-widest opacity-80 ms-1">Phase 2</span>
-        </button>
+          ➕ Nouvelle location
+          <ArrowRight className="w-4 h-4 rtl:rotate-180" />
+        </Link>
         <Link
           href="/dashboard/location/vehicules"
           className="inline-flex items-center gap-2 h-11 px-5 rounded-xl text-sm font-medium glass-card hover:-translate-y-0.5 transition-transform"
