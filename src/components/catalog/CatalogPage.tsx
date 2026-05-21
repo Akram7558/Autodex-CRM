@@ -19,7 +19,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'motion/react'
 import {
   MapPin, Phone, Share2, Check, MessageCircle,
-  Car, Package, Clock,
+  Car, Package, Clock, Image as ImageIcon,
 } from 'lucide-react'
 import type {
   Vehicle,
@@ -28,6 +28,8 @@ import type {
   ShowroomOpeningHours,
 } from '@/lib/types'
 import OrderModal from '@/components/catalog/OrderModal'
+import PhotoLightbox from '@/components/ui/PhotoLightbox'
+import VehicleDetailModal from '@/components/catalog/VehicleDetailModal'
 
 // ─── French day plumbing ────────────────────────────────────────────
 // JS Date.getDay(): 0=dimanche, 1=lundi, … 6=samedi
@@ -572,6 +574,15 @@ function VehicleCard({
   const specs = vehicleSpecs(v)
   const waMsg = `Bonjour ${showroomName}, je suis intéressé(e) par : ${v.brand} ${v.model}${v.year ? ' ' + v.year : ''}${v.reference ? ' (Réf. ' + v.reference + ')' : ''}.`
 
+  // Gallery: prefer the multi-photo array, fall back to the legacy single
+  // image_url so older rows still render.
+  const photos = (v.photos_urls && v.photos_urls.length > 0)
+    ? v.photos_urls
+    : (v.image_url ? [v.image_url] : [])
+
+  const [lightboxOpen, setLightboxOpen] = useState(false)
+  const [detailOpen, setDetailOpen]     = useState(false)
+
   return (
     <motion.div
       ref={refSetter}
@@ -594,12 +605,24 @@ function VehicleCard({
           : 'border-slate-200 hover:border-slate-300 hover:shadow-md')
       }
     >
-      {/* Image / placeholder */}
-      <div className="relative aspect-[16/10] bg-gradient-to-br from-violet-100 via-violet-50 to-fuchsia-50 overflow-hidden">
-        {v.image_url ? (
+      {/* Image — CLICK ZONE 1: opens the fullscreen lightbox. */}
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label={photos.length > 0 ? 'Agrandir les photos' : `${v.brand} ${v.model}`}
+        onClick={() => { if (photos.length > 0) setLightboxOpen(true) }}
+        onKeyDown={(e) => {
+          if ((e.key === 'Enter' || e.key === ' ') && photos.length > 0) {
+            e.preventDefault()
+            setLightboxOpen(true)
+          }
+        }}
+        className="relative aspect-[16/10] bg-gradient-to-br from-violet-100 via-violet-50 to-fuchsia-50 overflow-hidden cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+      >
+        {photos.length > 0 ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={v.image_url}
+            src={photos[0]}
             alt={`${v.brand} ${v.model}`}
             loading="lazy"
             className="w-full h-full object-cover transition group-hover:scale-105"
@@ -609,8 +632,17 @@ function VehicleCard({
             <Car className="size-14 text-violet-300" />
           </div>
         )}
+
+        {/* Photo count badge (multi-photo only) */}
+        {photos.length > 1 && (
+          <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-md bg-black/55 text-white text-[11px] font-semibold px-2 py-0.5">
+            <ImageIcon className="size-3" />
+            {photos.length}
+          </span>
+        )}
+
         <button
-          onClick={onShare}
+          onClick={(e) => { e.stopPropagation(); onShare() }}
           aria-label="Partager ce véhicule"
           className="absolute top-2 right-2 size-9 rounded-full bg-white/95 hover:bg-white text-slate-700 shadow flex items-center justify-center backdrop-blur"
         >
@@ -618,8 +650,21 @@ function VehicleCard({
         </button>
       </div>
 
-      {/* Body */}
-      <div className="p-4 flex flex-col gap-3 flex-1">
+      {/* Body — CLICK ZONE 2: opens the read-only detail modal. The
+          action buttons stopPropagation so they don't also open it. */}
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label={`Voir les détails — ${v.brand} ${v.model}`}
+        onClick={() => setDetailOpen(true)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            setDetailOpen(true)
+          }
+        }}
+        className="p-4 flex flex-col gap-3 flex-1 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-inset"
+      >
         <div>
           <h3 className="font-semibold text-slate-900 leading-tight">
             {v.brand} {v.model}
@@ -650,13 +695,14 @@ function VehicleCard({
 
         <div className="mt-auto flex gap-2 pt-1">
           <button
-            onClick={onOrder}
+            onClick={(e) => { e.stopPropagation(); onOrder() }}
             className="flex-1 h-11 rounded-lg bg-violet-600 hover:bg-violet-700 active:bg-violet-800 text-white text-sm font-semibold transition"
           >
             Commander
           </button>
           {whatsappDigits && (
             <a
+              onClick={(e) => e.stopPropagation()}
               href={`https://wa.me/${whatsappDigits}?text=${encodeURIComponent(waMsg)}`}
               target="_blank"
               rel="noopener noreferrer"
@@ -668,6 +714,22 @@ function VehicleCard({
           )}
         </div>
       </div>
+
+      {/* Fullscreen photo lightbox + read-only detail modal */}
+      <PhotoLightbox
+        open={lightboxOpen}
+        photos={photos}
+        startIndex={0}
+        onClose={() => setLightboxOpen(false)}
+        alt={`${v.brand} ${v.model}`}
+      />
+      <VehicleDetailModal
+        open={detailOpen}
+        vehicle={v}
+        showroomName={showroomName}
+        whatsappDigits={whatsappDigits}
+        onClose={() => setDetailOpen(false)}
+      />
     </motion.div>
   )
 }
