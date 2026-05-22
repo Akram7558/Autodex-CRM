@@ -138,3 +138,38 @@ export function formatDZD(n: number | null | undefined): string {
   if (n == null) return '—'
   return new Intl.NumberFormat('fr-FR').format(n).replace(/ | /g, ' ') + ' DZD'
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// Rental status — user-facing French labels.
+// ─────────────────────────────────────────────────────────────────────
+// SINGLE source of truth for how a rental status is shown to users. The
+// DB enum/strings are unchanged (draft/confirmed/active/completed/
+// cancelled/overdue) — this only maps them to display text. Change labels
+// here and every badge/tab updates.
+
+export type RentalStatus =
+  | 'draft' | 'confirmed' | 'active' | 'completed' | 'cancelled' | 'overdue'
+
+export const RENTAL_STATUS_LABELS: Record<RentalStatus, string> = {
+  draft:     'En attente',
+  confirmed: 'Réservé',
+  active:    'En cours',
+  completed: 'Terminé',
+  cancelled: 'Annulé',
+  overdue:   'En retard',
+}
+
+/** Display label for a rental status value (falls back to the raw value). */
+export function rentalStatusLabel(status: string | null | undefined): string {
+  if (!status) return '—'
+  return RENTAL_STATUS_LABELS[status as RentalStatus] ?? status
+}
+
+// Contracts-list tab grouping (grouping unchanged; labels per spec). Kept
+// here so a future contracts list page reuses the same source of truth.
+export const RENTAL_TAB_GROUPS: { key: string; label: string; statuses: RentalStatus[] }[] = [
+  { key: 'pending',   label: 'En attente', statuses: ['draft'] },
+  { key: 'ongoing',   label: 'En cours',   statuses: ['confirmed', 'active', 'overdue'] },
+  { key: 'completed', label: 'Terminés',   statuses: ['completed'] },
+  { key: 'cancelled', label: 'Annulés',    statuses: ['cancelled'] },
+]

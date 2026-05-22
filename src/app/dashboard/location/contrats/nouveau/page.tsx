@@ -19,7 +19,7 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeft, ArrowRight, Check, KeyRound, Loader2, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { uploadViaSignedUrl } from '@/lib/rental/storage'
-import { bookingReducer, initialBookingState } from '@/components/rental/booking/types'
+import { bookingReducer, initialBookingState, rentalStatusLabel } from '@/components/rental/booking/types'
 import StepVehicleDates from '@/components/rental/booking/StepVehicleDates'
 import StepCustomer from '@/components/rental/booking/StepCustomer'
 import StepPricing from '@/components/rental/booking/StepPricing'
@@ -128,7 +128,7 @@ export default function NewRentalWizardPage() {
           </div>
           <h1 className="text-lg font-bold text-[var(--text-primary)]">Contrat créé</h1>
           <p className="mt-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
-            Brouillon enregistré — à confirmer.
+            Statut : {rentalStatusLabel('draft')} — à confirmer.
           </p>
           {created.contract_number && (
             <p className="mt-4 inline-block rounded-lg px-3 py-2 text-sm font-mono font-semibold tabular-nums"

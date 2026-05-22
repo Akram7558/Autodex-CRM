@@ -17,6 +17,7 @@ import { format, formatDistanceToNow } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { supabase } from '@/lib/supabase'
 import RentalCustomerFormModal, { type CustomerInitial } from '@/components/rental/RentalCustomerFormModal'
+import { rentalStatusLabel } from '@/components/rental/booking/types'
 
 type Vehicle = { marque: string; modele: string; annee: number | null; immatriculation: string | null }
 
@@ -66,13 +67,15 @@ function flattenVehicle(v: Vehicle | Vehicle[] | null): Vehicle | null {
   return Array.isArray(v) ? (v[0] ?? null) : v
 }
 
-const STATUS_STYLES: Record<string, { bg: string; fg: string; ring: string; label: string }> = {
-  draft:     { bg: 'rgba(148,163,184,0.12)', fg: '#94a3b8', ring: 'rgba(148,163,184,0.35)', label: 'Brouillon' },
-  confirmed: { bg: 'rgba(59,130,246,0.12)',  fg: '#60a5fa', ring: 'rgba(59,130,246,0.35)',  label: 'Confirmé' },
-  active:    { bg: 'rgba(16,185,129,0.14)',  fg: '#10b981', ring: 'rgba(16,185,129,0.40)',  label: 'En cours' },
-  completed: { bg: 'rgba(16,185,129,0.14)',  fg: '#10b981', ring: 'rgba(16,185,129,0.40)',  label: 'Terminé' },
-  overdue:   { bg: 'rgba(245,158,11,0.14)',  fg: '#fbbf24', ring: 'rgba(245,158,11,0.40)',  label: 'En retard' },
-  cancelled: { bg: 'rgba(244,63,94,0.12)',   fg: '#fb7185', ring: 'rgba(244,63,94,0.40)',   label: 'Annulé' },
+// Colors only — the display label comes from rentalStatusLabel() so all
+// status text lives in one place (src/components/rental/booking/types.ts).
+const STATUS_STYLES: Record<string, { bg: string; fg: string; ring: string }> = {
+  draft:     { bg: 'rgba(148,163,184,0.12)', fg: '#94a3b8', ring: 'rgba(148,163,184,0.35)' },
+  confirmed: { bg: 'rgba(59,130,246,0.12)',  fg: '#60a5fa', ring: 'rgba(59,130,246,0.35)' },
+  active:    { bg: 'rgba(16,185,129,0.14)',  fg: '#10b981', ring: 'rgba(16,185,129,0.40)' },
+  completed: { bg: 'rgba(16,185,129,0.14)',  fg: '#10b981', ring: 'rgba(16,185,129,0.40)' },
+  overdue:   { bg: 'rgba(245,158,11,0.14)',  fg: '#fbbf24', ring: 'rgba(245,158,11,0.40)' },
+  cancelled: { bg: 'rgba(244,63,94,0.12)',   fg: '#fb7185', ring: 'rgba(244,63,94,0.40)' },
 }
 
 export default function RentalCustomerDetail({
@@ -419,7 +422,7 @@ export default function RentalCustomerDetail({
                           className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ring-1"
                           style={{ background: style.bg, color: style.fg, boxShadow: `inset 0 0 0 1px ${style.ring}` }}
                         >
-                          {style.label}
+                          {rentalStatusLabel(r.status)}
                         </span>
                       </td>
                       <td className="px-5 py-3 text-end font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
