@@ -1,28 +1,29 @@
 'use client'
 // ─────────────────────────────────────────────────────────────────────
-// Booking wizard — Phase 2B, chunk 1.
+// Booking wizard — Phase 2B (complete).
 // ─────────────────────────────────────────────────────────────────────
-// 4-step shell for creating a rental contract. Chunk 1 implements step 1
-// (vehicle + dates + availability) and step 2 (customer); steps 3 (tarif)
-// and 4 (récap & signature) are placeholders for chunk 2. NOTHING is
-// written to `rentals` here — the wizard holds everything in memory and
-// the draft is created at the end of step 4 in chunk 2.
+// 4-step flow for creating a rental contract:
+//   1 Véhicule & dates (availability)   2 Client
+//   3 Tarif (pricing/discount/deposit)  4 Récap & signature → create draft
+// The wizard holds everything in memory (useReducer); the rental row is
+// inserted as 'draft' only when "Créer le contrat" is pressed in step 4
+// (POST /api/rental/rentals, which re-validates + re-checks availability).
 //
 // Access is gated by middleware (ROUTE_ACL: /dashboard/location →
-// owner/manager/closer/super_admin) and by the RLS-backed APIs the steps
-// call. prospecteur has no location access.
+// owner/manager/closer/super_admin) and the RLS-backed APIs.
 // ─────────────────────────────────────────────────────────────────────
 
 import { useCallback, useReducer, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, ArrowRight, Check, KeyRound } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { ArrowLeft, ArrowRight, Check, KeyRound, Loader2, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import {
-  bookingReducer, initialBookingState, computeDurationDays,
-  formatDateFr, formatDZD,
-} from '@/components/rental/booking/types'
+import { uploadViaSignedUrl } from '@/lib/rental/storage'
+import { bookingReducer, initialBookingState } from '@/components/rental/booking/types'
 import StepVehicleDates from '@/components/rental/booking/StepVehicleDates'
 import StepCustomer from '@/components/rental/booking/StepCustomer'
+import StepPricing from '@/components/rental/booking/StepPricing'
+import StepRecapSignature from '@/components/rental/booking/StepRecapSignature'
 
 const STEPS = [
   { n: 1, label: 'Véhicule & dates' },
@@ -31,9 +32,15 @@ const STEPS = [
   { n: 4, label: 'Récap & signature' },
 ] as const
 
+type CreatedContract = { id: string; contract_number: string | null }
+
 export default function NewRentalWizardPage() {
+  const router = useRouter()
   const [state, dispatch] = useReducer(bookingReducer, undefined, initialBookingState)
   const [stepValid, setStepValid] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [created, setCreated] = useState<CreatedContract | null>(null)
 
   // Stable callback so step effects don't re-fire each render.
   const handleValidity = useCallback((v: boolean) => setStepValid(v), [])
@@ -50,7 +57,98 @@ export default function NewRentalWizardPage() {
     if (state.step > 1) goTo((state.step - 1) as 1 | 2 | 3 | 4)
   }
 
-  const durationDays = computeDurationDays(state.startDate, state.endDate)
+  async function handleCreate() {
+    if (!state.vehicle || !state.customer || submitting) return
+    setSubmitting(true)
+    setSubmitError(null)
+    try {
+      // 1. Upload the signature (optional) via the signed-upload flow.
+      let signaturePath: string | null = null
+      if (state.signatureDataUrl) {
+        try {
+          const blob = await (await fetch(state.signatureDataUrl)).blob()
+          const file = new File([blob], 'signature.png', { type: 'image/png' })
+          signaturePath = await uploadViaSignedUrl(file, { kind: 'rental_signature', file_ext: 'png' })
+        } catch {
+          signaturePath = null   // non-fatal — create the draft without it
+        }
+      }
+
+      // 2. Create the rental (server re-validates everything).
+      const res = await fetch('/api/rental/rentals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rental_vehicle_id: state.vehicle.id,
+          customer_id:       state.customer.id,
+          start_date:        state.startDate,
+          start_time:        state.startTime,
+          end_date:          state.endDate,
+          end_time:          state.endTime,
+          discount_type:     state.discountType,
+          discount_value:    state.discountValue,
+          deposit_amount:    state.depositAmount,
+          notes:             state.notes || null,
+          signature_path:    signaturePath,
+        }),
+      })
+      const j = await res.json().catch(() => ({}))
+
+      if (res.status === 409) {
+        setSubmitError(j?.message ?? 'Ce véhicule est indisponible pour ces dates.')
+        setSubmitting(false)
+        return
+      }
+      if (!res.ok || !j.rental) {
+        setSubmitError(j?.error ?? 'Création du contrat échouée.')
+        setSubmitting(false)
+        return
+      }
+
+      setCreated(j.rental as CreatedContract)
+      // Reset state + redirect to the hub after a short success beat.
+      setTimeout(() => { dispatch({ type: 'RESET' }); router.push('/dashboard/location') }, 2200)
+    } catch {
+      setSubmitError('Erreur réseau. Réessayez.')
+      setSubmitting(false)
+    }
+  }
+
+  // ── Success state ───────────────────────────────────────────
+  if (created) {
+    return (
+      <div className="p-6 md:p-10 max-w-lg mx-auto">
+        <div
+          className="rounded-2xl p-8 text-center"
+          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', boxShadow: 'var(--shadow-glass)' }}
+        >
+          <div className="mx-auto w-14 h-14 rounded-full flex items-center justify-center mb-4"
+            style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981' }}>
+            <CheckCircle2 className="w-8 h-8" />
+          </div>
+          <h1 className="text-lg font-bold text-[var(--text-primary)]">Contrat créé</h1>
+          <p className="mt-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
+            Brouillon enregistré — à confirmer.
+          </p>
+          {created.contract_number && (
+            <p className="mt-4 inline-block rounded-lg px-3 py-2 text-sm font-mono font-semibold tabular-nums"
+              style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)' }}>
+              {created.contract_number}
+            </p>
+          )}
+          <div className="mt-6">
+            <Link
+              href="/dashboard/location"
+              className="inline-flex items-center gap-2 h-11 px-6 rounded-xl text-sm font-semibold text-white"
+              style={{ background: 'var(--accent)', boxShadow: '0 8px 22px -10px var(--accent-glow)' }}
+            >
+              Aller au tableau de bord <ArrowRight className="w-4 h-4 rtl:rotate-180" />
+            </Link>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="p-6 md:p-10 max-w-4xl mx-auto space-y-6">
@@ -126,40 +224,25 @@ export default function NewRentalWizardPage() {
         className="rounded-2xl p-5 sm:p-6"
         style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', boxShadow: 'var(--shadow-glass)' }}
       >
-        {state.step === 1 && (
-          <StepVehicleDates state={state} dispatch={dispatch} onValidity={handleValidity} />
-        )}
-        {state.step === 2 && (
-          <StepCustomer state={state} dispatch={dispatch} onValidity={handleValidity} />
-        )}
-        {state.step === 3 && (
-          <PlaceholderStep
-            title="Tarif"
-            summary={
-              state.vehicle && durationDays != null
-                ? `${state.vehicle.marque} ${state.vehicle.modele} · ${durationDays} jour${durationDays > 1 ? 's' : ''} · base ${formatDZD(state.vehicle.daily_rate)}/jour`
-                : undefined
-            }
-          />
-        )}
-        {state.step === 4 && (
-          <PlaceholderStep
-            title="Récapitulatif & signature"
-            summary={
-              state.vehicle && state.customer && durationDays != null
-                ? `${state.vehicle.marque} ${state.vehicle.modele} · ${formatDateFr(state.startDate)} → ${formatDateFr(state.endDate)} · ${state.customer.full_name}`
-                : undefined
-            }
-          />
-        )}
+        {state.step === 1 && <StepVehicleDates state={state} dispatch={dispatch} onValidity={handleValidity} />}
+        {state.step === 2 && <StepCustomer state={state} dispatch={dispatch} onValidity={handleValidity} />}
+        {state.step === 3 && <StepPricing state={state} dispatch={dispatch} onValidity={handleValidity} />}
+        {state.step === 4 && <StepRecapSignature state={state} dispatch={dispatch} onValidity={handleValidity} />}
       </div>
+
+      {submitError && (
+        <p className="text-sm rounded-xl px-4 py-3"
+          style={{ background: 'rgba(244,63,94,0.10)', color: '#fb7185', boxShadow: 'inset 0 0 0 1px rgba(244,63,94,0.3)' }}>
+          {submitError}
+        </p>
+      )}
 
       {/* Footer nav */}
       <div className="flex items-center justify-between gap-3">
         <button
           type="button"
           onClick={back}
-          disabled={state.step === 1}
+          disabled={state.step === 1 || submitting}
           className="inline-flex items-center gap-2 h-11 px-5 rounded-xl text-sm font-medium disabled:opacity-40"
           style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
         >
@@ -179,33 +262,16 @@ export default function NewRentalWizardPage() {
         ) : (
           <button
             type="button"
-            disabled
-            title="Disponible au chunk 2"
-            className="inline-flex items-center gap-2 h-11 px-6 rounded-xl text-sm font-semibold text-white opacity-60 cursor-not-allowed"
-            style={{ background: 'var(--accent)' }}
+            onClick={handleCreate}
+            disabled={submitting}
+            className="inline-flex items-center gap-2 h-11 px-6 rounded-xl text-sm font-semibold text-white transition-opacity disabled:opacity-60"
+            style={{ background: 'var(--accent)', boxShadow: '0 8px 22px -10px var(--accent-glow)' }}
           >
-            Créer le contrat
-            <span className="text-[10px] font-bold uppercase tracking-widest opacity-80 ms-1">Chunk 2</span>
+            {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+            {submitting ? 'Création…' : 'Créer le contrat'}
           </button>
         )}
       </div>
-    </div>
-  )
-}
-
-function PlaceholderStep({ title, summary }: { title: string; summary?: string }) {
-  return (
-    <div className="py-10 text-center">
-      <h3 className="text-base font-semibold text-[var(--text-primary)]">{title}</h3>
-      <p className="mt-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
-        À venir — chunk 2.
-      </p>
-      {summary && (
-        <p className="mt-4 inline-block rounded-lg px-3 py-2 text-xs"
-          style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
-          {summary}
-        </p>
-      )}
     </div>
   )
 }

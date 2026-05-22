@@ -25,7 +25,7 @@ import { supabase } from '@/lib/supabase'
 export const RENTAL_BUCKET = 'rental-documents'
 export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024 // 5 MB
 
-export type UploadKind = 'cin' | 'permis' | 'vehicle_photo'
+export type UploadKind = 'cin' | 'permis' | 'vehicle_photo' | 'rental_signature'
 
 type SignResponse = {
   upload_url: string
@@ -37,6 +37,7 @@ type SignResponse = {
 export type UploadOpts =
   | { kind: 'cin' | 'permis';   customer_id?: string | null; file_ext: string }
   | { kind: 'vehicle_photo';    vehicle_id?:  string | null; slot?: number; file_ext: string }
+  | { kind: 'rental_signature'; rental_id?:   string | null; file_ext: string }
 
 /**
  * Asks the server for a signed upload URL and pushes the file to it.

@@ -27,9 +27,10 @@ import { ApiError, errorResponse, requireShowroomMember } from '@/lib/api-auth'
 
 export const runtime = 'nodejs'
 
-const KINDS = new Set(['cin', 'permis', 'vehicle_photo'])
+const KINDS = new Set(['cin', 'permis', 'vehicle_photo', 'rental_signature'])
 const DOC_EXT     = new Set(['jpg', 'jpeg', 'png', 'webp', 'pdf'])
 const PHOTO_EXT   = new Set(['jpg', 'jpeg', 'png', 'webp'])
+const SIG_EXT     = new Set(['png', 'jpg', 'jpeg', 'webp'])
 const ALLOWED_ROLES = new Set(['owner', 'manager', 'closer', 'super_admin'])
 const UUID_RX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -42,15 +43,17 @@ export async function POST(req: NextRequest) {
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>
     const kind = String(body.kind ?? '')
     if (!KINDS.has(kind)) {
-      throw new ApiError(400, "kind doit être 'cin', 'permis' ou 'vehicle_photo'.")
+      throw new ApiError(400, "kind doit être 'cin', 'permis', 'vehicle_photo' ou 'rental_signature'.")
     }
 
     const fileExt = String(body.file_ext ?? 'jpg').toLowerCase().replace(/^\./, '')
-    const allowedExt = kind === 'vehicle_photo' ? PHOTO_EXT : DOC_EXT
+    const allowedExt =
+      kind === 'vehicle_photo'    ? PHOTO_EXT :
+      kind === 'rental_signature' ? SIG_EXT   : DOC_EXT
     if (!allowedExt.has(fileExt)) {
       throw new ApiError(
         400,
-        kind === 'vehicle_photo'
+        kind === 'vehicle_photo' || kind === 'rental_signature'
           ? 'Format de fichier non autorisé (jpg/png/webp).'
           : 'Format de fichier non autorisé (jpg/png/webp/pdf).',
       )
@@ -58,7 +61,16 @@ export async function POST(req: NextRequest) {
 
     // ── Path construction (per kind) ──────────────────────────
     let path: string
-    if (kind === 'vehicle_photo') {
+    if (kind === 'rental_signature') {
+      // No rental id yet at create time → temp folder. RLS only checks
+      // the showroom_id prefix (migration 40).
+      const rentalId = body.rental_id ? String(body.rental_id) : null
+      if (rentalId && !UUID_RX.test(rentalId)) {
+        throw new ApiError(400, 'rental_id invalide.')
+      }
+      const folder = rentalId ?? `temp-${crypto.randomUUID()}`
+      path = `${ctx.showroomId}/rentals/${folder}/signature-${Date.now()}.${fileExt}`
+    } else if (kind === 'vehicle_photo') {
       const vehicleId = body.vehicle_id ? String(body.vehicle_id) : null
       if (vehicleId && !UUID_RX.test(vehicleId)) {
         throw new ApiError(400, 'vehicle_id invalide.')
