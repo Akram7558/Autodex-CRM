@@ -12,7 +12,7 @@ import { Car as CarIcon, Check, Loader2, AlertTriangle, CalendarDays } from 'luc
 import { getSignedReadUrl } from '@/lib/rental/storage'
 import {
   type BookingAction, type BookingState, type RentalVehicleLite,
-  computeDurationDays, formatDateFr, formatDZD,
+  computeDurationDays, formatDateFr, formatDZD, toNum,
 } from '@/components/rental/booking/types'
 
 type Avail =
@@ -53,7 +53,17 @@ export default function StepVehicleDates({
         if (cancelled) return
         if (!vRes.ok) { setLoadError(vJson?.error ?? 'Erreur de chargement des véhicules.'); setVehicles([]) }
         else {
-          const rows = ((vJson.vehicles ?? []) as RentalVehicleLite[]).filter((v) => v.is_active)
+          // Supabase returns numeric columns as strings — normalize them to
+          // numbers here so deposit/rates carry through the wizard correctly.
+          const rows = ((vJson.vehicles ?? []) as RentalVehicleLite[])
+            .filter((v) => v.is_active)
+            .map((v) => ({
+              ...v,
+              daily_rate:     toNum(v.daily_rate),
+              weekly_rate:    v.weekly_rate == null ? null : toNum(v.weekly_rate),
+              monthly_rate:   v.monthly_rate == null ? null : toNum(v.monthly_rate),
+              deposit_amount: toNum(v.deposit_amount),
+            }))
           setVehicles(rows)
         }
         if (sRes.ok && sJson?.settings) {

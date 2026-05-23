@@ -28,7 +28,10 @@ export default function StepPricing({
     dailyRate, durationDays, state.discountType, state.discountValue,
   )
 
-  const depositOk = Number.isFinite(state.depositAmount) && state.depositAmount >= 0
+  // Coerce defensively — depositAmount should already be a number, but
+  // guard against a stray string (Supabase numeric → string).
+  const depositNum = Number(state.depositAmount)
+  const depositOk = Number.isFinite(depositNum) && depositNum >= 0
   const overAmount = state.discountType === 'amount' && state.discountValue > basePrice
   const overPercent = state.discountType === 'percent' && state.discountValue > 100
 
@@ -124,7 +127,7 @@ export default function StepPricing({
         <input
           type="number"
           min={0}
-          value={state.depositAmount === 0 ? '' : state.depositAmount}
+          value={depositNum > 0 ? depositNum : ''}
           onChange={(e) => {
             const n = Number(e.target.value)
             dispatch({ type: 'SET_PRICING', patch: { depositAmount: Number.isFinite(n) && n > 0 ? Math.round(n) : 0 } })

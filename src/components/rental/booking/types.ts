@@ -54,6 +54,15 @@ export type BookingAction =
   | { type: 'GOTO';         step: BookingState['step'] }
   | { type: 'RESET' }
 
+/**
+ * Coerce a possibly-string numeric (Supabase returns `numeric` columns as
+ * strings) to a finite number, falling back to 0 for null/undefined/NaN.
+ */
+export function toNum(v: unknown): number {
+  const n = typeof v === 'number' ? v : Number(v)
+  return Number.isFinite(n) ? n : 0
+}
+
 export function initialBookingState(): BookingState {
   return {
     step:      1,
@@ -73,9 +82,10 @@ export function initialBookingState(): BookingState {
 
 export function bookingReducer(s: BookingState, a: BookingAction): BookingState {
   switch (a.type) {
-    // Seed the deposit from the chosen vehicle's default caution; the
-    // owner can still override it in step 3.
-    case 'SET_VEHICLE':  return { ...s, vehicle: a.vehicle, depositAmount: a.vehicle?.deposit_amount ?? 0 }
+    // Seed the deposit from the chosen vehicle's default caution. Supabase
+    // returns `numeric` columns as STRINGS, so coerce — `?? 0` alone keeps
+    // a string and breaks downstream Number.isFinite checks.
+    case 'SET_VEHICLE':  return { ...s, vehicle: a.vehicle, depositAmount: toNum(a.vehicle?.deposit_amount) }
     case 'SET_DATES':    return { ...s, ...a.patch }
     case 'SET_CUSTOMER': return { ...s, customer: a.customer }
     case 'SET_PRICING':  return { ...s, ...a.patch }
