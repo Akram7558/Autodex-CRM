@@ -80,6 +80,13 @@ export default function RentalDashboardPage() {
           <ArrowRight className="w-4 h-4 rtl:rotate-180" />
         </Link>
         <Link
+          href="/dashboard/location/prospects"
+          className="inline-flex items-center gap-2 h-11 px-5 rounded-xl text-sm font-medium glass-card hover:-translate-y-0.5 transition-transform"
+        >
+          📥 Demandes de location
+          <ArrowRight className="w-4 h-4 rtl:rotate-180" />
+        </Link>
+        <Link
           href="/dashboard/location/contrats"
           className="inline-flex items-center gap-2 h-11 px-5 rounded-xl text-sm font-medium glass-card hover:-translate-y-0.5 transition-transform"
         >
