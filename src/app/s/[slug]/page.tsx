@@ -20,6 +20,7 @@ import type {
   Vehicle,
 } from '@/lib/types'
 import CatalogPage from '@/components/catalog/CatalogPage'
+import type { RentalFleetCard } from '@/components/catalog/RentalFleetSection'
 
 export const runtime = 'nodejs'
 // Always render fresh — owners flip `catalog_enabled` and edit hours
@@ -32,6 +33,20 @@ type CatalogData = {
   showroom: ShowroomPublicInfo
   vehicles: Vehicle[]
   preorders: PreorderVehicle[]
+  rentalVehicles: RentalFleetCard[]
+}
+
+// Raw rental_vehicles row (numeric columns arrive as strings from Supabase).
+type RawRentalVehicle = {
+  id: string
+  marque: string
+  modele: string
+  annee: number | null
+  daily_rate: string | number | null
+  weekly_rate: string | number | null
+  monthly_rate: string | number | null
+  deposit_amount: string | number | null
+  photos_urls: string[] | null
 }
 
 function adminClient() {
@@ -59,7 +74,12 @@ async function getCatalogData(slug: string): Promise<CatalogData | null> {
 
   if (!showroom) return null
 
-  const [{ data: vehicles }, { data: preorders }] = await Promise.all([
+  // "Currently rented" window — a vehicle is unavailable today if a
+  // confirmed/active/overdue rental covers today. Server-computed so the
+  // client never calls check_rental_overlap.
+  const today = new Date().toISOString().slice(0, 10)
+
+  const [{ data: vehicles }, { data: preorders }, { data: rentalRows }, { data: busyRentals }] = await Promise.all([
     admin
       .from('vehicles')
       .select('*')
@@ -73,12 +93,63 @@ async function getCatalogData(slug: string): Promise<CatalogData | null> {
       .eq('showroom_id', showroom.id)
       .eq('disponible', true)
       .order('created_at', { ascending: false }),
+    admin
+      .from('rental_vehicles')
+      .select('id, marque, modele, annee, daily_rate, weekly_rate, monthly_rate, deposit_amount, photos_urls')
+      .eq('showroom_id', showroom.id)
+      .eq('is_active', true)
+      .order('created_at', { ascending: false }),
+    admin
+      .from('rentals')
+      .select('rental_vehicle_id')
+      .eq('showroom_id', showroom.id)
+      .in('status', ['confirmed', 'active', 'overdue'])
+      .lte('start_date', today)
+      .gte('end_date', today),
   ])
+
+  // ── Build the public rental fleet ────────────────────────────────
+  const rented = new Set(
+    (busyRentals ?? []).map((r) => (r as { rental_vehicle_id: string }).rental_vehicle_id),
+  )
+  const rvRows = (rentalRows ?? []) as RawRentalVehicle[]
+
+  // Rental photos live in the PRIVATE rental-documents bucket — anon can't
+  // sign them. Batch-sign server-side (service role) so cards/lightbox get
+  // working time-limited URLs. force-dynamic keeps them fresh per request.
+  const allPaths = rvRows.flatMap((v) => v.photos_urls ?? [])
+  const signedMap = new Map<string, string>()
+  if (allPaths.length > 0) {
+    const { data: signed } = await admin.storage
+      .from('rental-documents')
+      .createSignedUrls(allPaths, 3600)
+    for (const s of signed ?? []) {
+      if (s.path && s.signedUrl) signedMap.set(s.path, s.signedUrl)
+    }
+  }
+
+  const num = (v: string | number | null): number => {
+    const n = typeof v === 'number' ? v : Number(v)
+    return Number.isFinite(n) ? n : 0
+  }
+  const rentalVehicles: RentalFleetCard[] = rvRows.map((v) => ({
+    id:             v.id,
+    marque:         v.marque,
+    modele:         v.modele,
+    annee:          v.annee ?? null,
+    daily_rate:     num(v.daily_rate),
+    weekly_rate:    v.weekly_rate == null ? null : num(v.weekly_rate),
+    monthly_rate:   v.monthly_rate == null ? null : num(v.monthly_rate),
+    deposit_amount: num(v.deposit_amount),
+    photos:         (v.photos_urls ?? []).map((p) => signedMap.get(p)).filter((u): u is string => !!u),
+    isAvailable:    !rented.has(v.id),
+  }))
 
   return {
     showroom: showroom as unknown as ShowroomPublicInfo,
     vehicles: (vehicles ?? []) as Vehicle[],
     preorders: (preorders ?? []) as PreorderVehicle[],
+    rentalVehicles,
   }
 }
 

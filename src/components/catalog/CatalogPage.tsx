@@ -19,7 +19,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'motion/react'
 import {
   MapPin, Phone, Share2, Check, MessageCircle,
-  Car, Package, Clock, Image as ImageIcon,
+  Car, Package, Clock, Image as ImageIcon, KeyRound,
 } from 'lucide-react'
 import type {
   Vehicle,
@@ -30,6 +30,7 @@ import type {
 import OrderModal from '@/components/catalog/OrderModal'
 import PhotoLightbox from '@/components/ui/PhotoLightbox'
 import VehicleDetailModal from '@/components/catalog/VehicleDetailModal'
+import RentalFleetSection, { type RentalFleetCard } from '@/components/catalog/RentalFleetSection'
 
 // ─── French day plumbing ────────────────────────────────────────────
 // JS Date.getDay(): 0=dimanche, 1=lundi, … 6=samedi
@@ -117,9 +118,12 @@ export default function CatalogPage({
     showroom: ShowroomPublicInfo
     vehicles: Vehicle[]
     preorders: PreorderVehicle[]
+    rentalVehicles: RentalFleetCard[]
   }
 }) {
-  const { showroom, vehicles, preorders } = data
+  const { showroom, vehicles, preorders, rentalVehicles } = data
+  const hasRental = rentalVehicles.length > 0
+  const [mode, setMode]             = useState<'vente' | 'location'>('vente')
   const [tab, setTab]               = useState<Tab>('vehicles')
   const [order, setOrder]           = useState<OrderCtx | null>(null)
   const [shared, setShared]         = useState(false)
@@ -289,32 +293,61 @@ export default function CatalogPage({
           </div>
         )}
 
-        {/* Sticky tab nav */}
-        <nav className="border-t border-slate-200 bg-white">
-          <div className="mx-auto max-w-6xl px-4 flex">
-            <TabButton
-              active={tab === 'vehicles'}
-              onClick={() => setTab('vehicles')}
-              icon={<Car className="size-4" />}
-              label="Véhicules disponibles"
-              count={vehicles.length}
-              countActiveClass="bg-violet-100 text-violet-700"
-            />
-            <TabButton
-              active={tab === 'preorders'}
-              onClick={() => setTab('preorders')}
-              icon={<Package className="size-4" />}
-              label="Pré-commandes"
-              count={preorders.length}
-              countActiveClass="bg-amber-100 text-amber-700"
-            />
+        {/* Mode switch: Vente / Location (only when a rental fleet exists) */}
+        {hasRental && (
+          <div className="border-t border-slate-200 bg-white">
+            <div className="mx-auto max-w-6xl px-4 py-2 flex gap-2">
+              <ModeButton
+                active={mode === 'vente'}
+                onClick={() => setMode('vente')}
+                icon={<Car className="size-4" />}
+                label="Vente"
+              />
+              <ModeButton
+                active={mode === 'location'}
+                onClick={() => setMode('location')}
+                icon={<KeyRound className="size-4" />}
+                label="Location"
+                count={rentalVehicles.length}
+              />
+            </div>
           </div>
-        </nav>
+        )}
+
+        {/* Sticky sub-tab nav — Vente only (Véhicules / Pré-commandes) */}
+        {mode === 'vente' && (
+          <nav className="border-t border-slate-200 bg-white">
+            <div className="mx-auto max-w-6xl px-4 flex">
+              <TabButton
+                active={tab === 'vehicles'}
+                onClick={() => setTab('vehicles')}
+                icon={<Car className="size-4" />}
+                label="Véhicules disponibles"
+                count={vehicles.length}
+                countActiveClass="bg-violet-100 text-violet-700"
+              />
+              <TabButton
+                active={tab === 'preorders'}
+                onClick={() => setTab('preorders')}
+                icon={<Package className="size-4" />}
+                label="Pré-commandes"
+                count={preorders.length}
+                countActiveClass="bg-amber-100 text-amber-700"
+              />
+            </div>
+          </nav>
+        )}
       </header>
 
       {/* ── Content grids ──────────────────────────────────────────── */}
       <main className="mx-auto max-w-6xl px-4 py-6 sm:py-8">
-        {tab === 'vehicles' ? (
+        {mode === 'location' ? (
+          <RentalFleetSection
+            slug={showroom.slug ?? ''}
+            vehicles={rentalVehicles}
+            showroomName={showroom.name}
+          />
+        ) : tab === 'vehicles' ? (
           vehicles.length === 0 ? (
             <EmptyState
               icon={<Car className="size-10 text-slate-400" />}
@@ -537,6 +570,43 @@ function TabButton({
           layoutId="catalog-tab-underline"
           className="absolute left-0 right-0 -bottom-px h-0.5 bg-violet-600 rounded-full"
         />
+      )}
+    </button>
+  )
+}
+
+// Higher-level Vente / Location pill switch.
+function ModeButton({
+  active, onClick, icon, label, count,
+}: {
+  active: boolean
+  onClick: () => void
+  icon: React.ReactNode
+  label: string
+  count?: number
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-current={active ? 'page' : undefined}
+      className={
+        'inline-flex items-center gap-2 px-4 h-10 rounded-full text-sm font-semibold transition ' +
+        (active
+          ? 'bg-violet-600 text-white shadow-sm'
+          : 'bg-slate-100 text-slate-600 hover:bg-slate-200')
+      }
+    >
+      {icon}
+      {label}
+      {typeof count === 'number' && (
+        <span
+          className={
+            'inline-flex items-center justify-center min-w-5 h-5 px-1.5 text-[11px] rounded-full ' +
+            (active ? 'bg-white/25 text-white' : 'bg-white text-slate-500')
+          }
+        >
+          {count}
+        </span>
       )}
     </button>
   )
