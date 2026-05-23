@@ -16,10 +16,11 @@
 // src/lib/rental/prospects.ts (no hardcoded French/colors here).
 // ─────────────────────────────────────────────────────────────────────
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import {
   Phone, MessageSquare, MessageCircle, Car as CarIcon, CalendarRange,
-  Loader2, FileSignature, Inbox,
+  FileSignature, Inbox,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -222,7 +223,7 @@ export default function RentalProspectsList({ initialRows }: { initialRows: Pros
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-2">
                         <ContactActions row={r} popover={contactPopover} setPopover={setContactPopover} />
-                        <ConvertButton />
+                        {r.status !== 'convertie' && <ConvertButton prospectId={r.id} />}
                       </div>
                     </td>
                   </tr>
@@ -258,7 +259,7 @@ export default function RentalProspectsList({ initialRows }: { initialRows: Pros
                   <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{shortDate(r.created_at)}</span>
                   <div className="flex items-center gap-2">
                     <ContactActions row={r} popover={contactPopover} setPopover={setContactPopover} />
-                    <ConvertButton />
+                    {r.status !== 'convertie' && <ConvertButton prospectId={r.id} />}
                   </div>
                 </div>
               </div>
@@ -390,18 +391,17 @@ function ContactActions({
   )
 }
 
-// Convert-to-contract — wired in chunk D.
-function ConvertButton() {
+// Convert-to-contract — opens the booking wizard prefilled from this
+// prospect; on creation the server marks it 'convertie' + links the rental.
+function ConvertButton({ prospectId }: { prospectId: string }) {
   return (
-    <span title="Bientôt (chunk D)">
-      <button
-        type="button"
-        disabled
-        className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold opacity-50 cursor-not-allowed"
-        style={{ background: 'var(--accent-subtle)', color: 'var(--accent)' }}
-      >
-        <FileSignature className="w-3.5 h-3.5" /> Convertir
-      </button>
-    </span>
+    <Link
+      href={`/dashboard/location/contrats/nouveau?from_prospect=${prospectId}`}
+      title="Convertir en contrat"
+      className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold transition-opacity hover:opacity-90"
+      style={{ background: 'var(--accent-subtle)', color: 'var(--accent)' }}
+    >
+      <FileSignature className="w-3.5 h-3.5" /> Convertir
+    </Link>
   )
 }

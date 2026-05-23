@@ -95,6 +95,33 @@ export function bookingReducer(s: BookingState, a: BookingAction): BookingState 
   }
 }
 
+// ── Prospect → wizard prefill (chunk D) ───────────────────────────────
+// Built server-side from a rental_prospect; seeds the wizard's initial
+// state. Customer name/phone are passed to StepCustomer (not the reducer)
+// so the existing search/create flow handles matching/confirming.
+export type WizardPrefill = {
+  fromProspectId:     string
+  vehicle:            RentalVehicleLite | null
+  vehicleUnavailable: boolean   // prospect referenced a vehicle that's gone/inactive
+  startDate:          string
+  endDate:            string
+  customerName:       string
+  customerPhone:      string
+}
+
+/** Seed BookingState from a prefill (or the empty default when null). */
+export function bookingStateFromPrefill(p: WizardPrefill | null): BookingState {
+  const base = initialBookingState()
+  if (!p) return base
+  return {
+    ...base,
+    vehicle:       p.vehicle,
+    depositAmount: p.vehicle ? toNum(p.vehicle.deposit_amount) : base.depositAmount,
+    startDate:     p.startDate || '',
+    endDate:       p.endDate || '',
+  }
+}
+
 /**
  * Calendar-day rental duration. Same-day (start === end) counts as 1 day;
  * each extra calendar day adds one. Returns null when dates are missing,

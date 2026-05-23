@@ -60,6 +60,7 @@ export async function POST(req: NextRequest) {
     const depositRaw = Number(body.deposit_amount ?? 0)
     const notes = body.notes ? String(body.notes).slice(0, 2000) : null
     const signaturePath = body.signature_path ? String(body.signature_path) : null
+    const fromProspectId = body.from_prospect_id ? String(body.from_prospect_id) : null
 
     if (!vehicleId)  throw new ApiError(400, 'Véhicule requis.')
     if (!customerId) throw new ApiError(400, 'Client requis.')
@@ -172,7 +173,23 @@ export async function POST(req: NextRequest) {
         .single()
 
       if (!error) {
-        return NextResponse.json({ rental: data }, { status: 201 })
+        // Link the originating prospect, if any. Best-effort: the contract
+        // is the source of truth — a failed/no-match link must NOT fail the
+        // rental creation. Scoped to the caller's showroom and only when the
+        // prospect isn't already converted.
+        let prospectLinked = false
+        if (fromProspectId) {
+          const { data: linked, error: linkErr } = await ctx.authSb
+            .from('rental_prospects')
+            .update({ status: 'convertie', converted_rental_id: data.id })
+            .eq('id', fromProspectId)
+            .eq('showroom_id', ctx.showroomId)
+            .neq('status', 'convertie')
+            .select('id')
+            .maybeSingle()
+          prospectLinked = !linkErr && !!linked
+        }
+        return NextResponse.json({ rental: data, prospect_linked: prospectLinked }, { status: 201 })
       }
       lastErr = error
 

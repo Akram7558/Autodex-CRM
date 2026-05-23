@@ -33,16 +33,20 @@ function toLite(c: ApiCustomer): RentalCustomerLite {
 }
 
 export default function StepCustomer({
-  state, dispatch, onValidity,
+  state, dispatch, onValidity, prefill,
 }: {
   state:      BookingState
   dispatch:   (a: BookingAction) => void
   onValidity: (valid: boolean) => void
+  /** Prospect conversion: prime the search-by-phone + the create form. */
+  prefill?:   { name: string; phone: string }
 }) {
   const [mode, setMode] = useState<'search' | 'create'>('search')
 
   // ── Search ──────────────────────────────────────────────────
-  const [searchRaw, setSearchRaw] = useState('')
+  // Seed the search with the prospect's phone so an existing customer is
+  // matched immediately; the create form is primed too (below).
+  const [searchRaw, setSearchRaw] = useState(prefill?.phone ?? '')
   const [search, setSearch] = useState('')
   const [results, setResults] = useState<RentalCustomerLite[]>([])
   const [searching, setSearching] = useState(false)
@@ -74,7 +78,12 @@ export default function StepCustomer({
   }, [search, mode])
 
   // ── Create ──────────────────────────────────────────────────
-  const [form, setForm] = useState({ full_name: '', phone: '', email: '', cin_number: '', permis_number: '' })
+  // Primed from the prospect so "Nouveau client" is ready to confirm if no
+  // existing customer matches the phone.
+  const [form, setForm] = useState(() => ({
+    full_name: prefill?.name ?? '', phone: prefill?.phone ?? '',
+    email: '', cin_number: '', permis_number: '',
+  }))
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
 
