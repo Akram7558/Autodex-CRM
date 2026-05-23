@@ -1,15 +1,15 @@
 // ─────────────────────────────────────────────────────────────────────
 // PATCH /api/rental/prospects/[id]
 // ─────────────────────────────────────────────────────────────────────
-// Status transitions for a rental prospect (public rental request). Body:
-// { status }.
+// Suivi status changes for a rental prospect (public rental request).
+// Body: { status }.
 //
-// Allowed transitions (server-validated; anything else → 400/409):
-//   nouvelle  → contactee | perdue
-//   contactee → convertie | perdue      (real conversion happens in chunk D;
-//                                          this only allows the value)
-//   perdue    → nouvelle                 (reopen)
-//   convertie → terminal
+// FREE movement among the selectable suivi states (mirrors the sales
+// dropdown): nouvelle, tentative_1, tentative_2, tentative_3, reporter,
+// rdv_planifie, perdue → any of them.
+//   • 'convertie' is REJECTED here (409) — it's machine-set only by the
+//     convert-to-contract flow (chunk D).
+//   • Any value outside the selectable set → 400.
 //
 // Permissions: requireShowroomMember; prospect must be in the caller's
 // showroom (showroom_id scoped — RLS already enforces it for owner/
@@ -18,18 +18,13 @@
 
 import { NextResponse, type NextRequest } from 'next/server'
 import { ApiError, errorResponse, requireShowroomMember } from '@/lib/api-auth'
+import { RENTAL_PROSPECT_SUIVI_SET } from '@/lib/rental/prospects'
 
 export const runtime = 'nodejs'
 
 type RouteCtx = { params: Promise<{ id: string }> }
 
 const ALLOWED_ROLES = new Set(['owner', 'manager', 'closer', 'super_admin'])
-const TRANSITIONS: Record<string, Set<string>> = {
-  nouvelle:  new Set(['contactee', 'perdue']),
-  contactee: new Set(['convertie', 'perdue']),
-  perdue:    new Set(['nouvelle']),
-  convertie: new Set(),
-}
 
 export async function PATCH(req: NextRequest, { params }: RouteCtx) {
   try {
@@ -44,8 +39,16 @@ export async function PATCH(req: NextRequest, { params }: RouteCtx) {
 
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>
     const target = String(body.status ?? '')
-    if (!['nouvelle', 'contactee', 'convertie', 'perdue'].includes(target)) {
-      throw new ApiError(400, "status invalide.")
+
+    // Real conversion (status='convertie' + converted_rental_id) is done by
+    // the convert flow in chunk D, never here.
+    if (target === 'convertie') {
+      throw new ApiError(409, 'La conversion en contrat se fait via « Convertir en contrat ».')
+    }
+    // Free movement among the suivi statuses (mirrors the sales free-form
+    // dropdown). Anything outside the selectable set is rejected.
+    if (!RENTAL_PROSPECT_SUIVI_SET.has(target)) {
+      throw new ApiError(400, 'status invalide.')
     }
 
     const { data: prospect, error: loadErr } = await ctx.authSb
@@ -57,20 +60,6 @@ export async function PATCH(req: NextRequest, { params }: RouteCtx) {
     if (!prospect) throw new ApiError(404, 'Demande introuvable.')
     if (!ctx.isSuperAdmin && prospect.showroom_id !== ctx.showroomId) {
       throw new ApiError(403, 'Demande hors de votre showroom.')
-    }
-
-    const current = String(prospect.status)
-    if (current === target) {
-      throw new ApiError(409, 'La demande est déjà dans ce statut.')
-    }
-    const allowed = TRANSITIONS[current] ?? new Set<string>()
-    if (!allowed.has(target)) {
-      throw new ApiError(409, `Transition non autorisée (${current} → ${target}).`)
-    }
-    // Real conversion (status='convertie' + converted_rental_id) is done by
-    // the convert flow in chunk D, not here.
-    if (target === 'convertie') {
-      throw new ApiError(409, 'La conversion en contrat se fait via « Convertir en contrat ».')
     }
 
     const { data, error } = await ctx.authSb

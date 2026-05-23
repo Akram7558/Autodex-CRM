@@ -33,14 +33,73 @@ export function rentalProspectReasonLabel(code: string): string {
   return RENTAL_PROSPECT_REASONS.find((r) => r.code === code)?.label ?? code
 }
 
-export type RentalProspectStatus = 'nouvelle' | 'contactee' | 'convertie' | 'perdue'
+// Sales-like "suivi" model (migration_45). NOTE: code 'perdue' is kept in
+// the DB but DISPLAYED as "Annulée" (label-only). 'convertie' is terminal
+// and machine-set by the convert-to-contract flow (chunk D), exactly like
+// the sales 'vendu' — never offered in the per-row dropdown.
+export type RentalProspectStatus =
+  | 'nouvelle' | 'tentative_1' | 'tentative_2' | 'tentative_3'
+  | 'reporter' | 'rdv_planifie' | 'convertie' | 'perdue'
 
 export const RENTAL_PROSPECT_STATUSES: { code: RentalProspectStatus; label: string }[] = [
-  { code: 'nouvelle',  label: 'Nouvelle demande' },
-  { code: 'contactee', label: 'Contactée' },
-  { code: 'convertie', label: 'Convertie' },
-  { code: 'perdue',    label: 'Perdue' },
+  { code: 'nouvelle',     label: 'Nouvelle demande' },
+  { code: 'tentative_1',  label: 'Tentative 1' },
+  { code: 'tentative_2',  label: 'Tentative 2' },
+  { code: 'tentative_3',  label: 'Tentative 3' },
+  { code: 'reporter',     label: 'Reporter' },
+  { code: 'rdv_planifie', label: 'RDV planifié' },
+  { code: 'convertie',    label: 'Convertie' },
+  { code: 'perdue',       label: 'Annulée' },
 ]
 export function rentalProspectStatusLabel(code: string): string {
   return RENTAL_PROSPECT_STATUSES.find((s) => s.code === code)?.label ?? code
+}
+
+// Statuses selectable in the per-row dropdown — everything except the
+// machine-set 'convertie'.
+export const RENTAL_PROSPECT_SUIVI_OPTIONS: RentalProspectStatus[] = [
+  'nouvelle', 'tentative_1', 'tentative_2', 'tentative_3', 'reporter', 'rdv_planifie', 'perdue',
+]
+
+// Valid targets for the PATCH endpoint (manual moves). 'convertie' is
+// excluded — it's only set by the convert flow (chunk D).
+export const RENTAL_PROSPECT_SUIVI_SET = new Set<string>(RENTAL_PROSPECT_SUIVI_OPTIONS)
+
+// Color classes per status, mirroring the sales palette
+// (LEAD_SUIVI_BADGE_CLASSES): tentative_1 yellow → tentative_2 orange →
+// tentative_3 red, reporter amber, rdv_planifie / convertie emerald.
+export const RENTAL_PROSPECT_SUIVI_BADGE_CLASSES: Record<RentalProspectStatus, string> = {
+  nouvelle:     'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/30',
+  tentative_1:  'bg-yellow-300 text-yellow-900 border-yellow-400 dark:bg-yellow-400 dark:text-yellow-950 dark:border-yellow-500',
+  tentative_2:  'bg-orange-500 text-white border-orange-600 dark:bg-orange-500 dark:text-white dark:border-orange-600',
+  tentative_3:  'bg-red-600 text-white border-red-700 dark:bg-red-600 dark:text-white dark:border-red-700',
+  reporter:     'bg-orange-700 text-white border-orange-800 dark:bg-orange-700 dark:text-white dark:border-orange-800',
+  rdv_planifie: 'bg-emerald-600 text-white border-emerald-700 dark:bg-emerald-600 dark:text-white dark:border-emerald-700',
+  convertie:    'bg-emerald-600 text-white border-emerald-700 dark:bg-emerald-600 dark:text-white dark:border-emerald-700',
+  perdue:       'bg-slate-500 text-white border-slate-600 dark:bg-slate-600 dark:text-white dark:border-slate-700',
+}
+
+// Grouped tabs for coarse filtering of the pipeline.
+export const RENTAL_PROSPECT_TABS: { id: string; label: string; statuses: RentalProspectStatus[] }[] = [
+  { id: 'nouvelles',  label: 'Nouvelles',  statuses: ['nouvelle'] },
+  { id: 'encours',    label: 'En cours',   statuses: ['tentative_1', 'tentative_2', 'tentative_3', 'reporter', 'rdv_planifie'] },
+  { id: 'converties', label: 'Converties', statuses: ['convertie'] },
+  { id: 'annulees',   label: 'Annulées',   statuses: ['perdue'] },
+]
+
+// Phone helper mirroring the sales formatPhoneIntl (module-local there, so
+// re-implemented here). Rental phones are already +213-normalized.
+//   tel: "+digits" (for tel:/sms:)   wa: "digits" (for wa.me)
+export function rentalFormatPhoneIntl(raw: string | null | undefined): { tel: string; wa: string } | null {
+  if (!raw) return null
+  let s = raw.trim().replace(/[^\d+]/g, '')
+  if (!s) return null
+  if (s.startsWith('+')) {
+    const digits = s.slice(1)
+    return digits ? { tel: `+${digits}`, wa: digits } : null
+  }
+  if (s.startsWith('00')) s = s.slice(2)
+  if (s.startsWith('0')) s = s.slice(1)
+  const digits = s.startsWith('213') ? s : `213${s}`
+  return digits ? { tel: `+${digits}`, wa: digits } : null
 }
