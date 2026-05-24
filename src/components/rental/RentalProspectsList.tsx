@@ -16,17 +16,17 @@
 // src/lib/rental/prospects.ts (no hardcoded French/colors here).
 // ─────────────────────────────────────────────────────────────────────
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import {
-  Phone, MessageSquare, MessageCircle, Car as CarIcon, CalendarRange,
-  FileSignature, Inbox,
+  Car as CarIcon, CalendarRange, FileSignature, Inbox,
 } from 'lucide-react'
+import ContactButtons from '@/components/rental/ContactButtons'
 import { cn } from '@/lib/utils'
 import {
   RENTAL_PROSPECT_TABS, RENTAL_PROSPECT_SUIVI_OPTIONS,
   RENTAL_PROSPECT_SUIVI_BADGE_CLASSES, rentalProspectStatusLabel,
-  rentalProspectReasonLabel, rentalFormatPhoneIntl,
+  rentalProspectReasonLabel,
   type RentalProspectStatus,
 } from '@/lib/rental/prospects'
 import { formatDateFr } from '@/components/rental/booking/types'
@@ -86,18 +86,6 @@ export default function RentalProspectsList({ initialRows }: { initialRows: Pros
   const [activeTab, setActiveTab] = useState<string>('nouvelles')
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [contactPopover, setContactPopover] = useState<{ id: string; kind: 'call' | 'msg' } | null>(null)
-
-  // Close contact popovers on outside click (mirrors sales).
-  useEffect(() => {
-    if (!contactPopover) return
-    const onDown = (e: MouseEvent) => {
-      const t = e.target as HTMLElement
-      if (!t.closest('[data-contact-popover]')) setContactPopover(null)
-    }
-    document.addEventListener('mousedown', onDown)
-    return () => document.removeEventListener('mousedown', onDown)
-  }, [contactPopover])
 
   const countByTab = useMemo(() => {
     const m: Record<string, number> = {}
@@ -222,7 +210,7 @@ export default function RentalProspectsList({ initialRows }: { initialRows: Pros
                     <td className="px-4 py-3 text-xs text-[var(--text-muted)] whitespace-nowrap">{shortDate(r.created_at)}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-2">
-                        <ContactActions row={r} popover={contactPopover} setPopover={setContactPopover} />
+                        <ContactButtons phone={r.phone} />
                         {r.status !== 'convertie' && <ConvertButton prospectId={r.id} />}
                       </div>
                     </td>
@@ -258,7 +246,7 @@ export default function RentalProspectsList({ initialRows }: { initialRows: Pros
                 <div className="flex items-center justify-between pt-1">
                   <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{shortDate(r.created_at)}</span>
                   <div className="flex items-center gap-2">
-                    <ContactActions row={r} popover={contactPopover} setPopover={setContactPopover} />
+                    <ContactButtons phone={r.phone} />
                     {r.status !== 'convertie' && <ConvertButton prospectId={r.id} />}
                   </div>
                 </div>
@@ -326,77 +314,6 @@ function SuiviControl({
   )
 }
 
-// Call + Message popovers (tel: / sms: / wa.me) — mirrors sales.
-function ContactActions({
-  row, popover, setPopover,
-}: {
-  row: ProspectRow
-  popover: { id: string; kind: 'call' | 'msg' } | null
-  setPopover: (p: { id: string; kind: 'call' | 'msg' } | null) => void
-}) {
-  const intl = rentalFormatPhoneIntl(row.phone)
-  const has = !!intl
-  const btnCls = 'w-8 h-8 rounded-full inline-flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed'
-  const menuCls = 'absolute end-0 top-full mt-2 z-30 w-52 rounded-xl border py-1 text-start shadow-2xl'
-  const menuStyle = { background: 'var(--bg-surface)', borderColor: 'var(--border)' } as const
-  const itemCls = 'flex items-center gap-2 px-3 py-2 text-sm hover:bg-[var(--bg-elevated)]'
-
-  return (
-    <>
-      {/* Call */}
-      <div className="relative" data-contact-popover>
-        <button
-          type="button"
-          disabled={!has}
-          onClick={() => setPopover(popover?.id === row.id && popover.kind === 'call' ? null : { id: row.id, kind: 'call' })}
-          aria-haspopup="menu"
-          aria-expanded={popover?.id === row.id && popover.kind === 'call'}
-          title={has ? `Appeler ${row.phone}` : 'Pas de numéro'}
-          className={btnCls}
-          style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
-        >
-          <Phone className="w-4 h-4" />
-        </button>
-        {has && popover?.id === row.id && popover.kind === 'call' && (
-          <div role="menu" className={menuCls} style={menuStyle}>
-            <a href={`tel:${intl!.tel}`} onClick={() => setPopover(null)} className={itemCls} style={{ color: 'var(--text-primary)' }}>
-              <Phone className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Appel téléphonique
-            </a>
-            <a href={`https://wa.me/${intl!.wa}`} target="_blank" rel="noopener noreferrer" onClick={() => setPopover(null)} className={itemCls} style={{ color: 'var(--text-primary)' }}>
-              <MessageCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Appel WhatsApp
-            </a>
-          </div>
-        )}
-      </div>
-
-      {/* Message */}
-      <div className="relative" data-contact-popover>
-        <button
-          type="button"
-          disabled={!has}
-          onClick={() => setPopover(popover?.id === row.id && popover.kind === 'msg' ? null : { id: row.id, kind: 'msg' })}
-          aria-haspopup="menu"
-          aria-expanded={popover?.id === row.id && popover.kind === 'msg'}
-          title={has ? `Message à ${row.phone}` : 'Pas de numéro'}
-          className={btnCls}
-          style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
-        >
-          <MessageSquare className="w-4 h-4" />
-        </button>
-        {has && popover?.id === row.id && popover.kind === 'msg' && (
-          <div role="menu" className={menuCls} style={menuStyle}>
-            <a href={`sms:${intl!.tel}`} onClick={() => setPopover(null)} className={itemCls} style={{ color: 'var(--text-primary)' }}>
-              <MessageSquare className="w-4 h-4 text-sky-600 dark:text-sky-400" /> SMS
-            </a>
-            <a href={`https://wa.me/${intl!.wa}`} target="_blank" rel="noopener noreferrer" onClick={() => setPopover(null)} className={itemCls} style={{ color: 'var(--text-primary)' }}>
-              <MessageCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> WhatsApp
-            </a>
-          </div>
-        )}
-      </div>
-    </>
-  )
-}
 
 // Convert-to-contract — opens the booking wizard prefilled from this
 // prospect; on creation the server marks it 'convertie' + links the rental.

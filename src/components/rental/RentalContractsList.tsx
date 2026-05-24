@@ -20,6 +20,7 @@ import {
 import {
   RENTAL_TAB_GROUPS, rentalStatusLabel, formatDZD, formatDateFr,
 } from '@/components/rental/booking/types'
+import ContactButtons from '@/components/rental/ContactButtons'
 
 export type ContractRow = {
   id:                  string
@@ -205,7 +206,8 @@ export default function RentalContractsList({ initialRows }: { initialRows: Cont
                     <td className="px-4 py-3 text-[var(--text-secondary)] tabular-nums"><bdi>{formatDZD(r.deposit_amount)}</bdi></td>
                     <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
                     <td className="px-4 py-3">
-                      <div className="flex justify-end">
+                      <div className="flex items-center justify-end gap-2">
+                        <ContactButtons phone={r.customer?.phone ?? null} />
                         <RowActions row={r} busy={busyId === r.id} onTransition={transition} onCancel={() => setCancelTarget(r)} />
                       </div>
                     </td>
@@ -241,7 +243,10 @@ export default function RentalContractsList({ initialRows }: { initialRows: Cont
                   <span style={{ color: 'var(--text-secondary)' }}>Total <bdi className="font-semibold text-[var(--text-primary)] tabular-nums">{formatDZD(r.total_rental_amount)}</bdi></span>
                   <span style={{ color: 'var(--text-secondary)' }}>Caution <bdi className="tabular-nums">{formatDZD(r.deposit_amount)}</bdi></span>
                 </div>
-                <RowActions row={r} busy={busyId === r.id} onTransition={transition} onCancel={() => setCancelTarget(r)} />
+                <div className="flex items-center justify-between gap-2">
+                  <ContactButtons phone={r.customer?.phone ?? null} />
+                  <RowActions row={r} busy={busyId === r.id} onTransition={transition} onCancel={() => setCancelTarget(r)} />
+                </div>
               </div>
             ))}
           </div>
