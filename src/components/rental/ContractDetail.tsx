@@ -14,13 +14,17 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   ArrowLeft, Phone, MessageCircle, Car as CarIcon, CalendarRange, User,
-  CheckCircle2, Flag, XCircle, Pencil, Loader2, ShieldCheck, PenLine,
+  CheckCircle2, Flag, XCircle, Pencil, Loader2, PenLine,
   Banknote, Plus, FileSignature,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import PhotoLightbox from '@/components/ui/PhotoLightbox'
 import { rentalStatusLabel, formatDZD, toNum } from '@/components/rental/booking/types'
 import { rentalFormatPhoneIntl } from '@/lib/rental/prospects'
+import {
+  RENTAL_PAYMENT_TYPES, RENTAL_PAYMENT_METHODS,
+  rentalPaymentTypeLabel, rentalPaymentMethodLabel, isExtraFeeType,
+} from '@/lib/rental/payments'
 
 export type ContractPayment = {
   id: string
@@ -62,24 +66,6 @@ const STATUS_COLORS: Record<string, { bg: string; fg: string; ring: string }> = 
   overdue:   { bg: 'rgba(245,158,11,0.14)',  fg: '#fbbf24', ring: 'rgba(245,158,11,0.40)' },
   cancelled: { bg: 'rgba(244,63,94,0.12)',   fg: '#fb7185', ring: 'rgba(244,63,94,0.40)' },
 }
-
-const PAYMENT_TYPES: { code: string; label: string }[] = [
-  { code: 'deposit',        label: 'Caution' },
-  { code: 'rental_payment', label: 'Loyer' },
-  { code: 'extra_charge',   label: 'Frais supplémentaire' },
-  { code: 'refund',         label: 'Remboursement' },
-  { code: 'km_excess',      label: 'Km supplémentaire' },
-  { code: 'late_fee',       label: 'Pénalité de retard' },
-  { code: 'damage_fee',     label: 'Dommages' },
-  { code: 'fuel_charge',    label: 'Carburant' },
-]
-const PAYMENT_METHODS: { code: string; label: string }[] = [
-  { code: 'cash',          label: 'Espèces' },
-  { code: 'ccp',           label: 'CCP' },
-  { code: 'baridimob',     label: 'BaridiMob' },
-  { code: 'bank_transfer', label: 'Virement' },
-]
-const labelOf = (list: { code: string; label: string }[], code: string) => list.find((x) => x.code === code)?.label ?? code
 
 function fmtDate(d: string): string {
   const dt = new Date(d.length <= 10 ? d + 'T00:00:00' : d)
@@ -290,6 +276,31 @@ function Line({ label, children, strong }: { label: string; children: React.Reac
     </div>
   )
 }
+
+function SummaryBox({
+  label, value, highlight, badge,
+}: {
+  label: string
+  value: string
+  highlight?: boolean
+  badge?: { label: string; bg: string; fg: string }
+}) {
+  return (
+    <div className="rounded-xl p-3"
+      style={highlight
+        ? { background: 'var(--accent-subtle)', boxShadow: 'inset 0 0 0 1.5px var(--accent)' }
+        : { background: 'var(--bg-elevated)' }}>
+      <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>{label}</p>
+      <p className="mt-1 text-sm font-bold tabular-nums" style={{ color: highlight ? 'var(--accent)' : 'var(--text-primary)' }}>
+        <bdi>{value}</bdi>
+      </p>
+      {badge && (
+        <span className="mt-1 inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider"
+          style={{ background: badge.bg, color: badge.fg }}>{badge.label}</span>
+      )}
+    </div>
+  )
+}
 function Action({ children, onClick, busy, tone, icon }: { children: React.ReactNode; onClick: () => void; busy: boolean; tone: 'primary' | 'danger'; icon: React.ReactNode }) {
   const style = tone === 'primary' ? { background: 'var(--accent-subtle)', color: 'var(--accent)' } : { background: 'rgba(244,63,94,0.12)', color: '#fb7185' }
   return (
@@ -446,8 +457,31 @@ function PaymentsSection({
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
-  // Net paid = positive payments minus refunds. (Caution is informational.)
-  const paid = payments.reduce((acc, p) => acc + (p.type === 'refund' ? -p.amount : p.amount), 0)
+  // ── Finance categories (correct math) ───────────────────────────
+  // LOYER (rent) — only 'rental_payment' counts against the rental total.
+  const totalLoyer = toNum(total)
+  const payeLoyer  = payments.filter((p) => p.type === 'rental_payment').reduce((a, p) => a + toNum(p.amount), 0)
+  const resteLoyer = Math.max(0, totalLoyer - payeLoyer)
+
+  // FRAIS (additional revenue) — extra_charge/km_excess/late_fee/damage_fee/fuel_charge.
+  const fraisLines = payments.filter((p) => isExtraFeeType(p.type))
+  const totalFrais = fraisLines.reduce((a, p) => a + toNum(p.amount), 0)
+
+  // CAUTION (held money, NOT revenue). Refunds are counted here as "Rendue"
+  // (deposit returned) and are NOT subtracted from loyer/frais — single
+  // place to avoid double-counting.
+  const cautionAttendue = toNum(deposit)
+  const cautionPercue   = payments.filter((p) => p.type === 'deposit').reduce((a, p) => a + toNum(p.amount), 0)
+  const cautionRendue   = payments.filter((p) => p.type === 'refund').reduce((a, p) => a + toNum(p.amount), 0)
+
+  const depStatus: { label: string; bg: string; fg: string } =
+    cautionPercue === 0
+      ? { label: 'Non perçue', bg: 'rgba(148,163,184,0.14)', fg: '#94a3b8' }
+      : cautionRendue >= cautionPercue
+        ? { label: 'Rendue', bg: 'rgba(59,130,246,0.14)', fg: '#60a5fa' }
+        : cautionPercue >= cautionAttendue
+          ? { label: 'Perçue', bg: 'rgba(16,185,129,0.14)', fg: '#10b981' }
+          : { label: 'Partielle', bg: 'rgba(245,158,11,0.14)', fg: '#fbbf24' }
 
   async function add() {
     setBusy(true); setErr(null)
@@ -477,22 +511,68 @@ function PaymentsSection({
         </button>
       </div>
 
-      {/* Running totals */}
-      <div className="flex flex-wrap gap-4 text-sm mb-4">
-        <span style={{ color: 'var(--text-secondary)' }}>Encaissé : <bdi className="font-semibold tabular-nums text-[var(--text-primary)]">{formatDZD(paid)}</bdi></span>
-        <span style={{ color: 'var(--text-secondary)' }}>Total location : <bdi className="tabular-nums">{formatDZD(total)}</bdi></span>
-        <span style={{ color: 'var(--text-secondary)' }}>Reste : <bdi className="font-semibold tabular-nums" >{formatDZD(Math.max(0, total - paid))}</bdi></span>
-        <span style={{ color: 'var(--text-muted)' }}>Caution : <bdi className="tabular-nums">{formatDZD(deposit)}</bdi></span>
+      {/* Summary strip — the key figures the loueur chases */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+        <SummaryBox label="Reste à payer (loyer)" highlight value={formatDZD(resteLoyer)} />
+        <SummaryBox label="Encaissé loyer" value={formatDZD(payeLoyer)} />
+        <SummaryBox label="Frais encaissés" value={formatDZD(totalFrais)} />
+        <SummaryBox
+          label="Caution"
+          value={`${formatDZD(cautionPercue)} / ${formatDZD(cautionAttendue)}`}
+          badge={depStatus}
+        />
+      </div>
+
+      {/* Category breakdown */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+        {/* Loyer */}
+        <div className="rounded-xl p-4" style={{ background: 'var(--bg-elevated)' }}>
+          <p className="text-[11px] font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--text-muted)' }}>Loyer</p>
+          <Line label="Total loyer">{formatDZD(totalLoyer)}</Line>
+          <Line label="Payé">{formatDZD(payeLoyer)}</Line>
+          <Line label="Reste" strong>{formatDZD(resteLoyer)}</Line>
+        </div>
+        {/* Caution */}
+        <div className="rounded-xl p-4" style={{ background: 'var(--bg-elevated)' }}>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Caution</p>
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider"
+              style={{ background: depStatus.bg, color: depStatus.fg }}>{depStatus.label}</span>
+          </div>
+          <Line label="Attendue">{formatDZD(cautionAttendue)}</Line>
+          <Line label="Perçue">{formatDZD(cautionPercue)}</Line>
+          <Line label="Rendue">{formatDZD(cautionRendue)}</Line>
+        </div>
+        {/* Frais — only when present */}
+        {fraisLines.length > 0 && (
+          <div className="rounded-xl p-4 md:col-span-2" style={{ background: 'var(--bg-elevated)' }}>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Frais supplémentaires</p>
+              <span className="text-sm font-bold tabular-nums text-[var(--text-primary)]"><bdi>{formatDZD(totalFrais)}</bdi></span>
+            </div>
+            <ul className="space-y-1">
+              {fraisLines.map((p) => (
+                <li key={p.id} className="flex items-center justify-between text-sm">
+                  <span style={{ color: 'var(--text-secondary)' }}>
+                    {rentalPaymentTypeLabel(p.type)}
+                    <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}> · {rentalPaymentMethodLabel(p.method)} · {fmtDate(p.created_at)}{p.notes ? ` · ${p.notes}` : ''}</span>
+                  </span>
+                  <bdi className="tabular-nums text-[var(--text-primary)]">{formatDZD(toNum(p.amount))}</bdi>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
 
       {adding && (
         <div className="rounded-xl p-4 mb-4 space-y-3" style={{ background: 'var(--bg-elevated)' }}>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <select value={type} onChange={(e) => setType(e.target.value)} className={input} style={inputStyle}>
-              {PAYMENT_TYPES.map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}
+              {RENTAL_PAYMENT_TYPES.map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}
             </select>
             <select value={method} onChange={(e) => setMethod(e.target.value)} className={input} style={inputStyle}>
-              {PAYMENT_METHODS.map((m) => <option key={m.code} value={m.code}>{m.label}</option>)}
+              {RENTAL_PAYMENT_METHODS.map((m) => <option key={m.code} value={m.code}>{m.label}</option>)}
             </select>
             <input type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Montant (DZD)" className={input} style={inputStyle} />
             <input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Référence (optionnel)" className={input} style={inputStyle} />
@@ -513,8 +593,8 @@ function PaymentsSection({
             <li key={p.id} className="flex items-center justify-between gap-3 py-2.5">
               <div className="min-w-0">
                 <div className="text-sm font-medium text-[var(--text-primary)]">
-                  {labelOf(PAYMENT_TYPES, p.type)}
-                  <span className="text-xs font-normal" style={{ color: 'var(--text-muted)' }}> · {labelOf(PAYMENT_METHODS, p.method)}</span>
+                  {rentalPaymentTypeLabel(p.type)}
+                  <span className="text-xs font-normal" style={{ color: 'var(--text-muted)' }}> · {rentalPaymentMethodLabel(p.method)}</span>
                 </div>
                 <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
                   {fmtDate(p.created_at)}{p.reference ? ` · ${p.reference}` : ''}{p.notes ? ` · ${p.notes}` : ''}
