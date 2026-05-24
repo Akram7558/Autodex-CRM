@@ -2,13 +2,19 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { Bell, AlertTriangle, Clock, PackageX, UserX, AlertOctagon } from 'lucide-react'
+import { Bell, AlertTriangle, Clock, PackageX, UserX, AlertOctagon, KeyRound, CornerDownLeft } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { formatDistanceToNow } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import type { Notification, NotificationType } from '@/lib/types'
+import { relativeDayLabel, type AgendaItem } from '@/lib/rental/agenda'
 
 const POLL_MS = 5 * 60 * 1000 // 5 minutes
+
+// Live rental reminder line (no stored rows).
+function agendaVerb(kind: AgendaItem['kind']): string {
+  return kind === 'pickup' ? 'récupère' : kind === 'return' ? 'retour de' : 'retour en retard'
+}
 
 function iconFor(type: NotificationType) {
   switch (type) {
@@ -47,6 +53,8 @@ export function NotificationBell({ userId }: { userId: string | null }) {
   const [open, setOpen] = useState(false)
   const [items, setItems] = useState<Notification[]>([])
   const [unread, setUnread] = useState(0)
+  const [agenda, setAgenda] = useState<AgendaItem[]>([])
+  const [agendaDays, setAgendaDays] = useState<{ today: string; tomorrow: string }>({ today: '', tomorrow: '' })
   const ref = useRef<HTMLDivElement | null>(null)
 
   async function load() {
@@ -63,6 +71,20 @@ export function NotificationBell({ userId }: { userId: string | null }) {
       .select('*', { count: 'exact', head: true })
       .eq('read', false)
     setUnread(count ?? 0)
+
+    // Live rental reminders (pickups/returns/overdue) — not stored.
+    try {
+      const res = await fetch('/api/rental/agenda')
+      if (res.ok) {
+        const j = await res.json()
+        setAgenda((j.items ?? []) as AgendaItem[])
+        setAgendaDays({ today: j.today ?? '', tomorrow: j.tomorrow ?? '' })
+      } else {
+        setAgenda([])
+      }
+    } catch {
+      setAgenda([])
+    }
   }
 
   async function runChecks() {
@@ -101,6 +123,11 @@ export function NotificationBell({ userId }: { userId: string | null }) {
     setItems((prev) => prev.map((n) => ({ ...n, read: true })))
   }
 
+  // Badge merges stored notifications + live rental reminders. "Tout marquer
+  // lu" only affects notifications; live reminders persist until the rental
+  // moves on (they're real upcoming events, not dismissible alerts).
+  const totalCount = unread + agenda.length
+
   return (
     <div className="relative" ref={ref}>
       <button
@@ -109,9 +136,9 @@ export function NotificationBell({ userId }: { userId: string | null }) {
         aria-label="Notifications"
       >
         <Bell className="w-4.5 h-4.5" />
-        {unread > 0 && (
+        {totalCount > 0 && (
           <span className="absolute top-1 right-1 min-w-[16px] h-4 px-1 rounded-full bg-indigo-600 text-white text-[10px] font-bold flex items-center justify-center border-2 border-white dark:border-zinc-950">
-            {unread > 99 ? '99+' : unread}
+            {totalCount > 99 ? '99+' : totalCount}
           </span>
         )}
       </button>
@@ -136,7 +163,43 @@ export function NotificationBell({ userId }: { userId: string | null }) {
 
           {/* list */}
           <div className="max-h-96 overflow-y-auto">
-            {items.length === 0 && (
+            {/* Live rental reminders — pickups / returns / overdue (not stored) */}
+            {agenda.length > 0 && (
+              <div>
+                <p className="px-4 pt-3 pb-1 text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                  Location · à venir
+                </p>
+                {agenda.map((it) => {
+                  const overdue = it.kind === 'overdue'
+                  const Icon = overdue ? AlertTriangle : it.kind === 'pickup' ? KeyRound : CornerDownLeft
+                  const day = relativeDayLabel(it.date, agendaDays.today, agendaDays.tomorrow)
+                  return (
+                    <Link
+                      key={`agenda-${it.id}-${it.kind}`}
+                      href={`/dashboard/location/contrats/${it.id}`}
+                      onClick={() => setOpen(false)}
+                      className="flex items-start gap-3 px-4 py-3 hover:bg-muted transition-colors border-b border-border"
+                    >
+                      <div className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${overdue ? 'text-red-500 bg-red-500/10' : 'text-emerald-600 bg-emerald-500/10'}`}>
+                        <Icon className="w-4 h-4" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">
+                          {it.customer_name} · <bdi>{it.vehicle_label}</bdi>
+                        </p>
+                        <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
+                          <span className={overdue ? 'font-semibold text-red-500' : ''}>{day}</span>
+                          {it.time ? ` ${it.time}` : ''} · {agendaVerb(it.kind)}
+                          {it.contract_number ? ` · ${it.contract_number}` : ''}
+                        </p>
+                      </div>
+                    </Link>
+                  )
+                })}
+              </div>
+            )}
+
+            {items.length === 0 && agenda.length === 0 && (
               <div className="px-4 py-8 text-center text-sm text-muted-foreground">
                 Aucune alerte pour l’instant.
               </div>

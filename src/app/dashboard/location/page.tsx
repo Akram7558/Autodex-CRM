@@ -1,14 +1,21 @@
-'use client'
 // ─────────────────────────────────────────────────────────────────────
-// /dashboard/location — Phase 1 dashboard hub.
+// /dashboard/location — rental hub.
 // ─────────────────────────────────────────────────────────────────────
-// Placeholder stats + Phase-2 CTAs. The fleet + pricing pages already
-// work end-to-end (chunk 1 ships full CRUD); contract creation and
-// the calendar arrive in Phase 2.
+// Server component: renders the CTAs + a live "Agenda" widget (pickups /
+// returns / overdue, computed in Africa/Algiers tz, scoped by role). Gated
+// by middleware (ROUTE_ACL: /dashboard/location → owner/manager/closer/
+// super_admin) + RLS.
 // ─────────────────────────────────────────────────────────────────────
 
 import Link from 'next/link'
+import { cookies } from 'next/headers'
+import { createServerClient } from '@supabase/ssr'
 import { Calendar, FileText, KeyRound, Car, BadgeDollarSign, ArrowRight } from 'lucide-react'
+import RentalAgendaWidget from '@/components/rental/RentalAgendaWidget'
+import {
+  computeRentalAgenda, algiersToday, addDaysISO,
+  type RentalAgenda,
+} from '@/lib/rental/agenda'
 
 type Stat = { label: string; value: string; sub: string; icon: typeof Calendar }
 
@@ -19,7 +26,36 @@ const STATS: Stat[] = [
   { label: "Pickups / retours aujourd'hui", value: '—', sub: 'Phase 4', icon: Calendar },
 ]
 
-export default function RentalDashboardPage() {
+async function loadAgenda(): Promise<{ agenda: RentalAgenda; today: string; tomorrow: string }> {
+  const today = algiersToday()
+  const tomorrow = addDaysISO(today, 1)
+  const empty: RentalAgenda = { pickups: [], returns: [], overdue: [] }
+
+  const url  = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (!url || !anon) return { agenda: empty, today, tomorrow }
+
+  const cookieStore = await cookies()
+  const supabase = createServerClient(url, anon, {
+    cookies: {
+      getAll() { return cookieStore.getAll().map(({ name, value }) => ({ name, value })) },
+      setAll() {},
+    },
+  })
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { agenda: empty, today, tomorrow }
+
+  const { data: roleRow } = await supabase
+    .from('user_roles').select('role, showroom_id').eq('user_id', user.id).maybeSingle()
+  const role = (roleRow?.role as string | undefined) ?? ''
+  const showroomId = (roleRow?.showroom_id as string | null) ?? null
+
+  const agenda = await computeRentalAgenda(supabase, { showroomId, role, userId: user.id })
+  return { agenda, today, tomorrow }
+}
+
+export default async function RentalDashboardPage() {
+  const { agenda, today, tomorrow } = await loadAgenda()
   return (
     <div className="p-6 md:p-10 max-w-7xl mx-auto space-y-8">
       {/* Header */}
@@ -101,6 +137,9 @@ export default function RentalDashboardPage() {
           <ArrowRight className="w-4 h-4 rtl:rotate-180" />
         </Link>
       </div>
+
+      {/* Agenda — live pickups / returns / overdue */}
+      <RentalAgendaWidget agenda={agenda} today={today} tomorrow={tomorrow} />
 
       {/* What's live */}
       <div
