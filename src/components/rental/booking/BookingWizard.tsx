@@ -116,11 +116,12 @@ export default function BookingWizard({ prefill }: { prefill?: WizardPrefill | n
         return
       }
 
-      setCreated(j.rental as CreatedContract)
-      // Reset state + redirect after a short success beat. Converting from a
-      // prospect lands back on the prospects pipeline (now shows Convertie).
-      const dest = fromProspectId ? '/dashboard/location/prospects' : '/dashboard/location'
-      setTimeout(() => { dispatch({ type: 'RESET' }); router.push(dest) }, 2200)
+      const rental = j.rental as CreatedContract
+      setCreated(rental)
+      // Both flows land on the new contract's detail page. The prospect (if
+      // any) was already marked convertie + linked server-side. router.replace
+      // so the back button doesn't return to the filled wizard (no re-submit).
+      setTimeout(() => { dispatch({ type: 'RESET' }); router.replace(`/dashboard/location/contrats/${rental.id}`) }, 1500)
     } catch {
       setSubmitError('Erreur réseau. Réessayez.')
       setSubmitting(false)
@@ -152,11 +153,11 @@ export default function BookingWizard({ prefill }: { prefill?: WizardPrefill | n
           )}
           <div className="mt-6">
             <Link
-              href={fromProspectId ? '/dashboard/location/prospects' : '/dashboard/location'}
+              href={`/dashboard/location/contrats/${created.id}`}
               className="inline-flex items-center gap-2 h-11 px-6 rounded-xl text-sm font-semibold text-white"
               style={{ background: 'var(--accent)', boxShadow: '0 8px 22px -10px var(--accent-glow)' }}
             >
-              {fromProspectId ? 'Retour aux demandes' : 'Aller au tableau de bord'} <ArrowRight className="w-4 h-4 rtl:rotate-180" />
+              Voir le contrat <ArrowRight className="w-4 h-4 rtl:rotate-180" />
             </Link>
           </div>
         </div>
@@ -248,7 +249,7 @@ export default function BookingWizard({ prefill }: { prefill?: WizardPrefill | n
         style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', boxShadow: 'var(--shadow-glass)' }}
       >
         {state.step === 1 && <StepVehicleDates state={state} dispatch={dispatch} onValidity={handleValidity} />}
-        {state.step === 2 && <StepCustomer state={state} dispatch={dispatch} onValidity={handleValidity} prefill={customerPrefill} />}
+        {state.step === 2 && <StepCustomer state={state} dispatch={dispatch} onValidity={handleValidity} prefill={customerPrefill} prefilledCustomerId={prefill?.customer?.id ?? null} />}
         {state.step === 3 && <StepPricing state={state} dispatch={dispatch} onValidity={handleValidity} />}
         {state.step === 4 && <StepRecapSignature state={state} dispatch={dispatch} onValidity={handleValidity} />}
       </div>

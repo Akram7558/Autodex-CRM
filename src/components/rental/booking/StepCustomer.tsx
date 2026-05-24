@@ -33,13 +33,15 @@ function toLite(c: ApiCustomer): RentalCustomerLite {
 }
 
 export default function StepCustomer({
-  state, dispatch, onValidity, prefill,
+  state, dispatch, onValidity, prefill, prefilledCustomerId,
 }: {
   state:      BookingState
   dispatch:   (a: BookingAction) => void
   onValidity: (valid: boolean) => void
   /** Prospect conversion: prime the search-by-phone + the create form. */
   prefill?:   { name: string; phone: string }
+  /** Convert flow: the auto-resolved customer id (shows an "identifié" note). */
+  prefilledCustomerId?: string | null
 }) {
   const [mode, setMode] = useState<'search' | 'create'>('search')
 
@@ -144,6 +146,9 @@ export default function StepCustomer({
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-[var(--text-primary)] truncate">{c.full_name}</p>
             <p className="text-xs text-[var(--text-secondary)] tabular-nums">{c.phone}</p>
+            {prefilledCustomerId && c.id === prefilledCustomerId && (
+              <p className="text-[11px] mt-0.5" style={{ color: 'var(--accent)' }}>Client identifié depuis la demande</p>
+            )}
           </div>
           <button
             type="button"

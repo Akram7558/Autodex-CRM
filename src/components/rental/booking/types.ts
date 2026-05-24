@@ -97,14 +97,17 @@ export function bookingReducer(s: BookingState, a: BookingAction): BookingState 
 
 // ── Prospect → wizard prefill (chunk D) ───────────────────────────────
 // Built server-side from a rental_prospect; seeds the wizard's initial
-// state. Customer name/phone are passed to StepCustomer (not the reducer)
-// so the existing search/create flow handles matching/confirming.
+// state. `customer` is the find-or-created rental_customer (auto-resolved by
+// phone on convert) — when set, Step 2 is already satisfied. customerName/
+// Phone are still passed to StepCustomer to prime the search/create form if
+// the employee overrides the auto-selected client.
 export type WizardPrefill = {
   fromProspectId:     string
   vehicle:            RentalVehicleLite | null
   vehicleUnavailable: boolean   // prospect referenced a vehicle that's gone/inactive
   startDate:          string
   endDate:            string
+  customer:           RentalCustomerLite | null
   customerName:       string
   customerPhone:      string
 }
@@ -119,6 +122,7 @@ export function bookingStateFromPrefill(p: WizardPrefill | null): BookingState {
     depositAmount: p.vehicle ? toNum(p.vehicle.deposit_amount) : base.depositAmount,
     startDate:     p.startDate || '',
     endDate:       p.endDate || '',
+    customer:      p.customer ?? null,
   }
 }
 
