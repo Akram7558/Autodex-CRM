@@ -290,7 +290,14 @@ function SuiviControl({
           {rentalProspectStatusLabel('convertie')}
         </span>
         {row.contract_number && (
-          <div className="text-[11px] font-mono text-emerald-600 dark:text-emerald-400">{row.contract_number}</div>
+          row.converted_rental_id ? (
+            <Link href={`/dashboard/location/contrats/${row.converted_rental_id}`}
+              className="block text-[11px] font-mono text-emerald-600 dark:text-emerald-400 hover:underline">
+              {row.contract_number}
+            </Link>
+          ) : (
+            <div className="text-[11px] font-mono text-emerald-600 dark:text-emerald-400">{row.contract_number}</div>
+          )
         )}
       </div>
     )

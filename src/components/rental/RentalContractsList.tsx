@@ -184,7 +184,11 @@ export default function RentalContractsList({ initialRows }: { initialRows: Cont
               <tbody>
                 {visibleRows.map((r) => (
                   <tr key={r.id} className="border-t" style={{ borderColor: 'var(--border)' }}>
-                    <td className="px-4 py-3 font-medium text-[var(--text-primary)]"><bdi>{r.contract_number ?? '—'}</bdi></td>
+                    <td className="px-4 py-3 font-medium">
+                      <Link href={`/dashboard/location/contrats/${r.id}`} className="text-emerald-600 dark:text-emerald-400 hover:underline">
+                        <bdi>{r.contract_number ?? 'Voir'}</bdi>
+                      </Link>
+                    </td>
                     <td className="px-4 py-3 text-[var(--text-secondary)]">
                       {r.vehicle ? <bdi>{r.vehicle.marque} {r.vehicle.modele}{r.vehicle.annee ? ` · ${r.vehicle.annee}` : ''}</bdi> : '—'}
                     </td>
@@ -217,7 +221,9 @@ export default function RentalContractsList({ initialRows }: { initialRows: Cont
               <div key={r.id} className="rounded-2xl p-4 space-y-3"
                 style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="font-semibold text-[var(--text-primary)]"><bdi>{r.contract_number ?? '—'}</bdi></span>
+                  <Link href={`/dashboard/location/contrats/${r.id}`} className="font-semibold text-emerald-600 dark:text-emerald-400 hover:underline">
+                    <bdi>{r.contract_number ?? 'Voir'}</bdi>
+                  </Link>
                   <StatusBadge status={r.status} />
                 </div>
                 <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
