@@ -16,11 +16,14 @@ import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import {
   CheckCircle2, Flag, XCircle, Loader2, Plus, FileText, Car as CarIcon, User,
+  CalendarClock, RotateCcw,
 } from 'lucide-react'
 import {
-  RENTAL_TAB_GROUPS, rentalStatusLabel, formatDZD, formatDateFr,
+  RENTAL_TAB_GROUPS, rentalStatusLabel, rentalStatusColor, formatDZD, formatDateFr,
 } from '@/components/rental/booking/types'
 import ContactButtons from '@/components/rental/ContactButtons'
+
+type ContractTransition = 'confirmed' | 'completed' | 'cancelled' | 'reporter'
 
 export type ContractRow = {
   id:                  string
@@ -38,18 +41,8 @@ export type ContractRow = {
   customer: { full_name: string; phone: string } | null
 }
 
-// Colors only — labels come from rentalStatusLabel().
-const STATUS_COLORS: Record<string, { bg: string; fg: string; ring: string }> = {
-  draft:     { bg: 'rgba(148,163,184,0.12)', fg: '#94a3b8', ring: 'rgba(148,163,184,0.35)' },
-  confirmed: { bg: 'rgba(59,130,246,0.12)',  fg: '#60a5fa', ring: 'rgba(59,130,246,0.35)' },
-  active:    { bg: 'rgba(16,185,129,0.14)',  fg: '#10b981', ring: 'rgba(16,185,129,0.40)' },
-  completed: { bg: 'rgba(16,185,129,0.14)',  fg: '#10b981', ring: 'rgba(16,185,129,0.40)' },
-  overdue:   { bg: 'rgba(245,158,11,0.14)',  fg: '#fbbf24', ring: 'rgba(245,158,11,0.40)' },
-  cancelled: { bg: 'rgba(244,63,94,0.12)',   fg: '#fb7185', ring: 'rgba(244,63,94,0.40)' },
-}
-
 function StatusBadge({ status }: { status: string }) {
-  const s = STATUS_COLORS[status] ?? STATUS_COLORS.draft
+  const s = rentalStatusColor(status)
   return (
     <span
       className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider"
@@ -62,7 +55,7 @@ function StatusBadge({ status }: { status: string }) {
 
 export default function RentalContractsList({ initialRows }: { initialRows: ContractRow[] }) {
   const [rows, setRows] = useState<ContractRow[]>(initialRows)
-  const [activeKey, setActiveKey] = useState<string>('ongoing') // default = "En cours"
+  const [activeKey, setActiveKey] = useState<string>(RENTAL_TAB_GROUPS[0].key) // default = first tab
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [cancelTarget, setCancelTarget] = useState<ContractRow | null>(null)
@@ -78,7 +71,7 @@ export default function RentalContractsList({ initialRows }: { initialRows: Cont
   const activeGroup = RENTAL_TAB_GROUPS.find((g) => g.key === activeKey) ?? RENTAL_TAB_GROUPS[0]
   const visibleRows = rows.filter((r) => (activeGroup.statuses as readonly string[]).includes(r.status))
 
-  async function transition(row: ContractRow, status: 'confirmed' | 'completed' | 'cancelled', reason?: string) {
+  async function transition(row: ContractRow, status: ContractTransition, reason?: string) {
     setBusyId(row.id)
     setError(null)
     try {
@@ -278,30 +271,47 @@ function RowActions({
 }: {
   row: ContractRow
   busy: boolean
-  onTransition: (row: ContractRow, status: 'confirmed' | 'completed' | 'cancelled') => void
+  onTransition: (row: ContractRow, status: ContractTransition) => void
   onCancel: () => void
 }) {
-  const isDraft = row.status === 'draft'
-  const isOngoing = row.status === 'confirmed' || row.status === 'active' || row.status === 'overdue'
-  if (!isDraft && !isOngoing) {
+  const s = row.status
+  const canConfirm   = s === 'draft'                                              // → confirmed
+  const canReprogram = s === 'reporter'                                           // → confirmed (Reprogrammer)
+  const canComplete  = s === 'confirmed' || s === 'active' || s === 'overdue'     // → completed
+  const canReporter  = s === 'draft' || s === 'confirmed' || s === 'overdue'      // → reporter
+  const canCancel    = s !== 'completed' && s !== 'cancelled'                     // → cancelled
+
+  if (!canConfirm && !canReprogram && !canComplete && !canReporter && !canCancel) {
     return <span className="text-xs" style={{ color: 'var(--text-muted)' }}>—</span>
   }
   return (
     <div className="flex flex-wrap items-center gap-2">
       {busy && <Loader2 className="w-4 h-4 animate-spin" style={{ color: 'var(--text-muted)' }} />}
-      {isDraft && (
+      {canConfirm && (
         <ActionBtn onClick={() => onTransition(row, 'confirmed')} disabled={busy} tone="primary" icon={<CheckCircle2 className="w-3.5 h-3.5" />}>
           Confirmer
         </ActionBtn>
       )}
-      {isOngoing && (
+      {canReprogram && (
+        <ActionBtn onClick={() => onTransition(row, 'confirmed')} disabled={busy} tone="primary" icon={<RotateCcw className="w-3.5 h-3.5" />}>
+          Reprogrammer
+        </ActionBtn>
+      )}
+      {canComplete && (
         <ActionBtn onClick={() => onTransition(row, 'completed')} disabled={busy} tone="primary" icon={<Flag className="w-3.5 h-3.5" />}>
           Terminer
         </ActionBtn>
       )}
-      <ActionBtn onClick={onCancel} disabled={busy} tone="danger" icon={<XCircle className="w-3.5 h-3.5" />}>
-        Annuler
-      </ActionBtn>
+      {canReporter && (
+        <ActionBtn onClick={() => onTransition(row, 'reporter')} disabled={busy} tone="neutral" icon={<CalendarClock className="w-3.5 h-3.5" />}>
+          Reporter
+        </ActionBtn>
+      )}
+      {canCancel && (
+        <ActionBtn onClick={onCancel} disabled={busy} tone="danger" icon={<XCircle className="w-3.5 h-3.5" />}>
+          Annuler
+        </ActionBtn>
+      )}
     </div>
   )
 }
@@ -312,12 +322,13 @@ function ActionBtn({
   children: React.ReactNode
   onClick: () => void
   disabled?: boolean
-  tone: 'primary' | 'danger'
+  tone: 'primary' | 'danger' | 'neutral'
   icon: React.ReactNode
 }) {
-  const style = tone === 'primary'
-    ? { background: 'var(--accent-subtle)', color: 'var(--accent)' }
-    : { background: 'rgba(244,63,94,0.12)', color: '#fb7185' }
+  const style =
+    tone === 'primary' ? { background: 'var(--accent-subtle)', color: 'var(--accent)' } :
+    tone === 'danger'  ? { background: 'rgba(244,63,94,0.12)', color: '#fb7185' } :
+                         { background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }
   return (
     <button
       type="button"

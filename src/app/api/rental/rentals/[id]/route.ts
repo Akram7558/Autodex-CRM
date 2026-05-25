@@ -30,10 +30,11 @@ type RouteCtx = { params: Promise<{ id: string }> }
 const ALLOWED_ROLES = new Set(['owner', 'manager', 'closer', 'super_admin'])
 const FIN_ROLES = new Set(['owner', 'manager', 'super_admin'])
 const TRANSITIONS: Record<string, Set<string>> = {
-  draft:     new Set(['confirmed', 'cancelled']),
-  confirmed: new Set(['completed', 'cancelled']),
-  active:    new Set(['completed', 'cancelled']),
-  overdue:   new Set(['completed', 'cancelled']),
+  draft:     new Set(['confirmed', 'reporter', 'cancelled']),
+  confirmed: new Set(['completed', 'reporter', 'cancelled']),
+  active:    new Set(['completed', 'cancelled']),       // can't postpone an active rental
+  overdue:   new Set(['completed', 'reporter', 'cancelled']),
+  reporter:  new Set(['confirmed', 'cancelled']),        // confirmed = "Reprogrammer"
   completed: new Set(),
   cancelled: new Set(),
 }
@@ -81,8 +82,8 @@ export async function PATCH(req: NextRequest, { params }: RouteCtx) {
     // ── A) STATUS TRANSITION ────────────────────────────────────
     if (typeof body.status === 'string' && body.status.length > 0) {
       const target = body.status
-      if (!['confirmed', 'completed', 'cancelled'].includes(target)) {
-        throw new ApiError(400, "status doit être 'confirmed', 'completed' ou 'cancelled'.")
+      if (!['confirmed', 'completed', 'cancelled', 'reporter'].includes(target)) {
+        throw new ApiError(400, "status doit être 'confirmed', 'completed', 'cancelled' ou 'reporter'.")
       }
       const current = String(rental.status)
       if (current === target) throw new ApiError(409, 'Le contrat est déjà dans ce statut.')
@@ -90,6 +91,9 @@ export async function PATCH(req: NextRequest, { params }: RouteCtx) {
       if (!allowed.has(target)) {
         throw new ApiError(409, `Transition non autorisée (${current} → ${target}).`)
       }
+      // Re-check availability when (re)booking the vehicle: draft→confirmed
+      // and reporter→confirmed ("Reprogrammer"). A reported contract was
+      // excluded from overlap, so confirm it only if the dates are still free.
       if (target === 'confirmed') {
         const { data: overlap, error: rpcErr } = await ctx.authSb.rpc('check_rental_overlap', {
           p_vehicle_id: rental.rental_vehicle_id,

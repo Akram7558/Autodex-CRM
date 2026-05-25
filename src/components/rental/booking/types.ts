@@ -188,16 +188,20 @@ export function formatDZD(n: number | null | undefined): string {
 // cancelled/overdue) — this only maps them to display text. Change labels
 // here and every badge/tab updates.
 
+// 'reporter' = contract whose start/RDV is postponed (date à revoir). It is
+// excluded from overlap/agenda/active-KPIs by design (those count only
+// confirmed/active/overdue) — a postponed contract doesn't block its vehicle.
 export type RentalStatus =
-  | 'draft' | 'confirmed' | 'active' | 'completed' | 'cancelled' | 'overdue'
+  | 'draft' | 'confirmed' | 'active' | 'completed' | 'cancelled' | 'overdue' | 'reporter'
 
 export const RENTAL_STATUS_LABELS: Record<RentalStatus, string> = {
-  draft:     'En attente',
-  confirmed: 'Réservé',
-  active:    'En cours',
-  completed: 'Terminé',
-  cancelled: 'Annulé',
+  draft:     'À confirmer',
+  confirmed: 'Réservé — à venir',
+  active:    'En cours de location',
+  completed: 'Terminé — Rendu',
   overdue:   'En retard',
+  cancelled: 'Annulé',
+  reporter:  'Reporté',
 }
 
 /** Display label for a rental status value (falls back to the raw value). */
@@ -206,11 +210,31 @@ export function rentalStatusLabel(status: string | null | undefined): string {
   return RENTAL_STATUS_LABELS[status as RentalStatus] ?? status
 }
 
-// Contracts-list tab grouping (grouping unchanged; labels per spec). Kept
-// here so a future contracts list page reuses the same source of truth.
+// Centralized status badge colors (single source of truth — used by the
+// contracts list + the contract detail). 'reporter' = violet (distinct from
+// overdue's amber).
+export const RENTAL_STATUS_COLORS: Record<RentalStatus, { bg: string; fg: string; ring: string }> = {
+  draft:     { bg: 'rgba(148,163,184,0.12)', fg: '#94a3b8', ring: 'rgba(148,163,184,0.35)' },
+  confirmed: { bg: 'rgba(59,130,246,0.12)',  fg: '#60a5fa', ring: 'rgba(59,130,246,0.35)' },
+  active:    { bg: 'rgba(16,185,129,0.14)',  fg: '#10b981', ring: 'rgba(16,185,129,0.40)' },
+  completed: { bg: 'rgba(16,185,129,0.14)',  fg: '#10b981', ring: 'rgba(16,185,129,0.40)' },
+  overdue:   { bg: 'rgba(245,158,11,0.14)',  fg: '#fbbf24', ring: 'rgba(245,158,11,0.40)' },
+  cancelled: { bg: 'rgba(244,63,94,0.12)',   fg: '#fb7185', ring: 'rgba(244,63,94,0.40)' },
+  reporter:  { bg: 'rgba(168,85,247,0.14)',  fg: '#c084fc', ring: 'rgba(168,85,247,0.40)' },
+}
+
+/** Color set for a rental status (falls back to draft's neutral tone). */
+export function rentalStatusColor(status: string | null | undefined): { bg: string; fg: string; ring: string } {
+  return RENTAL_STATUS_COLORS[status as RentalStatus] ?? RENTAL_STATUS_COLORS.draft
+}
+
+// Contracts-list tab grouping. Each status maps to exactly one tab; reporter
+// has its own "Reportés" tab. Kept here as the single source of truth.
 export const RENTAL_TAB_GROUPS: { key: string; label: string; statuses: RentalStatus[] }[] = [
-  { key: 'pending',   label: 'En attente', statuses: ['draft'] },
-  { key: 'ongoing',   label: 'En cours',   statuses: ['confirmed', 'active', 'overdue'] },
-  { key: 'completed', label: 'Terminés',   statuses: ['completed'] },
-  { key: 'cancelled', label: 'Annulés',    statuses: ['cancelled'] },
+  { key: 'pending',   label: 'À confirmer', statuses: ['draft'] },
+  { key: 'upcoming',  label: 'À venir',     statuses: ['confirmed'] },
+  { key: 'ongoing',   label: 'En cours',    statuses: ['active', 'overdue'] },
+  { key: 'postponed', label: 'Reportés',    statuses: ['reporter'] },
+  { key: 'completed', label: 'Terminés',    statuses: ['completed'] },
+  { key: 'cancelled', label: 'Annulés',     statuses: ['cancelled'] },
 ]

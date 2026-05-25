@@ -15,11 +15,13 @@ import { useRouter } from 'next/navigation'
 import {
   ArrowLeft, Phone, MessageCircle, Car as CarIcon, CalendarRange, User,
   CheckCircle2, Flag, XCircle, Pencil, Loader2, PenLine,
-  Banknote, Plus, FileSignature,
+  Banknote, Plus, FileSignature, CalendarClock, RotateCcw,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import PhotoLightbox from '@/components/ui/PhotoLightbox'
-import { rentalStatusLabel, formatDZD, toNum } from '@/components/rental/booking/types'
+import { rentalStatusLabel, rentalStatusColor, formatDZD, toNum } from '@/components/rental/booking/types'
+
+type ContractTransition = 'confirmed' | 'completed' | 'cancelled' | 'reporter'
 import { rentalFormatPhoneIntl } from '@/lib/rental/prospects'
 import {
   RENTAL_PAYMENT_TYPES, RENTAL_PAYMENT_METHODS,
@@ -58,15 +60,6 @@ export type ContractDetailData = {
 
 type VehicleOpt = { id: string; marque: string; modele: string; annee: number | null; immatriculation: string }
 
-const STATUS_COLORS: Record<string, { bg: string; fg: string; ring: string }> = {
-  draft:     { bg: 'rgba(148,163,184,0.12)', fg: '#94a3b8', ring: 'rgba(148,163,184,0.35)' },
-  confirmed: { bg: 'rgba(59,130,246,0.12)',  fg: '#60a5fa', ring: 'rgba(59,130,246,0.35)' },
-  active:    { bg: 'rgba(16,185,129,0.14)',  fg: '#10b981', ring: 'rgba(16,185,129,0.40)' },
-  completed: { bg: 'rgba(16,185,129,0.14)',  fg: '#10b981', ring: 'rgba(16,185,129,0.40)' },
-  overdue:   { bg: 'rgba(245,158,11,0.14)',  fg: '#fbbf24', ring: 'rgba(245,158,11,0.40)' },
-  cancelled: { bg: 'rgba(244,63,94,0.12)',   fg: '#fb7185', ring: 'rgba(244,63,94,0.40)' },
-}
-
 function fmtDate(d: string): string {
   const dt = new Date(d.length <= 10 ? d + 'T00:00:00' : d)
   return Number.isNaN(dt.getTime()) ? d : new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }).format(dt)
@@ -80,11 +73,15 @@ export default function ContractDetail({ data, canFin }: { data: ContractDetailD
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [editing, setEditing] = useState(false)
 
-  const sc = STATUS_COLORS[d.status] ?? STATUS_COLORS.draft
+  const sc = rentalStatusColor(d.status)
   const phone = d.customer ? rentalFormatPhoneIntl(d.customer.phone) : null
-  const isOngoing = d.status === 'confirmed' || d.status === 'active' || d.status === 'overdue'
+  const canConfirm   = d.status === 'draft'
+  const canReprogram = d.status === 'reporter'
+  const canComplete  = d.status === 'confirmed' || d.status === 'active' || d.status === 'overdue'
+  const canReporter  = d.status === 'draft' || d.status === 'confirmed' || d.status === 'overdue'
+  const canCancel    = d.status !== 'completed' && d.status !== 'cancelled'
 
-  async function transition(status: 'confirmed' | 'completed' | 'cancelled', cancellation_reason?: string) {
+  async function transition(status: ContractTransition, cancellation_reason?: string) {
     setBusy(true); setError(null)
     try {
       const res = await fetch(`/api/rental/rentals/${d.id}`, {
@@ -127,13 +124,19 @@ export default function ContractDetail({ data, canFin }: { data: ContractDetailD
 
       {/* Status actions + edit */}
       <div className="flex flex-wrap items-center gap-2">
-        {d.status === 'draft' && (
+        {canConfirm && (
           <Action onClick={() => transition('confirmed')} busy={busy} tone="primary" icon={<CheckCircle2 className="w-4 h-4" />}>Confirmer</Action>
         )}
-        {isOngoing && (
+        {canReprogram && (
+          <Action onClick={() => transition('confirmed')} busy={busy} tone="primary" icon={<RotateCcw className="w-4 h-4" />}>Reprogrammer</Action>
+        )}
+        {canComplete && (
           <Action onClick={() => transition('completed')} busy={busy} tone="primary" icon={<Flag className="w-4 h-4" />}>Terminer</Action>
         )}
-        {(d.status === 'draft' || isOngoing) && (
+        {canReporter && (
+          <Action onClick={() => transition('reporter')} busy={busy} tone="neutral" icon={<CalendarClock className="w-4 h-4" />}>Reporter</Action>
+        )}
+        {canCancel && (
           <CancelControl busy={busy} onConfirm={(reason) => transition('cancelled', reason)} />
         )}
         <button type="button" onClick={() => setEditing((v) => !v)}
@@ -301,8 +304,11 @@ function SummaryBox({
     </div>
   )
 }
-function Action({ children, onClick, busy, tone, icon }: { children: React.ReactNode; onClick: () => void; busy: boolean; tone: 'primary' | 'danger'; icon: React.ReactNode }) {
-  const style = tone === 'primary' ? { background: 'var(--accent-subtle)', color: 'var(--accent)' } : { background: 'rgba(244,63,94,0.12)', color: '#fb7185' }
+function Action({ children, onClick, busy, tone, icon }: { children: React.ReactNode; onClick: () => void; busy: boolean; tone: 'primary' | 'danger' | 'neutral'; icon: React.ReactNode }) {
+  const style =
+    tone === 'primary' ? { background: 'var(--accent-subtle)', color: 'var(--accent)' } :
+    tone === 'danger'  ? { background: 'rgba(244,63,94,0.12)', color: '#fb7185' } :
+                         { background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }
   return (
     <button type="button" onClick={onClick} disabled={busy}
       className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-sm font-semibold disabled:opacity-50" style={style}>
