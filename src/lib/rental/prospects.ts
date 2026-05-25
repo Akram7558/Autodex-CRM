@@ -55,14 +55,16 @@ export function rentalProspectStatusLabel(code: string): string {
   return RENTAL_PROSPECT_STATUSES.find((s) => s.code === code)?.label ?? code
 }
 
-// Statuses selectable in the per-row dropdown — everything except the
-// machine-set 'convertie'.
+// Statuses selectable in the per-row "relance" dropdown. Both 'convertie'
+// (machine-set) and 'rdv_planifie' are EXCLUDED: rdv_planifie is no longer a
+// suivi state but a dedicated ACTION (a row button that moves the prospect
+// into Contrats via /api/rental/prospects/[id]/schedule — Chantier 5).
 export const RENTAL_PROSPECT_SUIVI_OPTIONS: RentalProspectStatus[] = [
-  'nouvelle', 'tentative_1', 'tentative_2', 'tentative_3', 'reporter', 'rdv_planifie', 'perdue',
+  'nouvelle', 'tentative_1', 'tentative_2', 'tentative_3', 'reporter', 'perdue',
 ]
 
-// Valid targets for the PATCH endpoint (manual moves). 'convertie' is
-// excluded — it's only set by the convert flow (chunk D).
+// Valid targets for the PATCH endpoint (manual moves). Excludes 'convertie'
+// and 'rdv_planifie' — both are set by dedicated flows, never the dropdown.
 export const RENTAL_PROSPECT_SUIVI_SET = new Set<string>(RENTAL_PROSPECT_SUIVI_OPTIONS)
 
 // Color classes per status, mirroring the sales palette
@@ -83,6 +85,10 @@ export const RENTAL_PROSPECT_SUIVI_BADGE_CLASSES: Record<RentalProspectStatus, s
 // prospect confirmed for an RDV MOVES into the Contrats section (it gets a
 // converted_rental_id and is filtered out of this list), so there is no
 // "Converties" tab here anymore — those live in Contrats with an "RDV" badge.
+// 'rdv_planifie' is kept folded into "En cours" (not given its own tab): a
+// prospect can land back on this status WITHOUT a link when its contract is
+// cancelled (cancel→reopen sets converted_rental_id=null + status=rdv_planifie),
+// and such reopened prospects must remain visible/actionable here.
 export const RENTAL_PROSPECT_TABS: { id: string; label: string; statuses: RentalProspectStatus[] }[] = [
   { id: 'nouvelles',  label: 'Nouvelles',  statuses: ['nouvelle'] },
   { id: 'encours',    label: 'En cours',   statuses: ['tentative_1', 'tentative_2', 'tentative_3', 'reporter', 'rdv_planifie'] },

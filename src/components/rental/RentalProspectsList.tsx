@@ -9,13 +9,14 @@
 // (key signal), requested vehicle, desired dates, message.
 //
 // Changing the dropdown PATCHes /api/rental/prospects/[id] (optimistic;
-// revert + toast on error) and the row moves to the matching tab — EXCEPT
-// "RDV planifié", which is intercepted (Chantier 4): a confirmation modal
-// then POSTs /api/rental/prospects/[id]/schedule, which MOVES the prospect
-// into Contrats (auto-creates a draft when the vehicle + dates are known, or
-// opens the booking wizard otherwise) and redirects there. Linked prospects
-// are filtered out of this list server-side, so there is no longer a manual
-// "Convertir en contrat" button. All labels/colors come from
+// revert + toast on error) and the row moves to the matching tab. The dropdown
+// holds the relance statuses only (nouvelle / tentative_1-3 / reporter /
+// perdue). "RDV planifié" is a SEPARATE per-row action button (Chantier 5):
+// it opens a confirmation modal, then POSTs /api/rental/prospects/[id]/schedule
+// which MOVES the prospect into Contrats (auto-creates a draft when the vehicle
+// + dates are known, or opens the booking wizard otherwise) and redirects
+// there. Linked prospects are filtered out of this list server-side, so there
+// is no manual "Convertir en contrat" button. All labels/colors come from
 // src/lib/rental/prospects.ts (no hardcoded French/colors here).
 // ─────────────────────────────────────────────────────────────────────
 
@@ -129,13 +130,13 @@ export default function RentalProspectsList({ initialRows }: { initialRows: Pros
     }
   }
 
-  // "RDV planifié" is special: don't PATCH the status — confirm via a modal,
-  // then MOVE the prospect into Contrats. Every other status is a normal
-  // optimistic PATCH. The <select> is controlled by row.status, so declining
-  // here leaves the displayed value untouched (no manual revert needed).
-  function onSelectStatus(row: ProspectRow, status: RentalProspectStatus) {
-    if (status === 'rdv_planifie') { setError(null); setRdvTarget(row); return }
-    changeStatus(row, status)
+  // "RDV planifié" is a dedicated ACTION (a per-row button), no longer a suivi
+  // status: it opens the confirm modal, which then MOVES the prospect into
+  // Contrats via the schedule flow. The relance dropdown handles every other
+  // status with the normal optimistic PATCH (changeStatus).
+  function openRdv(row: ProspectRow) {
+    setError(null)
+    setRdvTarget(row)
   }
 
   async function confirmRdv() {
@@ -260,10 +261,13 @@ export default function RentalProspectsList({ initialRows }: { initialRows: Pros
                       {r.message && <p className="mt-1.5 text-xs line-clamp-2 max-w-[14rem]" style={{ color: 'var(--text-secondary)' }}>{r.message}</p>}
                     </td>
                     <td className="px-4 py-3 text-xs text-[var(--text-secondary)] whitespace-nowrap"><Dates r={r} /></td>
-                    <td className="px-4 py-3"><SuiviControl row={r} busy={busyId === r.id} onChange={onSelectStatus} /></td>
+                    <td className="px-4 py-3"><SuiviControl row={r} busy={busyId === r.id} onChange={changeStatus} /></td>
                     <td className="px-4 py-3 text-xs text-[var(--text-muted)] whitespace-nowrap">{shortDate(r.created_at)}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-2">
+                        {r.status !== 'perdue' && r.status !== 'convertie' && (
+                          <RdvButton onClick={() => openRdv(r)} />
+                        )}
                         <ContactButtons phone={r.phone} />
                       </div>
                     </td>
@@ -283,7 +287,7 @@ export default function RentalProspectsList({ initialRows }: { initialRows: Pros
                     <div className="font-semibold text-[var(--text-primary)] truncate">{r.full_name}</div>
                     <div className="text-xs tabular-nums" style={{ color: 'var(--text-secondary)' }}>{r.phone}</div>
                   </div>
-                  <SuiviControl row={r} busy={busyId === r.id} onChange={onSelectStatus} />
+                  <SuiviControl row={r} busy={busyId === r.id} onChange={changeStatus} />
                 </div>
                 <div><ReasonChip r={r} /></div>
                 <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
@@ -299,6 +303,9 @@ export default function RentalProspectsList({ initialRows }: { initialRows: Pros
                 <div className="flex items-center justify-between pt-1">
                   <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{shortDate(r.created_at)}</span>
                   <div className="flex items-center gap-2">
+                    {r.status !== 'perdue' && r.status !== 'convertie' && (
+                      <RdvButton onClick={() => openRdv(r)} />
+                    )}
                     <ContactButtons phone={r.phone} />
                   </div>
                 </div>
@@ -365,6 +372,13 @@ function SuiviControl({
           cls,
         )}
       >
+        {!RENTAL_PROSPECT_SUIVI_OPTIONS.includes(row.status as RentalProspectStatus) && (
+          // Current status isn't a relance option (e.g. a prospect reopened at
+          // 'rdv_planifie' after its contract was cancelled) — show it as a
+          // disabled leading option so the controlled <select> renders
+          // correctly and the user can still move it to a relance status.
+          <option value={row.status} disabled>{rentalProspectStatusLabel(row.status)}</option>
+        )}
         {RENTAL_PROSPECT_SUIVI_OPTIONS.map((s) => (
           <option key={s} value={s}>{rentalProspectStatusLabel(s)}</option>
         ))}
@@ -376,6 +390,24 @@ function SuiviControl({
   )
 }
 
+
+// Dedicated "RDV planifié" action button (one per row, next to the contact
+// buttons). Distinct, filled accent action — opens the confirm modal that
+// moves the prospect into Contrats. Label centralized via the status vocab.
+function RdvButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={rentalProspectStatusLabel('rdv_planifie')}
+      className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold text-white whitespace-nowrap transition-opacity hover:opacity-90"
+      style={{ background: 'var(--accent)' }}
+    >
+      <CalendarCheck className="w-3.5 h-3.5" />
+      {rentalProspectStatusLabel('rdv_planifie')}
+    </button>
+  )
+}
 
 // "RDV planifié" confirmation — confirming MOVES the prospect into Contrats
 // (the server auto-creates a draft contract, or the client opens the wizard).
