@@ -196,7 +196,7 @@ export type RentalStatus =
 
 export const RENTAL_STATUS_LABELS: Record<RentalStatus, string> = {
   draft:     'À confirmer',
-  confirmed: 'Réservé — à venir',
+  confirmed: 'Réservé',
   active:    'En cours de location',
   completed: 'Terminé — Rendu',
   overdue:   'En retard',
@@ -232,7 +232,7 @@ export function rentalStatusColor(status: string | null | undefined): { bg: stri
 // has its own "Reportés" tab. Kept here as the single source of truth.
 export const RENTAL_TAB_GROUPS: { key: string; label: string; statuses: RentalStatus[] }[] = [
   { key: 'pending',   label: 'À confirmer', statuses: ['draft'] },
-  { key: 'upcoming',  label: 'À venir',     statuses: ['confirmed'] },
+  { key: 'upcoming',  label: 'Réservés',    statuses: ['confirmed'] },
   { key: 'ongoing',   label: 'En cours',    statuses: ['active', 'overdue'] },
   { key: 'postponed', label: 'Reportés',    statuses: ['reporter'] },
   { key: 'completed', label: 'Terminés',    statuses: ['completed'] },
@@ -245,3 +245,22 @@ export const RENTAL_TAB_GROUPS: { key: string; label: string; statuses: RentalSt
 // surface share the same wording.
 export const RENTAL_FROM_PROSPECT_BADGE = 'RDV'
 export const RENTAL_FROM_PROSPECT_TITLE = "Issu d'une demande de location"
+
+// ── Lifecycle action labels ────────────────────────────────────────────
+// Centralized so the contracts list + the contract detail share the wording.
+// "Réserver"        = draft → confirmed (records the mandatory ≥5% deposit).
+// "Voiture récupérée" = confirmed → active (the car is handed over).
+export const RENTAL_ACTION_RESERVE = 'Réserver'
+export const RENTAL_ACTION_PICKUP  = 'Voiture récupérée'
+
+// Minimum deposit fraction required to reserve a contract (5% of the rental
+// total). Single source of truth — used by the UI hint AND validated again
+// server-side in POST /api/rental/rentals/[id]/reserve.
+export const RENTAL_MIN_DEPOSIT_FRACTION = 0.05
+
+/** Minimum deposit (caution) required to reserve: ceil(5% of the total). */
+export function rentalMinDeposit(total: number | null | undefined): number {
+  const t = typeof total === 'number' ? total : Number(total)
+  if (!Number.isFinite(t) || t <= 0) return 0
+  return Math.ceil(t * RENTAL_MIN_DEPOSIT_FRACTION)
+}

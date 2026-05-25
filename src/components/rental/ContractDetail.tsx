@@ -17,11 +17,14 @@ import {
   CheckCircle2, Flag, XCircle, Pencil, Loader2, PenLine,
   Banknote, Plus, FileSignature, CalendarClock, RotateCcw,
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
 import PhotoLightbox from '@/components/ui/PhotoLightbox'
-import { rentalStatusLabel, rentalStatusColor, formatDZD, toNum } from '@/components/rental/booking/types'
+import {
+  rentalStatusLabel, rentalStatusColor, formatDZD, toNum,
+  RENTAL_ACTION_RESERVE, RENTAL_ACTION_PICKUP,
+} from '@/components/rental/booking/types'
+import ReserveDialog from '@/components/rental/ReserveDialog'
 
-type ContractTransition = 'confirmed' | 'completed' | 'cancelled' | 'reporter'
+type ContractTransition = 'confirmed' | 'active' | 'completed' | 'cancelled' | 'reporter'
 import { rentalFormatPhoneIntl } from '@/lib/rental/prospects'
 import {
   RENTAL_PAYMENT_TYPES, RENTAL_PAYMENT_METHODS,
@@ -72,12 +75,14 @@ export default function ContractDetail({ data, canFin }: { data: ContractDetailD
   const [error, setError] = useState<string | null>(null)
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [editing, setEditing] = useState(false)
+  const [reserveOpen, setReserveOpen] = useState(false)
 
   const sc = rentalStatusColor(d.status)
   const phone = d.customer ? rentalFormatPhoneIntl(d.customer.phone) : null
-  const canConfirm   = d.status === 'draft'
+  const canReserve   = d.status === 'draft' && canFin   // Réserver records the deposit → financial only
+  const canPickup    = d.status === 'confirmed'         // "Voiture récupérée" → active
   const canReprogram = d.status === 'reporter'
-  const canComplete  = d.status === 'confirmed' || d.status === 'active' || d.status === 'overdue'
+  const canComplete  = d.status === 'active' || d.status === 'overdue'
   const canReporter  = d.status === 'draft' || d.status === 'confirmed' || d.status === 'overdue'
   const canCancel    = d.status !== 'completed' && d.status !== 'cancelled'
 
@@ -124,8 +129,11 @@ export default function ContractDetail({ data, canFin }: { data: ContractDetailD
 
       {/* Status actions + edit */}
       <div className="flex flex-wrap items-center gap-2">
-        {canConfirm && (
-          <Action onClick={() => transition('confirmed')} busy={busy} tone="primary" icon={<CheckCircle2 className="w-4 h-4" />}>Confirmer</Action>
+        {canReserve && (
+          <Action onClick={() => setReserveOpen(true)} busy={busy} tone="primary" icon={<CheckCircle2 className="w-4 h-4" />}>{RENTAL_ACTION_RESERVE}</Action>
+        )}
+        {canPickup && (
+          <Action onClick={() => transition('active')} busy={busy} tone="primary" icon={<CarIcon className="w-4 h-4" />}>{RENTAL_ACTION_PICKUP}</Action>
         )}
         {canReprogram && (
           <Action onClick={() => transition('confirmed')} busy={busy} tone="primary" icon={<RotateCcw className="w-4 h-4" />}>Reprogrammer</Action>
@@ -250,6 +258,25 @@ export default function ContractDetail({ data, canFin }: { data: ContractDetailD
           total={d.total_rental_amount}
           deposit={d.deposit_amount}
           onAdded={(p) => setD((cur) => ({ ...cur, payments: [p, ...cur.payments] }))}
+        />
+      )}
+
+      {reserveOpen && (
+        <ReserveDialog
+          rentalId={d.id}
+          contractNumber={d.contract_number}
+          total={d.total_rental_amount}
+          depositAmount={d.deposit_amount}
+          onClose={() => setReserveOpen(false)}
+          onReserved={(r) => {
+            setReserveOpen(false)
+            setD((cur) => ({
+              ...cur,
+              status: r.rental.status,
+              payments: [{ ...r.payment, amount: toNum(r.payment.amount) }, ...cur.payments],
+            }))
+            router.refresh()
+          }}
         />
       )}
 

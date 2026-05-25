@@ -3,12 +3,14 @@
 // RentalContractsList — client renderer for the contracts list page.
 // ─────────────────────────────────────────────────────────────────────
 // Status tabs (from RENTAL_TAB_GROUPS) + per-row quick transitions:
-//   draft                      → Confirmer / Annuler
-//   confirmed/active/overdue   → Terminer  / Annuler
+//   draft                      → Réserver (deposit modal) / Reporter / Annuler
+//   confirmed                  → Voiture récupérée / Reporter / Annuler
+//   active/overdue             → Terminer / Annuler
 //   completed/cancelled        → terminal (no actions)
-// Transitions hit PATCH /api/rental/rentals/[id]; on success the row's
-// status updates locally so it moves to the right tab. Labels + grouping
-// come from the centralized helpers (commit 1a475c4) — no hardcoded text.
+// Plain transitions hit PATCH /api/rental/rentals/[id]; "Réserver" goes through
+// the ReserveDialog → POST /reserve (records the deposit then draft→confirmed).
+// On success the row's status updates locally so it moves to the right tab.
+// Labels + grouping come from the centralized helpers — no hardcoded text.
 // Desktop = table; mobile = stacked cards.
 // ─────────────────────────────────────────────────────────────────────
 
@@ -21,10 +23,12 @@ import {
 import {
   RENTAL_TAB_GROUPS, rentalStatusLabel, rentalStatusColor, formatDZD, formatDateFr,
   RENTAL_FROM_PROSPECT_BADGE, RENTAL_FROM_PROSPECT_TITLE,
+  RENTAL_ACTION_RESERVE, RENTAL_ACTION_PICKUP,
 } from '@/components/rental/booking/types'
 import ContactButtons from '@/components/rental/ContactButtons'
+import ReserveDialog from '@/components/rental/ReserveDialog'
 
-type ContractTransition = 'confirmed' | 'completed' | 'cancelled' | 'reporter'
+type ContractTransition = 'confirmed' | 'active' | 'completed' | 'cancelled' | 'reporter'
 
 export type ContractRow = {
   id:                  string
@@ -68,12 +72,13 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
-export default function RentalContractsList({ initialRows }: { initialRows: ContractRow[] }) {
+export default function RentalContractsList({ initialRows, canFin }: { initialRows: ContractRow[]; canFin: boolean }) {
   const [rows, setRows] = useState<ContractRow[]>(initialRows)
   const [activeKey, setActiveKey] = useState<string>(RENTAL_TAB_GROUPS[0].key) // default = first tab
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [cancelTarget, setCancelTarget] = useState<ContractRow | null>(null)
+  const [reserveTarget, setReserveTarget] = useState<ContractRow | null>(null)
 
   const countByKey = useMemo(() => {
     const m: Record<string, number> = {}
@@ -219,7 +224,7 @@ export default function RentalContractsList({ initialRows }: { initialRows: Cont
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-2">
                         <ContactButtons phone={r.customer?.phone ?? null} />
-                        <RowActions row={r} busy={busyId === r.id} onTransition={transition} onCancel={() => setCancelTarget(r)} />
+                        <RowActions row={r} busy={busyId === r.id} canFin={canFin} onTransition={transition} onReserve={() => setReserveTarget(r)} onCancel={() => setCancelTarget(r)} />
                       </div>
                     </td>
                   </tr>
@@ -259,7 +264,7 @@ export default function RentalContractsList({ initialRows }: { initialRows: Cont
                 </div>
                 <div className="flex items-center justify-between gap-2">
                   <ContactButtons phone={r.customer?.phone ?? null} />
-                  <RowActions row={r} busy={busyId === r.id} onTransition={transition} onCancel={() => setCancelTarget(r)} />
+                  <RowActions row={r} busy={busyId === r.id} canFin={canFin} onTransition={transition} onReserve={() => setReserveTarget(r)} onCancel={() => setCancelTarget(r)} />
                 </div>
               </div>
             ))}
@@ -279,6 +284,21 @@ export default function RentalContractsList({ initialRows }: { initialRows: Cont
           }}
         />
       )}
+
+      {/* Reserve (deposit) dialog — draft → confirmed */}
+      {reserveTarget && (
+        <ReserveDialog
+          rentalId={reserveTarget.id}
+          contractNumber={reserveTarget.contract_number}
+          total={reserveTarget.total_rental_amount}
+          depositAmount={reserveTarget.deposit_amount}
+          onClose={() => setReserveTarget(null)}
+          onReserved={(r) => {
+            setRows((prev) => prev.map((row) => (row.id === reserveTarget.id ? { ...row, status: r.rental.status } : row)))
+            setReserveTarget(null)
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -288,29 +308,37 @@ function Th({ children, end }: { children: React.ReactNode; end?: boolean }) {
 }
 
 function RowActions({
-  row, busy, onTransition, onCancel,
+  row, busy, canFin, onTransition, onReserve, onCancel,
 }: {
   row: ContractRow
   busy: boolean
+  canFin: boolean
   onTransition: (row: ContractRow, status: ContractTransition) => void
+  onReserve: () => void
   onCancel: () => void
 }) {
   const s = row.status
-  const canConfirm   = s === 'draft'                                              // → confirmed
+  const canReserve   = s === 'draft' && canFin                                    // → confirmed (deposit, financial)
+  const canPickup    = s === 'confirmed'                                          // → active ("Voiture récupérée")
   const canReprogram = s === 'reporter'                                           // → confirmed (Reprogrammer)
-  const canComplete  = s === 'confirmed' || s === 'active' || s === 'overdue'     // → completed
+  const canComplete  = s === 'active' || s === 'overdue'                          // → completed
   const canReporter  = s === 'draft' || s === 'confirmed' || s === 'overdue'      // → reporter
   const canCancel    = s !== 'completed' && s !== 'cancelled'                     // → cancelled
 
-  if (!canConfirm && !canReprogram && !canComplete && !canReporter && !canCancel) {
+  if (!canReserve && !canPickup && !canReprogram && !canComplete && !canReporter && !canCancel) {
     return <span className="text-xs" style={{ color: 'var(--text-muted)' }}>—</span>
   }
   return (
     <div className="flex flex-wrap items-center gap-2">
       {busy && <Loader2 className="w-4 h-4 animate-spin" style={{ color: 'var(--text-muted)' }} />}
-      {canConfirm && (
-        <ActionBtn onClick={() => onTransition(row, 'confirmed')} disabled={busy} tone="primary" icon={<CheckCircle2 className="w-3.5 h-3.5" />}>
-          Confirmer
+      {canReserve && (
+        <ActionBtn onClick={onReserve} disabled={busy} tone="primary" icon={<CheckCircle2 className="w-3.5 h-3.5" />}>
+          {RENTAL_ACTION_RESERVE}
+        </ActionBtn>
+      )}
+      {canPickup && (
+        <ActionBtn onClick={() => onTransition(row, 'active')} disabled={busy} tone="primary" icon={<CarIcon className="w-3.5 h-3.5" />}>
+          {RENTAL_ACTION_PICKUP}
         </ActionBtn>
       )}
       {canReprogram && (

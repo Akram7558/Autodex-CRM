@@ -16,14 +16,12 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { ApiError, errorResponse, requireShowroomMember } from '@/lib/api-auth'
 import { toNum } from '@/components/rental/booking/types'
+import {
+  insertRentalPayment, RENTAL_PAYMENT_TYPE_SET, RENTAL_PAYMENT_METHOD_SET,
+} from '@/lib/rental/create-payment'
 
 export const runtime = 'nodejs'
 
-const PAYMENT_TYPES = new Set([
-  'deposit', 'rental_payment', 'extra_charge', 'refund',
-  'km_excess', 'late_fee', 'damage_fee', 'fuel_charge',
-])
-const PAYMENT_METHODS = new Set(['cash', 'ccp', 'baridimob', 'bank_transfer'])
 const FIN_ROLES = new Set(['owner', 'manager', 'super_admin'])
 
 export async function POST(req: NextRequest) {
@@ -43,8 +41,8 @@ export async function POST(req: NextRequest) {
     const notes     = body.notes ? String(body.notes).slice(0, 500) : null
 
     if (!rentalId) throw new ApiError(400, 'rental_id requis.')
-    if (!PAYMENT_TYPES.has(type)) throw new ApiError(400, 'Type de paiement invalide.')
-    if (!PAYMENT_METHODS.has(method)) throw new ApiError(400, 'Méthode de paiement invalide.')
+    if (!RENTAL_PAYMENT_TYPE_SET.has(type)) throw new ApiError(400, 'Type de paiement invalide.')
+    if (!RENTAL_PAYMENT_METHOD_SET.has(method)) throw new ApiError(400, 'Méthode de paiement invalide.')
     if (!(amount > 0)) throw new ApiError(400, 'Montant invalide.')
 
     // Verify the parent rental is in the caller's showroom (RLS-scoped).
@@ -56,12 +54,9 @@ export async function POST(req: NextRequest) {
       throw new ApiError(403, 'Contrat hors de votre showroom.')
     }
 
-    const { data, error } = await ctx.authSb
-      .from('rental_payments')
-      .insert([{ rental_id: rentalId, type, amount, method, reference, notes, created_by: ctx.user.id }])
-      .select('id, type, amount, method, reference, notes, created_at')
-      .single()
-    if (error) throw new ApiError(400, error.message)
+    const data = await insertRentalPayment(ctx.authSb, {
+      rentalId, type, amount, method, reference, notes, createdBy: ctx.user.id,
+    })
 
     return NextResponse.json({ payment: data }, { status: 201 })
   } catch (err) {

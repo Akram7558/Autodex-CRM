@@ -40,7 +40,7 @@ export default async function Page() {
   const cookieStore = await cookies()
   const url  = process.env.NEXT_PUBLIC_SUPABASE_URL
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  if (!url || !anon) return <RentalContractsList initialRows={[]} />
+  if (!url || !anon) return <RentalContractsList initialRows={[]} canFin={false} />
 
   const supabase = createServerClient(url, anon, {
     cookies: {
@@ -62,6 +62,10 @@ export default async function Page() {
     redirect('/dashboard/location')
   }
   const showroomId = (roleRow?.showroom_id as string | null) ?? null
+  // Financial roles may "Réserver" (record the mandatory deposit). Closers
+  // don't take money, so the reserve action is hidden for them (consistent
+  // with the payments/financials guard).
+  const canFin = role === 'owner' || role === 'manager' || role === 'super_admin'
 
   // RLS already scopes to the showroom + (for closer) own rows; we mirror
   // the closer filter explicitly per the spec (assigned_to = self).
@@ -115,5 +119,5 @@ export default async function Page() {
     isFromProspect:      rdvSet.has(r.id),
   }))
 
-  return <RentalContractsList initialRows={rows} />
+  return <RentalContractsList initialRows={rows} canFin={canFin} />
 }
