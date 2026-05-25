@@ -45,6 +45,7 @@ export async function GET(req: NextRequest) {
           min_rental_days:          1,
           max_rental_days:          90,
           fuel_charge_per_quarter:  500,
+          deposit_min_percent:      5,
           default_contract_terms:   null,
         },
       })
@@ -86,6 +87,12 @@ export async function PATCH(req: NextRequest) {
       const n = asNumber(b.fuel_charge_per_quarter)
       if (n == null || n < 0) throw new ApiError(400, 'Frais carburant invalide.')
       updates.fuel_charge_per_quarter = n
+    }
+    if (b.deposit_min_percent !== undefined) {
+      // App-level floor mirrors the DB CHECK (migration_47): 5..100.
+      const n = asInt(b.deposit_min_percent)
+      if (n == null || n < 5 || n > 100) throw new ApiError(400, 'Dépôt minimum invalide (5–100%).')
+      updates.deposit_min_percent = n
     }
     if (b.default_contract_terms !== undefined) {
       updates.default_contract_terms = b.default_contract_terms

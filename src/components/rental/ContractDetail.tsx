@@ -68,7 +68,7 @@ function fmtDate(d: string): string {
   return Number.isNaN(dt.getTime()) ? d : new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }).format(dt)
 }
 
-export default function ContractDetail({ data, canFin }: { data: ContractDetailData; canFin: boolean }) {
+export default function ContractDetail({ data, canFin, depositMinPercent = 5 }: { data: ContractDetailData; canFin: boolean; depositMinPercent?: number }) {
   const router = useRouter()
   const [d, setD] = useState<ContractDetailData>(data)
   const [busy, setBusy] = useState(false)
@@ -267,6 +267,7 @@ export default function ContractDetail({ data, canFin }: { data: ContractDetailD
           contractNumber={d.contract_number}
           total={d.total_rental_amount}
           depositAmount={d.deposit_amount}
+          minPercent={depositMinPercent}
           onClose={() => setReserveOpen(false)}
           onReserved={(r) => {
             setReserveOpen(false)

@@ -119,5 +119,19 @@ export default async function Page() {
     isFromProspect:      rdvSet.has(r.id),
   }))
 
-  return <RentalContractsList initialRows={rows} canFin={canFin} />
+  // Per-showroom minimum deposit % (migration_47) for the reserve dialog; 5%
+  // fallback. List-level (one value): correct for a tenant's single showroom;
+  // for a super_admin spanning showrooms it's a best-effort prefill — the
+  // reserve route re-validates with the correct per-rental showroom %.
+  let depositMinPercent = 5
+  if (showroomId) {
+    const { data: settingsRow } = await supabase
+      .from('rental_settings')
+      .select('deposit_min_percent')
+      .eq('showroom_id', showroomId)
+      .maybeSingle()
+    depositMinPercent = Math.min(100, Math.max(5, Number(settingsRow?.deposit_min_percent ?? 5) || 5))
+  }
+
+  return <RentalContractsList initialRows={rows} canFin={canFin} depositMinPercent={depositMinPercent} />
 }

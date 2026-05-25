@@ -14,6 +14,7 @@ type Settings = {
   min_rental_days:          number
   max_rental_days:          number
   fuel_charge_per_quarter:  number
+  deposit_min_percent:      number
   default_contract_terms:   string | null
 }
 
@@ -46,6 +47,7 @@ export default function RentalSettingsForm() {
         min_rental_days:          settings.min_rental_days,
         max_rental_days:          settings.max_rental_days,
         fuel_charge_per_quarter:  settings.fuel_charge_per_quarter,
+        deposit_min_percent:      settings.deposit_min_percent,
         default_contract_terms:   settings.default_contract_terms,
       }),
     })
@@ -113,6 +115,13 @@ export default function RentalSettingsForm() {
               value={settings.max_rental_days}
               onChange={(n) => setSettings({ ...settings, max_rental_days: n })}
               min={1} max={365}
+            />
+          </Field>
+          <Field label="Dépôt minimum (%)">
+            <NumberInput
+              value={settings.deposit_min_percent}
+              onChange={(n) => setSettings({ ...settings, deposit_min_percent: n })}
+              min={5} max={100}
             />
           </Field>
         </div>

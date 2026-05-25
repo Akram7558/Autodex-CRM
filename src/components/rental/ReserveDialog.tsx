@@ -23,16 +23,17 @@ export type ReserveResult = {
 }
 
 export default function ReserveDialog({
-  rentalId, contractNumber, total, depositAmount, onClose, onReserved,
+  rentalId, contractNumber, total, depositAmount, minPercent, onClose, onReserved,
 }: {
   rentalId:       string
   contractNumber: string | null
   total:          number
   depositAmount:  number
+  minPercent:     number
   onClose:        () => void
   onReserved:     (r: ReserveResult) => void
 }) {
-  const min = rentalMinDeposit(total)
+  const min = rentalMinDeposit(total, minPercent)
   const [amount, setAmount] = useState(String(Math.max(Math.round(depositAmount), min)))
   const [method, setMethod] = useState<string>(RENTAL_PAYMENT_METHODS[0].code)
   const [reference, setReference] = useState('')
@@ -44,7 +45,7 @@ export default function ReserveDialog({
   const belowMin = amt < min
 
   async function submit() {
-    if (belowMin) { setErr(`Le dépôt doit être au moins ${formatDZD(min)} (5% du total).`); return }
+    if (belowMin) { setErr(`Le dépôt doit être au moins ${formatDZD(min)} (${minPercent}% du total).`); return }
     setBusy(true); setErr(null)
     try {
       const res = await fetch(`/api/rental/rentals/${rentalId}/reserve`, {
@@ -83,7 +84,7 @@ export default function ReserveDialog({
             <p className="mt-1 text-sm font-bold tabular-nums text-[var(--text-primary)]"><bdi>{formatDZD(total)}</bdi></p>
           </div>
           <div className="rounded-xl p-3" style={{ background: 'var(--accent-subtle)', boxShadow: 'inset 0 0 0 1.5px var(--accent)' }}>
-            <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Caution min. (5%)</p>
+            <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Caution min. ({minPercent}%)</p>
             <p className="mt-1 text-sm font-bold tabular-nums" style={{ color: 'var(--accent)' }}><bdi>{formatDZD(min)}</bdi></p>
           </div>
         </div>

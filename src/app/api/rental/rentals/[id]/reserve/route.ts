@@ -22,7 +22,7 @@
 
 import { NextResponse, type NextRequest } from 'next/server'
 import { ApiError, errorResponse, requireShowroomMember } from '@/lib/api-auth'
-import { toNum, rentalMinDeposit } from '@/components/rental/booking/types'
+import { toNum, rentalMinDeposit, RENTAL_MIN_DEPOSIT_PERCENT_FLOOR } from '@/components/rental/booking/types'
 import { insertRentalPayment, RENTAL_PAYMENT_METHOD_SET } from '@/lib/rental/create-payment'
 
 export const runtime = 'nodejs'
@@ -67,12 +67,23 @@ export async function POST(req: NextRequest, { params }: RouteCtx) {
       throw new ApiError(409, 'Seul un contrat « à confirmer » peut être réservé.')
     }
 
-    // ── 5% deposit floor (server-authoritative) ────────────────
+    // ── Per-showroom minimum deposit % (migration_47), 5% fallback ──
+    const { data: settings } = await ctx.authSb
+      .from('rental_settings')
+      .select('deposit_min_percent')
+      .eq('showroom_id', rental.showroom_id)
+      .maybeSingle()
+    const rawPct = Number(settings?.deposit_min_percent ?? RENTAL_MIN_DEPOSIT_PERCENT_FLOOR)
+    const pct = Number.isFinite(rawPct)
+      ? Math.min(100, Math.max(RENTAL_MIN_DEPOSIT_PERCENT_FLOOR, rawPct))
+      : RENTAL_MIN_DEPOSIT_PERCENT_FLOOR
+
+    // ── Deposit floor (server-authoritative) ───────────────────
     const total = toNum(rental.total_rental_amount)
-    const minDeposit = rentalMinDeposit(total)
+    const minDeposit = rentalMinDeposit(total, pct)
     if (!(depositAmount > 0)) throw new ApiError(400, 'Montant de la caution invalide.')
     if (depositAmount < minDeposit) {
-      throw new ApiError(400, `Le dépôt doit être au moins 5% du total (${minDeposit} DZD).`)
+      throw new ApiError(400, `Le dépôt doit être au moins ${pct}% du total (${minDeposit} DZD).`)
     }
 
     // ── 1) Availability re-check FIRST (abort before taking money) ──

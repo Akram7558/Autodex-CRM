@@ -72,7 +72,7 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
-export default function RentalContractsList({ initialRows, canFin }: { initialRows: ContractRow[]; canFin: boolean }) {
+export default function RentalContractsList({ initialRows, canFin, depositMinPercent = 5 }: { initialRows: ContractRow[]; canFin: boolean; depositMinPercent?: number }) {
   const [rows, setRows] = useState<ContractRow[]>(initialRows)
   const [activeKey, setActiveKey] = useState<string>(RENTAL_TAB_GROUPS[0].key) // default = first tab
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -292,6 +292,7 @@ export default function RentalContractsList({ initialRows, canFin }: { initialRo
           contractNumber={reserveTarget.contract_number}
           total={reserveTarget.total_rental_amount}
           depositAmount={reserveTarget.deposit_amount}
+          minPercent={depositMinPercent}
           onClose={() => setReserveTarget(null)}
           onReserved={(r) => {
             setRows((prev) => prev.map((row) => (row.id === reserveTarget.id ? { ...row, status: r.rental.status } : row)))

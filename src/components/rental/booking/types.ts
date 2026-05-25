@@ -253,14 +253,29 @@ export const RENTAL_FROM_PROSPECT_TITLE = "Issu d'une demande de location"
 export const RENTAL_ACTION_RESERVE = 'Réserver'
 export const RENTAL_ACTION_PICKUP  = 'Voiture récupérée'
 
-// Minimum deposit fraction required to reserve a contract (5% of the rental
-// total). Single source of truth — used by the UI hint AND validated again
-// server-side in POST /api/rental/rentals/[id]/reserve.
+// Minimum deposit FRACTION fallback (5%) — used when the per-showroom
+// percentage can't be loaded. The configurable value lives in
+// rental_settings.deposit_min_percent (migration_47); both the UI and the
+// reserve route fall back to this 5% floor if it's missing.
 export const RENTAL_MIN_DEPOSIT_FRACTION = 0.05
 
-/** Minimum deposit (caution) required to reserve: ceil(5% of the total). */
-export function rentalMinDeposit(total: number | null | undefined): number {
+// Hard floor (in whole percent) for the configurable minimum deposit. Mirrors
+// the DB CHECK (deposit_min_percent >= 5) and the settings PATCH validation —
+// the configured percent can never go below this.
+export const RENTAL_MIN_DEPOSIT_PERCENT_FLOOR = 5
+
+/**
+ * Minimum deposit (caution) required to reserve: ceil(percent% of the total).
+ * `percent` is a whole number (e.g. 5 / 10 / 20). It is clamped to
+ * [RENTAL_MIN_DEPOSIT_PERCENT_FLOOR, 100]; when missing/invalid it falls back
+ * to the 5% floor — so legacy zero-arg-ish callers keep the old behaviour.
+ */
+export function rentalMinDeposit(total: number | null | undefined, percent?: number | null): number {
   const t = typeof total === 'number' ? total : Number(total)
   if (!Number.isFinite(t) || t <= 0) return 0
-  return Math.ceil(t * RENTAL_MIN_DEPOSIT_FRACTION)
+  const p = typeof percent === 'number' ? percent : Number(percent)
+  const pct = Number.isFinite(p)
+    ? Math.min(100, Math.max(RENTAL_MIN_DEPOSIT_PERCENT_FLOOR, p))
+    : RENTAL_MIN_DEPOSIT_PERCENT_FLOOR
+  return Math.ceil(t * pct / 100)
 }

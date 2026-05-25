@@ -162,5 +162,13 @@ export default async function Page({ params }: RouteCtx) {
     payments,
   }
 
-  return <ContractDetail data={data} canFin={canFin} />
+  // Per-showroom minimum deposit % (migration_47) for the reserve dialog; 5% fallback.
+  const { data: settingsRow } = await supabase
+    .from('rental_settings')
+    .select('deposit_min_percent')
+    .eq('showroom_id', rental.showroom_id)
+    .maybeSingle()
+  const depositMinPercent = Math.min(100, Math.max(5, Number(settingsRow?.deposit_min_percent ?? 5) || 5))
+
+  return <ContractDetail data={data} canFin={canFin} depositMinPercent={depositMinPercent} />
 }
