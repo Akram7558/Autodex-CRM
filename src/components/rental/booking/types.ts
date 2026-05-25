@@ -238,3 +238,10 @@ export const RENTAL_TAB_GROUPS: { key: string; label: string; statuses: RentalSt
   { key: 'completed', label: 'Terminés',    statuses: ['completed'] },
   { key: 'cancelled', label: 'Annulés',     statuses: ['cancelled'] },
 ]
+
+// ── "RDV" badge ───────────────────────────────────────────────────────
+// A contract that originated from a rental demande (prospect confirmed for
+// an RDV — Chantier 4). Centralized so the contracts list and any future
+// surface share the same wording.
+export const RENTAL_FROM_PROSPECT_BADGE = 'RDV'
+export const RENTAL_FROM_PROSPECT_TITLE = "Issu d'une demande de location"

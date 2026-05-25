@@ -119,6 +119,21 @@ export async function PATCH(req: NextRequest, { params }: RouteCtx) {
         .select('id, contract_number, status, cancellation_reason').maybeSingle()
       if (error) throw new ApiError(400, error.message)
       if (!data) throw new ApiError(404, 'Contrat introuvable.')
+
+      // Chantier 4: cancelling a contract that originated from a prospect
+      // "reopens" that prospect — clear converted_rental_id so it returns to
+      // the pipeline, and reset its status to 'rdv_planifie'. Best-effort:
+      // a failure here must NEVER fail the cancellation.
+      if (target === 'cancelled') {
+        try {
+          await ctx.authSb
+            .from('rental_prospects')
+            .update({ converted_rental_id: null, status: 'rdv_planifie' })
+            .eq('converted_rental_id', id)
+            .eq('showroom_id', rental.showroom_id)
+        } catch { /* ignore — the cancel already succeeded */ }
+      }
+
       return NextResponse.json({ rental: data })
     }
 

@@ -119,8 +119,9 @@ export default function BookingWizard({ prefill }: { prefill?: WizardPrefill | n
       const rental = j.rental as CreatedContract
       setCreated(rental)
       // Both flows land on the new contract's detail page. The prospect (if
-      // any) was already marked convertie + linked server-side. router.replace
-      // so the back button doesn't return to the filled wizard (no re-submit).
+      // any) was already linked server-side (status='rdv_planifie' +
+      // converted_rental_id), so it moved into Contrats. router.replace so the
+      // back button doesn't return to the filled wizard (no re-submit).
       setTimeout(() => { dispatch({ type: 'RESET' }); router.replace(`/dashboard/location/contrats/${rental.id}`) }, 1500)
     } catch {
       setSubmitError('Erreur réseau. Réessayez.')

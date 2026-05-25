@@ -80,6 +80,24 @@ export default async function Page() {
 
   const { data } = await q
   const raw = (data ?? []) as unknown as RawRow[]
+
+  // Chantier 4: which of these contracts originated from a rental demande?
+  // Fetch the showroom's prospect→contract links and badge matching rows.
+  let rdvSet = new Set<string>()
+  {
+    let lq = supabase
+      .from('rental_prospects')
+      .select('converted_rental_id')
+      .not('converted_rental_id', 'is', null)
+    if (showroomId) lq = lq.eq('showroom_id', showroomId)
+    const { data: links } = await lq
+    rdvSet = new Set(
+      (links ?? [])
+        .map((l) => (l as { converted_rental_id: string | null }).converted_rental_id)
+        .filter((v): v is string => !!v),
+    )
+  }
+
   const rows: ContractRow[] = raw.map((r) => ({
     id:                  r.id,
     contract_number:     r.contract_number ?? null,
@@ -94,6 +112,7 @@ export default async function Page() {
     created_at:          r.created_at,
     vehicle:             firstOf(r.rental_vehicle),
     customer:            firstOf(r.customer),
+    isFromProspect:      rdvSet.has(r.id),
   }))
 
   return <RentalContractsList initialRows={rows} />

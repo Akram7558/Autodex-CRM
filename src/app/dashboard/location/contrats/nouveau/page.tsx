@@ -15,8 +15,13 @@ import BookingWizard from '@/components/rental/booking/BookingWizard'
 import {
   toNum, type WizardPrefill, type RentalVehicleLite, type RentalCustomerLite,
 } from '@/components/rental/booking/types'
+import { findOrCreateRentalCustomer } from '@/lib/rental/customers'
 
-type RouteCtx = { searchParams: Promise<{ from_prospect?: string }> }
+// `rdv=1` is set by the "RDV planifié" flow when the prospect lacked a
+// vehicle/dates and fell through to the wizard — informational only; the
+// prospect link (status='rdv_planifie' + converted_rental_id) is applied
+// server-side by POST /api/rental/rentals from `from_prospect_id`.
+type RouteCtx = { searchParams: Promise<{ from_prospect?: string; rdv?: string }> }
 
 type RawVehicle = {
   id: string
@@ -57,12 +62,14 @@ export default async function Page({ searchParams }: RouteCtx) {
   // Fetch the prospect (RLS-scoped to the caller's showroom).
   const { data: prospect } = await supabase
     .from('rental_prospects')
-    .select('id, showroom_id, status, rental_vehicle_id, full_name, phone, desired_start_date, desired_end_date')
+    .select('id, showroom_id, status, rental_vehicle_id, full_name, phone, desired_start_date, desired_end_date, converted_rental_id')
     .eq('id', from_prospect)
     .maybeSingle()
 
-  // Unknown / out-of-showroom / already converted → fall back to empty wizard.
-  if (!prospect || prospect.status === 'convertie') {
+  // Unknown / out-of-showroom / already linked to a contract → empty wizard
+  // (the converted_rental_id guard prevents creating a 2nd contract for a
+  // prospect that already moved to Contrats).
+  if (!prospect || prospect.status === 'convertie' || prospect.converted_rental_id) {
     return <BookingWizard />
   }
 
@@ -95,45 +102,25 @@ export default async function Page({ searchParams }: RouteCtx) {
     }
   }
 
-  // ── Auto find-or-create the customer by phone (convert flow only) ──
+  // ── Auto find-or-create the customer by phone (shared helper) ──
   // The prospect was RLS-scoped, so its showroom_id == the caller's showroom;
   // the authenticated client's insert passes rental_customers RLS. Phone is
-  // already +213-normalized. Handle the UNIQUE(showroom, phone) race by
-  // re-selecting on insert failure.
+  // already +213-normalized. Reuses the same helper as the RDV auto-schedule
+  // route so the find-or-create logic lives in one place.
   const showroomId = prospect.showroom_id as string
   const custPhone  = ((prospect.phone as string | null) ?? '').trim()
   const custName   = ((prospect.full_name as string | null) ?? '').trim()
-  const custCols   = 'id, full_name, phone, blacklisted, blacklist_reason'
 
-  type RawCustomer = { id: string; full_name: string; phone: string; blacklisted: boolean | null; blacklist_reason: string | null }
-  const toLite = (c: RawCustomer): RentalCustomerLite => ({
-    id: c.id, full_name: c.full_name, phone: c.phone,
-    blacklisted: !!c.blacklisted, blacklist_reason: c.blacklist_reason ?? null,
-  })
-
-  let customer: RentalCustomerLite | null = null
-  if (custPhone) {
-    const { data: existing } = await supabase
-      .from('rental_customers').select(custCols)
-      .eq('showroom_id', showroomId).eq('phone', custPhone).maybeSingle()
-    if (existing) {
-      customer = toLite(existing as RawCustomer)
-    } else {
-      const { data: inserted } = await supabase
-        .from('rental_customers')
-        .insert([{ showroom_id: showroomId, full_name: custName || custPhone, phone: custPhone }])
-        .select(custCols).maybeSingle()
-      if (inserted) {
-        customer = toLite(inserted as RawCustomer)
-      } else {
-        // UNIQUE(showroom, phone) race (or insert blocked) → re-select.
-        const { data: again } = await supabase
-          .from('rental_customers').select(custCols)
-          .eq('showroom_id', showroomId).eq('phone', custPhone).maybeSingle()
-        if (again) customer = toLite(again as RawCustomer)
+  const custRow = await findOrCreateRentalCustomer(supabase, showroomId, custPhone, custName)
+  const customer: RentalCustomerLite | null = custRow
+    ? {
+        id:               custRow.id,
+        full_name:        custRow.full_name,
+        phone:            custRow.phone,
+        blacklisted:      !!custRow.blacklisted,
+        blacklist_reason: custRow.blacklist_reason ?? null,
       }
-    }
-  }
+    : null
 
   const prefill: WizardPrefill = {
     fromProspectId:     prospect.id as string,

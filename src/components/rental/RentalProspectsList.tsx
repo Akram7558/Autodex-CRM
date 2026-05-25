@@ -9,17 +9,21 @@
 // (key signal), requested vehicle, desired dates, message.
 //
 // Changing the dropdown PATCHes /api/rental/prospects/[id] (optimistic;
-// revert + toast on error) and the row moves to the matching tab. 'convertie'
-// is machine-set (chunk D) — never offered in the dropdown; convertie rows
-// show a solid badge + the linked contract number. "Convertir en contrat"
-// stays disabled until chunk D. All labels/colors come from
+// revert + toast on error) and the row moves to the matching tab — EXCEPT
+// "RDV planifié", which is intercepted (Chantier 4): a confirmation modal
+// then POSTs /api/rental/prospects/[id]/schedule, which MOVES the prospect
+// into Contrats (auto-creates a draft when the vehicle + dates are known, or
+// opens the booking wizard otherwise) and redirects there. Linked prospects
+// are filtered out of this list server-side, so there is no longer a manual
+// "Convertir en contrat" button. All labels/colors come from
 // src/lib/rental/prospects.ts (no hardcoded French/colors here).
 // ─────────────────────────────────────────────────────────────────────
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
-  Car as CarIcon, CalendarRange, FileSignature, Inbox,
+  Car as CarIcon, CalendarRange, CalendarCheck, Loader2, Inbox,
 } from 'lucide-react'
 import ContactButtons from '@/components/rental/ContactButtons'
 import { cn } from '@/lib/utils'
@@ -86,6 +90,9 @@ export default function RentalProspectsList({ initialRows }: { initialRows: Pros
   const [activeTab, setActiveTab] = useState<string>('nouvelles')
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [rdvTarget, setRdvTarget] = useState<ProspectRow | null>(null)
+  const [rdvBusy, setRdvBusy] = useState(false)
+  const router = useRouter()
 
   const countByTab = useMemo(() => {
     const m: Record<string, number> = {}
@@ -119,6 +126,53 @@ export default function RentalProspectsList({ initialRows }: { initialRows: Pros
       setError('Erreur réseau. Réessayez.')
     } finally {
       setBusyId(null)
+    }
+  }
+
+  // "RDV planifié" is special: don't PATCH the status — confirm via a modal,
+  // then MOVE the prospect into Contrats. Every other status is a normal
+  // optimistic PATCH. The <select> is controlled by row.status, so declining
+  // here leaves the displayed value untouched (no manual revert needed).
+  function onSelectStatus(row: ProspectRow, status: RentalProspectStatus) {
+    if (status === 'rdv_planifie') { setError(null); setRdvTarget(row); return }
+    changeStatus(row, status)
+  }
+
+  async function confirmRdv() {
+    if (!rdvTarget) return
+    const target = rdvTarget
+    setRdvBusy(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/rental/prospects/${target.id}/schedule`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(j?.message ?? j?.error ?? 'La planification a échoué.')
+        setRdvBusy(false)
+        setRdvTarget(null)
+        return
+      }
+      // Auto-created a draft contract → open it. Otherwise → the prefilled
+      // wizard. Both navigate away, so we keep the busy state.
+      if (j.mode === 'created' && j.rentalId) {
+        router.push(`/dashboard/location/contrats/${j.rentalId}`)
+        return
+      }
+      if (j.mode === 'needs_wizard') {
+        router.push(`/dashboard/location/contrats/nouveau?from_prospect=${target.id}&rdv=1`)
+        return
+      }
+      setError('Réponse inattendue du serveur.')
+      setRdvBusy(false)
+      setRdvTarget(null)
+    } catch {
+      setError('Erreur réseau. Réessayez.')
+      setRdvBusy(false)
+      setRdvTarget(null)
     }
   }
 
@@ -206,12 +260,11 @@ export default function RentalProspectsList({ initialRows }: { initialRows: Pros
                       {r.message && <p className="mt-1.5 text-xs line-clamp-2 max-w-[14rem]" style={{ color: 'var(--text-secondary)' }}>{r.message}</p>}
                     </td>
                     <td className="px-4 py-3 text-xs text-[var(--text-secondary)] whitespace-nowrap"><Dates r={r} /></td>
-                    <td className="px-4 py-3"><SuiviControl row={r} busy={busyId === r.id} onChange={changeStatus} /></td>
+                    <td className="px-4 py-3"><SuiviControl row={r} busy={busyId === r.id} onChange={onSelectStatus} /></td>
                     <td className="px-4 py-3 text-xs text-[var(--text-muted)] whitespace-nowrap">{shortDate(r.created_at)}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-2">
                         <ContactButtons phone={r.phone} />
-                        {r.status !== 'convertie' && <ConvertButton prospectId={r.id} />}
                       </div>
                     </td>
                   </tr>
@@ -230,7 +283,7 @@ export default function RentalProspectsList({ initialRows }: { initialRows: Pros
                     <div className="font-semibold text-[var(--text-primary)] truncate">{r.full_name}</div>
                     <div className="text-xs tabular-nums" style={{ color: 'var(--text-secondary)' }}>{r.phone}</div>
                   </div>
-                  <SuiviControl row={r} busy={busyId === r.id} onChange={changeStatus} />
+                  <SuiviControl row={r} busy={busyId === r.id} onChange={onSelectStatus} />
                 </div>
                 <div><ReasonChip r={r} /></div>
                 <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
@@ -247,13 +300,22 @@ export default function RentalProspectsList({ initialRows }: { initialRows: Pros
                   <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{shortDate(r.created_at)}</span>
                   <div className="flex items-center gap-2">
                     <ContactButtons phone={r.phone} />
-                    {r.status !== 'convertie' && <ConvertButton prospectId={r.id} />}
                   </div>
                 </div>
               </div>
             ))}
           </div>
         </>
+      )}
+
+      {/* "RDV planifié" → confirm, then move the prospect into Contrats. */}
+      {rdvTarget && (
+        <RdvDialog
+          row={rdvTarget}
+          busy={rdvBusy}
+          onClose={() => setRdvTarget(null)}
+          onConfirm={confirmRdv}
+        />
       )}
     </div>
   )
@@ -315,17 +377,56 @@ function SuiviControl({
 }
 
 
-// Convert-to-contract — opens the booking wizard prefilled from this
-// prospect; on creation the server marks it 'convertie' + links the rental.
-function ConvertButton({ prospectId }: { prospectId: string }) {
+// "RDV planifié" confirmation — confirming MOVES the prospect into Contrats
+// (the server auto-creates a draft contract, or the client opens the wizard).
+function RdvDialog({
+  row, busy, onClose, onConfirm,
+}: {
+  row: ProspectRow
+  busy: boolean
+  onClose: () => void
+  onConfirm: () => void
+}) {
   return (
-    <Link
-      href={`/dashboard/location/contrats/nouveau?from_prospect=${prospectId}`}
-      title="Convertir en contrat"
-      className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold transition-opacity hover:opacity-90"
-      style={{ background: 'var(--accent-subtle)', color: 'var(--accent)' }}
+    <div
+      onClick={busy ? undefined : onClose}
+      className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center p-4"
+      style={{ background: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(4px)' }}
     >
-      <FileSignature className="w-3.5 h-3.5" /> Convertir
-    </Link>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Confirmer le rendez-vous"
+        onClick={(e) => e.stopPropagation()}
+        className="w-full sm:max-w-md rounded-2xl p-5"
+        style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', boxShadow: 'var(--shadow-glass)' }}
+      >
+        <h3 className="text-base font-semibold text-[var(--text-primary)]">Confirmer le rendez-vous</h3>
+        <p className="mt-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
+          Confirmer le RDV ? <bdi className="font-medium text-[var(--text-primary)]">{row.full_name}</bdi> passera dans la section Contrats.
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            className="h-10 px-4 rounded-lg text-sm font-medium disabled:opacity-50"
+            style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
+          >
+            Annuler
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={busy}
+            className="inline-flex items-center gap-2 h-10 px-4 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
+            style={{ background: 'var(--accent)' }}
+          >
+            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <CalendarCheck className="w-4 h-4" />}
+            Confirmer
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }

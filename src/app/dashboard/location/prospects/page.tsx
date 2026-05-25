@@ -72,6 +72,10 @@ export default async function Page() {
       'rental_vehicle:rental_vehicles(marque, modele, annee), ' +
       'converted:rentals(contract_number)',
     )
+    // Chantier 4: a prospect linked to a contract (converted_rental_id set)
+    // has MOVED to the Contrats section — hide it from the pipeline (and from
+    // the tab counts, which are derived client-side from these rows).
+    .is('converted_rental_id', null)
     .order('created_at', { ascending: false })
     .limit(100)
   if (showroomId) q = q.eq('showroom_id', showroomId)

@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import {
   RENTAL_TAB_GROUPS, rentalStatusLabel, rentalStatusColor, formatDZD, formatDateFr,
+  RENTAL_FROM_PROSPECT_BADGE, RENTAL_FROM_PROSPECT_TITLE,
 } from '@/components/rental/booking/types'
 import ContactButtons from '@/components/rental/ContactButtons'
 
@@ -39,6 +40,20 @@ export type ContractRow = {
   created_at:          string
   vehicle:  { marque: string; modele: string; annee: number | null } | null
   customer: { full_name: string; phone: string } | null
+  isFromProspect?:     boolean
+}
+
+// Small "RDV" pill for contracts that originated from a rental demande.
+function RdvBadge() {
+  return (
+    <span
+      title={RENTAL_FROM_PROSPECT_TITLE}
+      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider align-middle"
+      style={{ background: 'var(--accent-subtle)', color: 'var(--accent)' }}
+    >
+      <CalendarClock className="w-2.5 h-2.5" />{RENTAL_FROM_PROSPECT_BADGE}
+    </span>
+  )
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -179,9 +194,12 @@ export default function RentalContractsList({ initialRows }: { initialRows: Cont
                 {visibleRows.map((r) => (
                   <tr key={r.id} className="border-t" style={{ borderColor: 'var(--border)' }}>
                     <td className="px-4 py-3 font-medium">
-                      <Link href={`/dashboard/location/contrats/${r.id}`} className="text-emerald-600 dark:text-emerald-400 hover:underline">
-                        <bdi>{r.contract_number ?? 'Voir'}</bdi>
-                      </Link>
+                      <div className="flex items-center gap-1.5">
+                        <Link href={`/dashboard/location/contrats/${r.id}`} className="text-emerald-600 dark:text-emerald-400 hover:underline">
+                          <bdi>{r.contract_number ?? 'Voir'}</bdi>
+                        </Link>
+                        {r.isFromProspect && <RdvBadge />}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-[var(--text-secondary)]">
                       {r.vehicle ? <bdi>{r.vehicle.marque} {r.vehicle.modele}{r.vehicle.annee ? ` · ${r.vehicle.annee}` : ''}</bdi> : '—'}
@@ -216,9 +234,12 @@ export default function RentalContractsList({ initialRows }: { initialRows: Cont
               <div key={r.id} className="rounded-2xl p-4 space-y-3"
                 style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
                 <div className="flex items-center justify-between gap-2">
-                  <Link href={`/dashboard/location/contrats/${r.id}`} className="font-semibold text-emerald-600 dark:text-emerald-400 hover:underline">
-                    <bdi>{r.contract_number ?? 'Voir'}</bdi>
-                  </Link>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <Link href={`/dashboard/location/contrats/${r.id}`} className="font-semibold text-emerald-600 dark:text-emerald-400 hover:underline truncate">
+                      <bdi>{r.contract_number ?? 'Voir'}</bdi>
+                    </Link>
+                    {r.isFromProspect && <RdvBadge />}
+                  </div>
                   <StatusBadge status={r.status} />
                 </div>
                 <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">

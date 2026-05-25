@@ -25,6 +25,10 @@
 
 import { NextResponse, type NextRequest } from 'next/server'
 import { ApiError, errorResponse, requireShowroomMember } from '@/lib/api-auth'
+import {
+  insertRentalWithContractNumber, linkProspectToRental,
+  type RentalInsertCore,
+} from '@/lib/rental/create-rental'
 
 export const runtime = 'nodejs'
 
@@ -46,6 +50,7 @@ export async function POST(req: NextRequest) {
     const ctx = await requireShowroomMember(req)
     if (!ctx.showroomId) throw new ApiError(403, 'Aucun showroom associé à votre compte.')
     if (!ALLOWED_ROLES.has(ctx.role)) throw new ApiError(403, 'Accès refusé.')
+    const showroomId = ctx.showroomId  // narrowed to string by the guard above
 
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>
     const vehicleId  = String(body.rental_vehicle_id ?? '')
@@ -131,8 +136,8 @@ export async function POST(req: NextRequest) {
     const assignedTo = ctx.user.id
     const signedAt = signaturePath ? new Date().toISOString() : null
 
-    const baseRow = {
-      showroom_id:         ctx.showroomId,
+    const baseRow: RentalInsertCore = {
+      showroom_id:         showroomId,
       rental_vehicle_id:   vehicleId,
       customer_id:         customerId,
       assigned_to:         assignedTo,
@@ -149,64 +154,26 @@ export async function POST(req: NextRequest) {
       notes,
     }
 
-    // ── contract_number generation + resilient insert ──────────
-    const year = new Date().getFullYear()
-    const { count } = await ctx.authSb
-      .from('rentals')
-      .select('id', { count: 'exact', head: true })
-      .eq('showroom_id', ctx.showroomId)
-      .gte('created_at', `${year}-01-01`)
-    let seq = (count ?? 0) + 1
-    let includeSignature = !!signaturePath
-    let lastErr: { code?: string; message?: string } | null = null
+    // ── Create the rental (shared core: contract_number + resilient insert) ──
+    const { id: rentalId, contract_number } = await insertRentalWithContractNumber(
+      ctx.authSb, baseRow, { signaturePath, signedAt },
+    )
 
-    for (let attempt = 0; attempt < 12; attempt++) {
-      const contractNumber = `LOC-${year}-${String(seq).padStart(4, '0')}`
-      const row: Record<string, unknown> = { ...baseRow, contract_number: contractNumber }
-      if (signaturePath) row.signed_at = signedAt
-      if (includeSignature) row.signature_url = signaturePath
-
-      const { data, error } = await ctx.authSb
-        .from('rentals')
-        .insert([row])
-        .select('id, contract_number')
-        .single()
-
-      if (!error) {
-        // Link the originating prospect, if any. Best-effort: the contract
-        // is the source of truth — a failed/no-match link must NOT fail the
-        // rental creation. Scoped to the caller's showroom and only when the
-        // prospect isn't already converted.
-        let prospectLinked = false
-        if (fromProspectId) {
-          const { data: linked, error: linkErr } = await ctx.authSb
-            .from('rental_prospects')
-            .update({ status: 'convertie', converted_rental_id: data.id })
-            .eq('id', fromProspectId)
-            .eq('showroom_id', ctx.showroomId)
-            .neq('status', 'convertie')
-            .select('id')
-            .maybeSingle()
-          prospectLinked = !linkErr && !!linked
-        }
-        return NextResponse.json({ rental: data, prospect_linked: prospectLinked }, { status: 201 })
-      }
-      lastErr = error
-
-      // contract_number already taken (global UNIQUE) → bump and retry.
-      if (error.code === '23505') { seq += 1; continue }
-
-      // signature_url column absent (migration 43 not run) → drop it,
-      // keep signed_at, retry the same number.
-      const msg = (error.message ?? '').toLowerCase()
-      if (includeSignature && (error.code === '42703' || error.code === 'PGRST204' || msg.includes('signature_url'))) {
-        includeSignature = false
-        continue
-      }
-      break
+    // Link the originating prospect, if any. Best-effort + status='rdv_planifie':
+    // a converted prospect MOVES into Contrats as an RDV — it disappears from
+    // the pipeline via its converted_rental_id, not a terminal 'convertie'
+    // status (Chantier 4). A failed/no-match link never fails the creation.
+    let prospectLinked = false
+    if (fromProspectId) {
+      prospectLinked = await linkProspectToRental(
+        ctx.authSb, fromProspectId, showroomId, rentalId, 'rdv_planifie',
+      )
     }
 
-    throw new ApiError(400, lastErr?.message ?? 'Création du contrat échouée.')
+    return NextResponse.json(
+      { rental: { id: rentalId, contract_number }, prospect_linked: prospectLinked },
+      { status: 201 },
+    )
   } catch (err) {
     return errorResponse(err)
   }
