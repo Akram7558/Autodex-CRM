@@ -113,7 +113,7 @@ export default async function Page({ params }: RouteCtx) {
   if (canFin) {
     const { data: pays } = await supabase
       .from('rental_payments')
-      .select('id, type, amount, method, reference, notes, created_at')
+      .select('id, type, amount, method, reference, notes, receipt_url, created_at')
       .eq('rental_id', id)
       .order('created_at', { ascending: false })
     payments = (pays ?? []).map((p) => ({
@@ -123,6 +123,7 @@ export default async function Page({ params }: RouteCtx) {
       method: p.method as string,
       reference: (p.reference as string | null) ?? null,
       notes: (p.notes as string | null) ?? null,
+      receipt_url: (p.receipt_url as string | null) ?? null,
       created_at: p.created_at as string,
     }))
   }

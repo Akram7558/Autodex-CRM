@@ -25,17 +25,19 @@ export type RentalPaymentRow = {
   method: string
   reference: string | null
   notes: string | null
+  receipt_url: string | null
   created_at: string
 }
 
 export type RentalPaymentInsert = {
-  rentalId:  string
-  type:      string
-  amount:    number
-  method:    string
-  reference: string | null
-  notes:     string | null
-  createdBy: string
+  rentalId:    string
+  type:        string
+  amount:      number
+  method:      string
+  reference:   string | null
+  notes:       string | null
+  receiptUrl?: string | null    // private storage path; null/omit for cash
+  createdBy:   string
 }
 
 /**
@@ -50,15 +52,16 @@ export async function insertRentalPayment(
   const { data, error } = await sb
     .from('rental_payments')
     .insert([{
-      rental_id:  p.rentalId,
-      type:       p.type,
-      amount:     p.amount,
-      method:     p.method,
-      reference:  p.reference,
-      notes:      p.notes,
-      created_by: p.createdBy,
+      rental_id:   p.rentalId,
+      type:        p.type,
+      amount:      p.amount,
+      method:      p.method,
+      reference:   p.reference,
+      notes:       p.notes,
+      receipt_url: p.receiptUrl ?? null,
+      created_by:  p.createdBy,
     }])
-    .select('id, type, amount, method, reference, notes, created_at')
+    .select('id, type, amount, method, reference, notes, receipt_url, created_at')
     .single()
   if (error) throw new ApiError(400, error.message)
   return data as RentalPaymentRow

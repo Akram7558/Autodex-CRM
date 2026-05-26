@@ -38,7 +38,21 @@ export type ContractPayment = {
   method: string
   reference: string | null
   notes: string | null
+  receipt_url: string | null   // private storage path; null for cash
   created_at: string
+}
+
+/**
+ * Open a payment receipt: resolves the private storage path to a 1h signed
+ * URL via /api/rental/uploads/read, then opens it in a new tab. Silent on
+ * failure (we don't block the page on a flaky signed URL).
+ */
+async function openReceiptPath(path: string): Promise<void> {
+  try {
+    const res = await fetch(`/api/rental/uploads/read?path=${encodeURIComponent(path)}`)
+    const j = await res.json().catch(() => ({}))
+    if (res.ok && j?.url) window.open(j.url, '_blank', 'noopener,noreferrer')
+  } catch { /* ignore */ }
 }
 
 export type ContractDetailData = {
@@ -626,9 +640,20 @@ function PaymentsSection({
           {payments.map((p) => (
             <li key={p.id} className="flex items-center justify-between gap-3 py-2.5">
               <div className="min-w-0">
-                <div className="text-sm font-medium text-[var(--text-primary)]">
-                  {rentalPaymentTypeLabel(p.type)}
-                  <span className="text-xs font-normal" style={{ color: 'var(--text-muted)' }}> · {rentalPaymentMethodLabel(p.method)}</span>
+                <div className="text-sm font-medium text-[var(--text-primary)] flex items-center gap-2 flex-wrap">
+                  <span>
+                    {rentalPaymentTypeLabel(p.type)}
+                    <span className="text-xs font-normal" style={{ color: 'var(--text-muted)' }}> · {rentalPaymentMethodLabel(p.method)}</span>
+                  </span>
+                  {p.receipt_url && (
+                    <button
+                      type="button"
+                      onClick={() => openReceiptPath(p.receipt_url!)}
+                      title="Ouvrir le reçu"
+                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider hover:opacity-90"
+                      style={{ background: 'var(--accent-subtle)', color: 'var(--accent)' }}
+                    >📎 Reçu</button>
+                  )}
                 </div>
                 <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
                   {fmtDate(p.created_at)}{p.reference ? ` · ${p.reference}` : ''}{p.notes ? ` · ${p.notes}` : ''}

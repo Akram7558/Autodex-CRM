@@ -27,7 +27,7 @@ import { ApiError, errorResponse, requireShowroomMember } from '@/lib/api-auth'
 
 export const runtime = 'nodejs'
 
-const KINDS = new Set(['cin', 'permis', 'vehicle_photo', 'rental_signature'])
+const KINDS = new Set(['cin', 'permis', 'vehicle_photo', 'rental_signature', 'deposit_receipt'])
 const DOC_EXT     = new Set(['jpg', 'jpeg', 'png', 'webp', 'pdf'])
 const PHOTO_EXT   = new Set(['jpg', 'jpeg', 'png', 'webp'])
 const SIG_EXT     = new Set(['png', 'jpg', 'jpeg', 'webp'])
@@ -49,11 +49,13 @@ export async function POST(req: NextRequest) {
     const fileExt = String(body.file_ext ?? 'jpg').toLowerCase().replace(/^\./, '')
     const allowedExt =
       kind === 'vehicle_photo'    ? PHOTO_EXT :
-      kind === 'rental_signature' ? SIG_EXT   : DOC_EXT
+      kind === 'rental_signature' ? SIG_EXT   :
+      kind === 'deposit_receipt'  ? PHOTO_EXT : DOC_EXT
     if (!allowedExt.has(fileExt)) {
+      const photoLike = kind === 'vehicle_photo' || kind === 'rental_signature' || kind === 'deposit_receipt'
       throw new ApiError(
         400,
-        kind === 'vehicle_photo' || kind === 'rental_signature'
+        photoLike
           ? 'Format de fichier non autorisé (jpg/png/webp).'
           : 'Format de fichier non autorisé (jpg/png/webp/pdf).',
       )
@@ -70,6 +72,15 @@ export async function POST(req: NextRequest) {
       }
       const folder = rentalId ?? `temp-${crypto.randomUUID()}`
       path = `${ctx.showroomId}/rentals/${folder}/signature-${Date.now()}.${fileExt}`
+    } else if (kind === 'deposit_receipt') {
+      // Payment receipt photo for the reserve flow. The rental_id is always
+      // known by the caller (it exists by the time the dialog opens), so we
+      // require it here — no temp folder. RLS seals the showroom prefix.
+      const rentalId = body.rental_id ? String(body.rental_id) : null
+      if (!rentalId || !UUID_RX.test(rentalId)) {
+        throw new ApiError(400, 'rental_id requis.')
+      }
+      path = `${ctx.showroomId}/rentals/${rentalId}/deposit-receipt-${Date.now()}.${fileExt}`
     } else if (kind === 'vehicle_photo') {
       const vehicleId = body.vehicle_id ? String(body.vehicle_id) : null
       if (vehicleId && !UUID_RX.test(vehicleId)) {

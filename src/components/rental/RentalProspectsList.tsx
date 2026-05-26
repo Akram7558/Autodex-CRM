@@ -93,6 +93,8 @@ export default function RentalProspectsList({ initialRows }: { initialRows: Pros
   const [error, setError] = useState<string | null>(null)
   const [rdvTarget, setRdvTarget] = useState<ProspectRow | null>(null)
   const [rdvBusy, setRdvBusy] = useState(false)
+  // Per-status filter (within the active tab). '__all__' = no extra filter.
+  const [statusFilter, setStatusFilter] = useState<string>('__all__')
   const router = useRouter()
 
   const countByTab = useMemo(() => {
@@ -104,7 +106,10 @@ export default function RentalProspectsList({ initialRows }: { initialRows: Pros
   }, [rows])
 
   const tab = RENTAL_PROSPECT_TABS.find((t) => t.id === activeTab) ?? RENTAL_PROSPECT_TABS[0]
-  const visibleRows = rows.filter((r) => (tab.statuses as readonly string[]).includes(r.status))
+  const visibleRows = rows.filter((r) =>
+    (tab.statuses as readonly string[]).includes(r.status)
+    && (statusFilter === '__all__' || r.status === statusFilter),
+  )
 
   async function changeStatus(row: ProspectRow, status: RentalProspectStatus) {
     const prev = row.status
@@ -190,31 +195,45 @@ export default function RentalProspectsList({ initialRows }: { initialRows: Pros
         </p>
       </div>
 
-      {/* Grouped tabs */}
-      <div className="flex flex-wrap gap-1.5">
-        {RENTAL_PROSPECT_TABS.map((t) => {
-          const active = t.id === activeTab
-          return (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setActiveTab(t.id)}
-              aria-current={active ? 'page' : undefined}
-              className="inline-flex items-center gap-2 px-4 h-10 rounded-xl text-sm font-medium transition-colors duration-150 motion-reduce:transition-none"
-              style={active
-                ? { background: 'var(--accent)', color: '#fff' }
-                : { background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
-            >
-              {t.label}
-              <span className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 text-[11px] rounded-full tabular-nums"
+      {/* Grouped tabs + per-status filter (within the active tab) */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap gap-1.5">
+          {RENTAL_PROSPECT_TABS.map((t) => {
+            const active = t.id === activeTab
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => { setActiveTab(t.id); setStatusFilter('__all__') }}
+                aria-current={active ? 'page' : undefined}
+                className="inline-flex items-center gap-2 px-4 h-10 rounded-xl text-sm font-medium transition-colors duration-150 motion-reduce:transition-none"
                 style={active
-                  ? { background: 'rgba(255,255,255,0.25)', color: '#fff' }
-                  : { background: 'var(--bg-surface)', color: 'var(--text-muted)' }}>
-                {countByTab[t.id] ?? 0}
-              </span>
-            </button>
-          )
-        })}
+                  ? { background: 'var(--accent)', color: '#fff' }
+                  : { background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
+              >
+                {t.label}
+                <span className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 text-[11px] rounded-full tabular-nums"
+                  style={active
+                    ? { background: 'rgba(255,255,255,0.25)', color: '#fff' }
+                    : { background: 'var(--bg-surface)', color: 'var(--text-muted)' }}>
+                  {countByTab[t.id] ?? 0}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          aria-label="Filtrer par statut"
+          className="h-10 px-3 rounded-xl text-sm"
+          style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+        >
+          <option value="__all__">Tous les statuts</option>
+          {tab.statuses.map((s) => (
+            <option key={s} value={s}>{rentalProspectStatusLabel(s)}</option>
+          ))}
+        </select>
       </div>
 
       {error && (
