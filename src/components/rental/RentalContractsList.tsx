@@ -28,6 +28,7 @@ import {
 import ContactButtons from '@/components/rental/ContactButtons'
 import ReserveDialog from '@/components/rental/ReserveDialog'
 import PickupDialog from '@/components/rental/PickupDialog'
+import ReportDialog from '@/components/rental/ReportDialog'
 
 type ContractTransition = 'confirmed' | 'active' | 'completed' | 'cancelled' | 'reporter'
 
@@ -81,6 +82,7 @@ export default function RentalContractsList({ initialRows, canFin, depositMinPer
   const [cancelTarget, setCancelTarget] = useState<ContractRow | null>(null)
   const [reserveTarget, setReserveTarget] = useState<ContractRow | null>(null)
   const [pickupTarget, setPickupTarget] = useState<ContractRow | null>(null)
+  const [reportTarget, setReportTarget] = useState<ContractRow | null>(null)
 
   const countByKey = useMemo(() => {
     const m: Record<string, number> = {}
@@ -226,7 +228,7 @@ export default function RentalContractsList({ initialRows, canFin, depositMinPer
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-2">
                         <ContactButtons phone={r.customer?.phone ?? null} />
-                        <RowActions row={r} busy={busyId === r.id} canFin={canFin} onTransition={transition} onReserve={() => setReserveTarget(r)} onPickup={() => setPickupTarget(r)} onCancel={() => setCancelTarget(r)} />
+                        <RowActions row={r} busy={busyId === r.id} canFin={canFin} onTransition={transition} onReserve={() => setReserveTarget(r)} onPickup={() => setPickupTarget(r)} onReport={() => setReportTarget(r)} onCancel={() => setCancelTarget(r)} />
                       </div>
                     </td>
                   </tr>
@@ -266,7 +268,7 @@ export default function RentalContractsList({ initialRows, canFin, depositMinPer
                 </div>
                 <div className="flex items-center justify-between gap-2">
                   <ContactButtons phone={r.customer?.phone ?? null} />
-                  <RowActions row={r} busy={busyId === r.id} canFin={canFin} onTransition={transition} onReserve={() => setReserveTarget(r)} onPickup={() => setPickupTarget(r)} onCancel={() => setCancelTarget(r)} />
+                  <RowActions row={r} busy={busyId === r.id} canFin={canFin} onTransition={transition} onReserve={() => setReserveTarget(r)} onPickup={() => setPickupTarget(r)} onReport={() => setReportTarget(r)} onCancel={() => setCancelTarget(r)} />
                 </div>
               </div>
             ))}
@@ -315,6 +317,32 @@ export default function RentalContractsList({ initialRows, canFin, depositMinPer
           }}
         />
       )}
+
+      {/* Report (reschedule) dialog — {draft,confirmed,overdue} → reporter */}
+      {reportTarget && (
+        <ReportDialog
+          rentalId={reportTarget.id}
+          contractNumber={reportTarget.contract_number}
+          onClose={() => setReportTarget(null)}
+          onReported={(r) => {
+            setRows((prev) => prev.map((row) => (
+              row.id === reportTarget.id
+                ? {
+                    ...row,
+                    status:              r.rental.status,
+                    start_date:          r.rental.start_date,
+                    end_date:            r.rental.end_date,
+                    start_time:          r.rental.start_time,
+                    end_time:            r.rental.end_time,
+                    duration_days:       r.rental.duration_days,
+                    total_rental_amount: r.rental.total_rental_amount,
+                  }
+                : row
+            )))
+            setReportTarget(null)
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -324,7 +352,7 @@ function Th({ children, end }: { children: React.ReactNode; end?: boolean }) {
 }
 
 function RowActions({
-  row, busy, canFin, onTransition, onReserve, onPickup, onCancel,
+  row, busy, canFin, onTransition, onReserve, onPickup, onReport, onCancel,
 }: {
   row: ContractRow
   busy: boolean
@@ -332,6 +360,7 @@ function RowActions({
   onTransition: (row: ContractRow, status: ContractTransition) => void
   onReserve: () => void
   onPickup: () => void
+  onReport: () => void
   onCancel: () => void
 }) {
   const s = row.status
@@ -369,7 +398,7 @@ function RowActions({
         </ActionBtn>
       )}
       {canReporter && (
-        <ActionBtn onClick={() => onTransition(row, 'reporter')} disabled={busy} tone="neutral" icon={<CalendarClock className="w-3.5 h-3.5" />}>
+        <ActionBtn onClick={onReport} disabled={busy} tone="neutral" icon={<CalendarClock className="w-3.5 h-3.5" />}>
           Reporter
         </ActionBtn>
       )}

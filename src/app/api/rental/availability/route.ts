@@ -30,6 +30,10 @@ export async function POST(req: NextRequest) {
     const vehicleId = String(body.rental_vehicle_id ?? '')
     const start = String(body.start_date ?? '')
     const end   = String(body.end_date ?? '')
+    // Optional: exclude one rental from the check (used by /report and any
+    // future flow re-validating an existing rental's own dates). Backwards
+    // compatible — omit and the behaviour is unchanged.
+    const excludeId = body.exclude_rental_id ? String(body.exclude_rental_id).trim() : null
 
     if (!vehicleId) throw new ApiError(400, 'rental_vehicle_id requis.')
     if (!DATE_RX.test(start) || !DATE_RX.test(end)) {
@@ -56,6 +60,7 @@ export async function POST(req: NextRequest) {
       p_vehicle_id: vehicleId,
       p_start: start,
       p_end: end,
+      ...(excludeId ? { p_exclude_rental_id: excludeId } : {}),
     })
     if (rpcErr) throw new ApiError(500, rpcErr.message)
 
@@ -64,7 +69,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Unavailable — fetch the conflicting periods for the UI (RLS-scoped).
-    const { data: conflicts } = await ctx.authSb
+    let cq = ctx.authSb
       .from('rentals')
       .select('start_date, end_date')
       .eq('rental_vehicle_id', vehicleId)
@@ -72,6 +77,8 @@ export async function POST(req: NextRequest) {
       .lte('start_date', end)
       .gte('end_date', start)
       .order('start_date', { ascending: true })
+    if (excludeId) cq = cq.neq('id', excludeId)
+    const { data: conflicts } = await cq
 
     return NextResponse.json({
       available: false,

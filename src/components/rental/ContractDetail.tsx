@@ -24,6 +24,7 @@ import {
 } from '@/components/rental/booking/types'
 import ReserveDialog from '@/components/rental/ReserveDialog'
 import PickupDialog from '@/components/rental/PickupDialog'
+import ReportDialog from '@/components/rental/ReportDialog'
 
 type ContractTransition = 'confirmed' | 'active' | 'completed' | 'cancelled' | 'reporter'
 import { rentalFormatPhoneIntl } from '@/lib/rental/prospects'
@@ -92,6 +93,7 @@ export default function ContractDetail({ data, canFin, depositMinPercent = 5 }: 
   const [editing, setEditing] = useState(false)
   const [reserveOpen, setReserveOpen] = useState(false)
   const [pickupOpen, setPickupOpen] = useState(false)
+  const [reportOpen, setReportOpen] = useState(false)
 
   const sc = rentalStatusColor(d.status)
   const phone = d.customer ? rentalFormatPhoneIntl(d.customer.phone) : null
@@ -158,7 +160,7 @@ export default function ContractDetail({ data, canFin, depositMinPercent = 5 }: 
           <Action onClick={() => transition('completed')} busy={busy} tone="primary" icon={<Flag className="w-4 h-4" />}>Terminer</Action>
         )}
         {canReporter && (
-          <Action onClick={() => transition('reporter')} busy={busy} tone="neutral" icon={<CalendarClock className="w-4 h-4" />}>Reporter</Action>
+          <Action onClick={() => setReportOpen(true)} busy={busy} tone="neutral" icon={<CalendarClock className="w-4 h-4" />}>Reporter</Action>
         )}
         {canCancel && (
           <CancelControl busy={busy} onConfirm={(reason) => transition('cancelled', reason)} />
@@ -312,6 +314,28 @@ export default function ContractDetail({ data, canFin, depositMinPercent = 5 }: 
                 ...r.payments.map((p) => ({ ...p, amount: toNum(p.amount) })),
                 ...cur.payments,
               ],
+            }))
+            router.refresh()
+          }}
+        />
+      )}
+
+      {reportOpen && (
+        <ReportDialog
+          rentalId={d.id}
+          contractNumber={d.contract_number}
+          onClose={() => setReportOpen(false)}
+          onReported={(r) => {
+            setReportOpen(false)
+            setD((cur) => ({
+              ...cur,
+              status:              r.rental.status,
+              start_date:          r.rental.start_date,
+              end_date:            r.rental.end_date,
+              start_time:          r.rental.start_time,
+              end_time:            r.rental.end_time,
+              duration_days:       r.rental.duration_days,
+              total_rental_amount: r.rental.total_rental_amount,
             }))
             router.refresh()
           }}
