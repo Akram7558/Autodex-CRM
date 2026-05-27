@@ -27,7 +27,7 @@ import { ApiError, errorResponse, requireShowroomMember } from '@/lib/api-auth'
 
 export const runtime = 'nodejs'
 
-const KINDS = new Set(['cin', 'permis', 'vehicle_photo', 'rental_signature', 'deposit_receipt'])
+const KINDS = new Set(['cin', 'permis', 'vehicle_photo', 'rental_signature', 'deposit_receipt', 'pickup_receipt'])
 const DOC_EXT     = new Set(['jpg', 'jpeg', 'png', 'webp', 'pdf'])
 const PHOTO_EXT   = new Set(['jpg', 'jpeg', 'png', 'webp'])
 const SIG_EXT     = new Set(['png', 'jpg', 'jpeg', 'webp'])
@@ -50,9 +50,12 @@ export async function POST(req: NextRequest) {
     const allowedExt =
       kind === 'vehicle_photo'    ? PHOTO_EXT :
       kind === 'rental_signature' ? SIG_EXT   :
-      kind === 'deposit_receipt'  ? PHOTO_EXT : DOC_EXT
+      kind === 'deposit_receipt'  ? PHOTO_EXT :
+      kind === 'pickup_receipt'   ? PHOTO_EXT : DOC_EXT
     if (!allowedExt.has(fileExt)) {
-      const photoLike = kind === 'vehicle_photo' || kind === 'rental_signature' || kind === 'deposit_receipt'
+      const photoLike =
+        kind === 'vehicle_photo' || kind === 'rental_signature'
+        || kind === 'deposit_receipt' || kind === 'pickup_receipt'
       throw new ApiError(
         400,
         photoLike
@@ -81,6 +84,14 @@ export async function POST(req: NextRequest) {
         throw new ApiError(400, 'rental_id requis.')
       }
       path = `${ctx.showroomId}/rentals/${rentalId}/deposit-receipt-${Date.now()}.${fileExt}`
+    } else if (kind === 'pickup_receipt') {
+      // Payment receipt photo(s) for the pickup-settlement flow (one per
+      // non-cash payment). Same shape as deposit_receipt — rental_id required.
+      const rentalId = body.rental_id ? String(body.rental_id) : null
+      if (!rentalId || !UUID_RX.test(rentalId)) {
+        throw new ApiError(400, 'rental_id requis.')
+      }
+      path = `${ctx.showroomId}/rentals/${rentalId}/pickup-receipt-${Date.now()}.${fileExt}`
     } else if (kind === 'vehicle_photo') {
       const vehicleId = body.vehicle_id ? String(body.vehicle_id) : null
       if (vehicleId && !UUID_RX.test(vehicleId)) {

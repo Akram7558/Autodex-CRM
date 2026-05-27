@@ -27,6 +27,7 @@ import {
 } from '@/components/rental/booking/types'
 import ContactButtons from '@/components/rental/ContactButtons'
 import ReserveDialog from '@/components/rental/ReserveDialog'
+import PickupDialog from '@/components/rental/PickupDialog'
 
 type ContractTransition = 'confirmed' | 'active' | 'completed' | 'cancelled' | 'reporter'
 
@@ -79,6 +80,7 @@ export default function RentalContractsList({ initialRows, canFin, depositMinPer
   const [error, setError] = useState<string | null>(null)
   const [cancelTarget, setCancelTarget] = useState<ContractRow | null>(null)
   const [reserveTarget, setReserveTarget] = useState<ContractRow | null>(null)
+  const [pickupTarget, setPickupTarget] = useState<ContractRow | null>(null)
 
   const countByKey = useMemo(() => {
     const m: Record<string, number> = {}
@@ -224,7 +226,7 @@ export default function RentalContractsList({ initialRows, canFin, depositMinPer
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-2">
                         <ContactButtons phone={r.customer?.phone ?? null} />
-                        <RowActions row={r} busy={busyId === r.id} canFin={canFin} onTransition={transition} onReserve={() => setReserveTarget(r)} onCancel={() => setCancelTarget(r)} />
+                        <RowActions row={r} busy={busyId === r.id} canFin={canFin} onTransition={transition} onReserve={() => setReserveTarget(r)} onPickup={() => setPickupTarget(r)} onCancel={() => setCancelTarget(r)} />
                       </div>
                     </td>
                   </tr>
@@ -264,7 +266,7 @@ export default function RentalContractsList({ initialRows, canFin, depositMinPer
                 </div>
                 <div className="flex items-center justify-between gap-2">
                   <ContactButtons phone={r.customer?.phone ?? null} />
-                  <RowActions row={r} busy={busyId === r.id} canFin={canFin} onTransition={transition} onReserve={() => setReserveTarget(r)} onCancel={() => setCancelTarget(r)} />
+                  <RowActions row={r} busy={busyId === r.id} canFin={canFin} onTransition={transition} onReserve={() => setReserveTarget(r)} onPickup={() => setPickupTarget(r)} onCancel={() => setCancelTarget(r)} />
                 </div>
               </div>
             ))}
@@ -300,6 +302,19 @@ export default function RentalContractsList({ initialRows, canFin, depositMinPer
           }}
         />
       )}
+
+      {/* Pickup (settlement) dialog — confirmed → active */}
+      {pickupTarget && (
+        <PickupDialog
+          rentalId={pickupTarget.id}
+          contractNumber={pickupTarget.contract_number}
+          onClose={() => setPickupTarget(null)}
+          onPickedUp={(r) => {
+            setRows((prev) => prev.map((row) => (row.id === pickupTarget.id ? { ...row, status: r.rental.status } : row)))
+            setPickupTarget(null)
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -309,13 +324,14 @@ function Th({ children, end }: { children: React.ReactNode; end?: boolean }) {
 }
 
 function RowActions({
-  row, busy, canFin, onTransition, onReserve, onCancel,
+  row, busy, canFin, onTransition, onReserve, onPickup, onCancel,
 }: {
   row: ContractRow
   busy: boolean
   canFin: boolean
   onTransition: (row: ContractRow, status: ContractTransition) => void
   onReserve: () => void
+  onPickup: () => void
   onCancel: () => void
 }) {
   const s = row.status
@@ -338,7 +354,7 @@ function RowActions({
         </ActionBtn>
       )}
       {canPickup && (
-        <ActionBtn onClick={() => onTransition(row, 'active')} disabled={busy} tone="primary" icon={<CarIcon className="w-3.5 h-3.5" />}>
+        <ActionBtn onClick={onPickup} disabled={busy} tone="primary" icon={<CarIcon className="w-3.5 h-3.5" />}>
           {RENTAL_ACTION_PICKUP}
         </ActionBtn>
       )}

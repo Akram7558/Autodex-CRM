@@ -30,8 +30,8 @@ type RouteCtx = { params: Promise<{ id: string }> }
 const ALLOWED_ROLES = new Set(['owner', 'manager', 'closer', 'super_admin'])
 const FIN_ROLES = new Set(['owner', 'manager', 'super_admin'])
 const TRANSITIONS: Record<string, Set<string>> = {
-  draft:     new Set(['reporter', 'cancelled']),         // → confirmed ONLY via POST /reserve (deposit required)
-  confirmed: new Set(['active', 'reporter', 'cancelled']), // active = "Voiture récupérée"
+  draft:     new Set(['reporter', 'cancelled']),         // → confirmed ONLY via POST /reserve  (deposit required)
+  confirmed: new Set(['reporter', 'cancelled']),         // → active    ONLY via POST /pickup   (full settlement required)
   active:    new Set(['completed', 'cancelled']),        // can't postpone an active rental
   overdue:   new Set(['completed', 'reporter', 'cancelled']),
   reporter:  new Set(['confirmed', 'cancelled']),        // confirmed = "Reprogrammer"
@@ -93,8 +93,9 @@ export async function PATCH(req: NextRequest, { params }: RouteCtx) {
       }
       // Re-check availability when re-booking the vehicle: reporter→confirmed
       // ("Reprogrammer"). A reported contract was excluded from overlap, so
-      // confirm it only if the dates are still free. (draft→confirmed no longer
-      // happens here — it goes through POST /reserve, which runs the same check.)
+      // confirm it only if the dates are still free. (draft→confirmed lives in
+      // POST /reserve, and confirmed→active in POST /pickup — both run the
+      // same overlap/financial checks; neither passes through here.)
       if (target === 'confirmed') {
         const { data: overlap, error: rpcErr } = await ctx.authSb.rpc('check_rental_overlap', {
           p_vehicle_id: rental.rental_vehicle_id,

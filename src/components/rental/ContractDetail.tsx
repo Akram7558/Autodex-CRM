@@ -23,6 +23,7 @@ import {
   RENTAL_ACTION_RESERVE, RENTAL_ACTION_PICKUP,
 } from '@/components/rental/booking/types'
 import ReserveDialog from '@/components/rental/ReserveDialog'
+import PickupDialog from '@/components/rental/PickupDialog'
 
 type ContractTransition = 'confirmed' | 'active' | 'completed' | 'cancelled' | 'reporter'
 import { rentalFormatPhoneIntl } from '@/lib/rental/prospects'
@@ -90,6 +91,7 @@ export default function ContractDetail({ data, canFin, depositMinPercent = 5 }: 
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [editing, setEditing] = useState(false)
   const [reserveOpen, setReserveOpen] = useState(false)
+  const [pickupOpen, setPickupOpen] = useState(false)
 
   const sc = rentalStatusColor(d.status)
   const phone = d.customer ? rentalFormatPhoneIntl(d.customer.phone) : null
@@ -147,7 +149,7 @@ export default function ContractDetail({ data, canFin, depositMinPercent = 5 }: 
           <Action onClick={() => setReserveOpen(true)} busy={busy} tone="primary" icon={<CheckCircle2 className="w-4 h-4" />}>{RENTAL_ACTION_RESERVE}</Action>
         )}
         {canPickup && (
-          <Action onClick={() => transition('active')} busy={busy} tone="primary" icon={<CarIcon className="w-4 h-4" />}>{RENTAL_ACTION_PICKUP}</Action>
+          <Action onClick={() => setPickupOpen(true)} busy={busy} tone="primary" icon={<CarIcon className="w-4 h-4" />}>{RENTAL_ACTION_PICKUP}</Action>
         )}
         {canReprogram && (
           <Action onClick={() => transition('confirmed')} busy={busy} tone="primary" icon={<RotateCcw className="w-4 h-4" />}>Reprogrammer</Action>
@@ -289,6 +291,27 @@ export default function ContractDetail({ data, canFin, depositMinPercent = 5 }: 
               ...cur,
               status: r.rental.status,
               payments: [{ ...r.payment, amount: toNum(r.payment.amount) }, ...cur.payments],
+            }))
+            router.refresh()
+          }}
+        />
+      )}
+
+      {pickupOpen && (
+        <PickupDialog
+          rentalId={d.id}
+          contractNumber={d.contract_number}
+          onClose={() => setPickupOpen(false)}
+          onPickedUp={(r) => {
+            setPickupOpen(false)
+            setD((cur) => ({
+              ...cur,
+              status: r.rental.status,
+              payments: [
+                // Prepend the just-inserted settlement payments (newest first).
+                ...r.payments.map((p) => ({ ...p, amount: toNum(p.amount) })),
+                ...cur.payments,
+              ],
             }))
             router.refresh()
           }}
