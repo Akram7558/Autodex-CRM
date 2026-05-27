@@ -78,7 +78,7 @@ export async function PATCH(req: NextRequest, { params }: RouteCtx) {
     // Shared load + ownership check.
     const { data: rental, error: loadErr } = await ctx.authSb
       .from('rentals')
-      .select('id, showroom_id, status, rental_vehicle_id, start_date, end_date, assigned_to')
+      .select('id, showroom_id, status, rental_vehicle_id, start_date, end_date, assigned_to, daily_rate_snapshot')
       .eq('id', id)
       .maybeSingle()
     if (loadErr) throw new ApiError(500, loadErr.message)
@@ -167,16 +167,35 @@ export async function PATCH(req: NextRequest, { params }: RouteCtx) {
     let newStart = String(rental.start_date)
     let newEnd   = String(rental.end_date)
     let dateOrVehicleChanged = false
+    // Chantier 2: when the vehicle changes, the server is authoritative on
+    // daily_rate_snapshot + deposit_amount + total_rental_amount. We capture
+    // the new vehicle's frozen rate/caution here and apply them after the
+    // canFin manual-override loop, so client-sent financial fields cannot
+    // override the vehicle-derived values.
+    let vehicleChanged = false
+    let newVehicleRate: number | null = null
+    let newVehicleDeposit: number | null = null
 
     if (body.rental_vehicle_id !== undefined && String(body.rental_vehicle_id) !== newVehicleId) {
+      // Status gate: the vehicle can only be changed BEFORE pickup, i.e. while
+      // the contract is still in the À-confirmer group or just Réservé.
+      if (!['draft', 'tentative_1', 'tentative_2', 'tentative_3', 'reporter', 'confirmed'].includes(String(rental.status))) {
+        throw new ApiError(400, "Le véhicule ne peut être changé qu'avant la récupération (avant le passage en « En cours »).")
+      }
       newVehicleId = String(body.rental_vehicle_id)
       const { data: veh, error: vErr } = await ctx.authSb
-        .from('rental_vehicles').select('id, showroom_id, is_active').eq('id', newVehicleId).maybeSingle()
+        .from('rental_vehicles')
+        .select('id, showroom_id, is_active, daily_rate, deposit_amount')
+        .eq('id', newVehicleId)
+        .maybeSingle()
       if (vErr) throw new ApiError(500, vErr.message)
       if (!veh) throw new ApiError(404, 'Véhicule introuvable.')
       if (!ctx.isSuperAdmin && veh.showroom_id !== ctx.showroomId) throw new ApiError(403, 'Véhicule hors de votre showroom.')
       if (!veh.is_active) throw new ApiError(400, 'Ce véhicule est inactif.')
       updates.rental_vehicle_id = newVehicleId
+      newVehicleRate = toNum(veh.daily_rate)
+      newVehicleDeposit = toNum(veh.deposit_amount)
+      vehicleChanged = true
       dateOrVehicleChanged = true
     }
     if (body.start_date !== undefined) {
@@ -190,11 +209,36 @@ export async function PATCH(req: NextRequest, { params }: RouteCtx) {
     if (body.start_time !== undefined && TIME_RX.test(String(body.start_time))) updates.start_time = String(body.start_time)
     if (body.end_time !== undefined && TIME_RX.test(String(body.end_time))) updates.end_time = String(body.end_time)
 
+    // Manual financial overrides first — vehicle-derived snapshot writes
+    // below will OVERRIDE these when the vehicle changed (server-authoritative).
+    if (canFin) {
+      for (const f of ['deposit_amount', 'total_rental_amount', 'daily_rate_snapshot'] as const) {
+        if (body[f] !== undefined) {
+          const n = toNum(body[f])
+          if (n < 0) throw new ApiError(400, 'Montant invalide.')
+          updates[f] = n
+        }
+      }
+    }
+
     if (dateOrVehicleChanged) {
       if (newEnd < newStart) throw new ApiError(400, 'La date de fin doit être postérieure ou égale au début.')
       const dur = durationDays(newStart, newEnd)
       if (dur == null) throw new ApiError(400, 'Durée invalide.')
       updates.duration_days = dur
+
+      // Server-authoritative snapshots when the vehicle changed.
+      if (vehicleChanged && newVehicleRate !== null && newVehicleDeposit !== null) {
+        updates.daily_rate_snapshot = newVehicleRate
+        updates.deposit_amount      = newVehicleDeposit
+      }
+      // Total ALWAYS recomputed when dates OR vehicle change — overrides any
+      // client value. Mirrors POST /api/rental/rentals + POST /report.
+      const rateForRecompute = updates.daily_rate_snapshot !== undefined
+        ? toNum(updates.daily_rate_snapshot)
+        : toNum(rental.daily_rate_snapshot)
+      updates.total_rental_amount = Math.max(0, Math.round(rateForRecompute * dur))
+
       const { data: overlap, error: rpcErr } = await ctx.authSb.rpc('check_rental_overlap', {
         p_vehicle_id: newVehicleId, p_start: newStart, p_end: newEnd, p_exclude_rental_id: id,
       })
@@ -207,21 +251,11 @@ export async function PATCH(req: NextRequest, { params }: RouteCtx) {
       }
     }
 
-    if (canFin) {
-      for (const f of ['deposit_amount', 'total_rental_amount', 'daily_rate_snapshot'] as const) {
-        if (body[f] !== undefined) {
-          const n = toNum(body[f])
-          if (n < 0) throw new ApiError(400, 'Montant invalide.')
-          updates[f] = n
-        }
-      }
-    }
-
     if (Object.keys(updates).length === 0) throw new ApiError(400, 'Aucun champ à mettre à jour.')
 
     const { data, error } = await ctx.authSb
       .from('rentals').update(updates).eq('id', id)
-      .select('id, contract_number, status, start_date, start_time, end_date, end_time, duration_days, daily_rate_snapshot, total_rental_amount, deposit_amount, notes, rental_vehicle_id')
+      .select('id, contract_number, status, start_date, start_time, end_date, end_time, duration_days, daily_rate_snapshot, total_rental_amount, deposit_amount, notes, rental_vehicle_id, rental_vehicle:rental_vehicles(marque, modele, annee, immatriculation, daily_rate)')
       .maybeSingle()
     if (error) throw new ApiError(400, error.message)
     if (!data) throw new ApiError(404, 'Contrat introuvable.')

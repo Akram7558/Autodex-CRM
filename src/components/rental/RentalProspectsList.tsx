@@ -27,6 +27,7 @@ import {
   Car as CarIcon, CalendarRange, CalendarCheck, Loader2, Inbox,
 } from 'lucide-react'
 import ContactButtons from '@/components/rental/ContactButtons'
+import ChangeVehicleDialog from '@/components/rental/ChangeVehicleDialog'
 import { cn } from '@/lib/utils'
 import {
   RENTAL_PROSPECT_TABS, RENTAL_PROSPECT_SUIVI_OPTIONS,
@@ -47,6 +48,7 @@ export type ProspectRow = {
   message:             string | null
   status:              string
   converted_rental_id: string | null
+  rental_vehicle_id:   string | null
   created_at:          string
   vehicle:  { marque: string; modele: string; annee: number | null } | null
   contract_number: string | null
@@ -93,6 +95,7 @@ export default function RentalProspectsList({ initialRows }: { initialRows: Pros
   const [error, setError] = useState<string | null>(null)
   const [rdvTarget, setRdvTarget] = useState<ProspectRow | null>(null)
   const [rdvBusy, setRdvBusy] = useState(false)
+  const [vehicleTarget, setVehicleTarget] = useState<ProspectRow | null>(null)
   // Per-status filter (within the active tab). '__all__' = no extra filter.
   const [statusFilter, setStatusFilter] = useState<string>('__all__')
   const router = useRouter()
@@ -285,7 +288,10 @@ export default function RentalProspectsList({ initialRows }: { initialRows: Pros
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-2">
                         {r.status !== 'perdue' && r.status !== 'convertie' && (
-                          <RdvButton onClick={() => openRdv(r)} />
+                          <>
+                            <ChangeVehicleButton onClick={() => setVehicleTarget(r)} />
+                            <RdvButton onClick={() => openRdv(r)} />
+                          </>
                         )}
                         <ContactButtons phone={r.phone} />
                       </div>
@@ -323,7 +329,10 @@ export default function RentalProspectsList({ initialRows }: { initialRows: Pros
                   <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{shortDate(r.created_at)}</span>
                   <div className="flex items-center gap-2">
                     {r.status !== 'perdue' && r.status !== 'convertie' && (
-                      <RdvButton onClick={() => openRdv(r)} />
+                      <>
+                        <ChangeVehicleButton onClick={() => setVehicleTarget(r)} />
+                        <RdvButton onClick={() => openRdv(r)} />
+                      </>
                     )}
                     <ContactButtons phone={r.phone} />
                   </div>
@@ -341,6 +350,37 @@ export default function RentalProspectsList({ initialRows }: { initialRows: Pros
           busy={rdvBusy}
           onClose={() => setRdvTarget(null)}
           onConfirm={confirmRdv}
+        />
+      )}
+
+      {/* Change-vehicle dialog (Chantier 2) — PATCHes rental_vehicle_id on the prospect. */}
+      {vehicleTarget && (
+        <ChangeVehicleDialog
+          kind="prospect"
+          id={vehicleTarget.id}
+          currentVehicleId={vehicleTarget.rental_vehicle_id}
+          currentVehicleLabel={vehicleTarget.vehicle
+            ? `${vehicleTarget.vehicle.marque} ${vehicleTarget.vehicle.modele}${vehicleTarget.vehicle.annee ? ` · ${vehicleTarget.vehicle.annee}` : ''}`
+            : null}
+          onClose={() => setVehicleTarget(null)}
+          onSaved={(result) => {
+            const j = result as { prospect?: {
+              id: string; rental_vehicle_id: string | null
+              rental_vehicle: { marque: string; modele: string; annee: number | null }
+                | { marque: string; modele: string; annee: number | null }[]
+                | null
+            } }
+            const p = j?.prospect
+            if (!p) { setVehicleTarget(null); return }
+            const embed = Array.isArray(p.rental_vehicle) ? p.rental_vehicle[0] : p.rental_vehicle
+            const newVehicle = embed
+              ? { marque: embed.marque, modele: embed.modele, annee: embed.annee ?? null }
+              : null
+            setRows((rs) => rs.map((r) => (r.id === p.id
+              ? { ...r, rental_vehicle_id: p.rental_vehicle_id, vehicle: newVehicle }
+              : r)))
+            setVehicleTarget(null)
+          }}
         />
       )}
     </div>
@@ -409,6 +449,24 @@ function SuiviControl({
   )
 }
 
+
+// "Changer véhicule" action button (Chantier 2). Secondary visual — accent
+// subtle to sit alongside the primary filled-accent RdvButton without
+// competing with it. Opens the shared ChangeVehicleDialog.
+function ChangeVehicleButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title="Changer véhicule"
+      className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold whitespace-nowrap transition-opacity hover:opacity-90"
+      style={{ background: 'var(--accent-subtle)', color: 'var(--accent)' }}
+    >
+      <CarIcon className="w-3.5 h-3.5" />
+      Véhicule
+    </button>
+  )
+}
 
 // Dedicated "RDV planifié" action button (one per row, next to the contact
 // buttons). Distinct, filled accent action — opens the confirm modal that

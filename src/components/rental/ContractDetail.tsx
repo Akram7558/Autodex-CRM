@@ -505,12 +505,30 @@ function EditPanel({
       const j = await res.json().catch(() => ({}))
       if (!res.ok || !j.rental) { setErr(j?.message ?? j?.error ?? 'Enregistrement échoué.'); setBusy(false); return }
       const r = j.rental
-      onSaved({
+      const patch: Partial<ContractDetailData> = {
         notes: r.notes ?? null,
         start_date: r.start_date, start_time: r.start_time, end_date: r.end_date, end_time: r.end_time,
         duration_days: toNum(r.duration_days), rental_vehicle_id: r.rental_vehicle_id,
-        daily_rate_snapshot: toNum(r.daily_rate_snapshot), total_rental_amount: toNum(r.total_rental_amount), deposit_amount: toNum(r.deposit_amount),
-      })
+        daily_rate_snapshot: toNum(r.daily_rate_snapshot),
+        total_rental_amount: toNum(r.total_rental_amount),
+        deposit_amount: toNum(r.deposit_amount),
+      }
+      // Chantier 2: when the vehicle changed, the response carries the new
+      // vehicle embed — refresh the cached label + daily_rate so the detail
+      // shows the new car immediately. Photos are cleared and re-signed by
+      // router.refresh() (signed URLs require the server side).
+      if (r.rental_vehicle_id !== data.rental_vehicle_id) {
+        const v = Array.isArray(r.rental_vehicle) ? r.rental_vehicle[0] : r.rental_vehicle
+        patch.vehicle = v ? {
+          marque:          v.marque,
+          modele:          v.modele,
+          annee:           v.annee ?? null,
+          immatriculation: v.immatriculation,
+          daily_rate:      toNum(v.daily_rate),
+          photos:          [],
+        } : null
+      }
+      onSaved(patch)
     } catch { setErr('Erreur réseau.'); setBusy(false) }
   }
 
@@ -522,14 +540,32 @@ function EditPanel({
       <h3 className="text-sm font-semibold text-[var(--text-primary)]">Modifier le contrat</h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="Véhicule">
-          <select value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} className={input} style={inputStyle}>
-            {!vehicles.some((v) => v.id === vehicleId) && (
-              <option value={vehicleId}>{data.vehicle ? `${data.vehicle.marque} ${data.vehicle.modele}` : 'Véhicule actuel'}</option>
-            )}
-            {vehicles.map((v) => (
-              <option key={v.id} value={v.id}>{v.marque} {v.modele}{v.annee ? ` · ${v.annee}` : ''} — {v.immatriculation}</option>
-            ))}
-          </select>
+          {/* Chantier 2: vehicle change only allowed before pickup. */}
+          {(() => {
+            const vehicleEditable = ['draft','tentative_1','tentative_2','tentative_3','reporter','confirmed'].includes(data.status)
+            return (
+              <>
+                <select value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} disabled={!vehicleEditable} className={input} style={inputStyle}>
+                  {!vehicles.some((v) => v.id === vehicleId) && (
+                    <option value={vehicleId}>{data.vehicle ? `${data.vehicle.marque} ${data.vehicle.modele}` : 'Véhicule actuel'}</option>
+                  )}
+                  {vehicles.map((v) => (
+                    <option key={v.id} value={v.id}>{v.marque} {v.modele}{v.annee ? ` · ${v.annee}` : ''} — {v.immatriculation}</option>
+                  ))}
+                </select>
+                {!vehicleEditable && (
+                  <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+                    Le véhicule ne peut plus être changé après la récupération.
+                  </p>
+                )}
+                {vehicleEditable && vehicleId !== data.rental_vehicle_id && (
+                  <p className="mt-1 text-xs" style={{ color: 'var(--accent)' }}>
+                    Le total et la caution seront recalculés automatiquement à partir de ce véhicule.
+                  </p>
+                )}
+              </>
+            )
+          })()}
         </Field>
         <div className="hidden sm:block" />
         <Field label="Début"><div className="flex gap-2"><input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={input} style={inputStyle} /><input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="w-28 h-10 px-3 rounded-lg text-sm" style={inputStyle} /></div></Field>

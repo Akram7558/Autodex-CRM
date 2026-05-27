@@ -32,6 +32,7 @@ type RawRow = {
   message: string | null
   status: string
   converted_rental_id: string | null
+  rental_vehicle_id: string | null
   created_at: string
   rental_vehicle: VehicleEmbed | VehicleEmbed[] | null
   converted: ConvertedEmbed | ConvertedEmbed[] | null
@@ -68,7 +69,7 @@ export default async function Page() {
     .from('rental_prospects')
     .select(
       'id, full_name, phone, desired_start_date, desired_end_date, reason, reason_other, ' +
-      'message, status, converted_rental_id, created_at, ' +
+      'message, status, converted_rental_id, rental_vehicle_id, created_at, ' +
       'rental_vehicle:rental_vehicles(marque, modele, annee), ' +
       'converted:rentals(contract_number)',
     )
@@ -93,6 +94,7 @@ export default async function Page() {
     message:             r.message ?? null,
     status:              r.status,
     converted_rental_id: r.converted_rental_id ?? null,
+    rental_vehicle_id:   r.rental_vehicle_id ?? null,
     created_at:          r.created_at,
     vehicle:             firstOf(r.rental_vehicle),
     contract_number:     firstOf(r.converted)?.contract_number ?? null,
