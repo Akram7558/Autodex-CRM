@@ -35,7 +35,10 @@ export const runtime = 'nodejs'
 type RouteCtx = { params: Promise<{ id: string }> }
 
 const ALLOWED_ROLES = new Set(['owner', 'manager', 'closer', 'super_admin'])
-const REPORTABLE   = new Set(['draft', 'confirmed', 'overdue'])
+// Chantier 1: /report is restricted to the À-confirmer sub-states. Confirmed/
+// overdue contracts edit their dates via the EditPanel in the fiche instead
+// (no status flip).
+const REPORTABLE   = new Set(['draft', 'tentative_1', 'tentative_2', 'tentative_3', 'reporter'])
 const DATE_RX = /^\d{4}-\d{2}-\d{2}$/
 const TIME_RX = /^\d{2}:\d{2}$/
 
@@ -186,7 +189,7 @@ export async function POST(req: NextRequest, { params }: RouteCtx) {
       .from('rentals')
       .update(updates)
       .eq('id', id)
-      .in('status', ['draft', 'confirmed', 'overdue'])
+      .in('status', ['draft', 'tentative_1', 'tentative_2', 'tentative_3', 'reporter'])
       .select('id, contract_number, status, start_date, end_date, start_time, end_time, duration_days, total_rental_amount')
       .maybeSingle()
     if (updErr) throw new ApiError(400, updErr.message)

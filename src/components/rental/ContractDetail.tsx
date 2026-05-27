@@ -15,18 +15,23 @@ import { useRouter } from 'next/navigation'
 import {
   ArrowLeft, Phone, MessageCircle, Car as CarIcon, CalendarRange, User,
   CheckCircle2, Flag, XCircle, Pencil, Loader2, PenLine,
-  Banknote, Plus, FileSignature, CalendarClock, RotateCcw,
+  Banknote, Plus, FileSignature, CalendarClock,
 } from 'lucide-react'
 import PhotoLightbox from '@/components/ui/PhotoLightbox'
 import {
   rentalStatusLabel, rentalStatusColor, formatDZD, toNum,
   RENTAL_ACTION_RESERVE, RENTAL_ACTION_PICKUP,
+  isContractPendingStatus,
 } from '@/components/rental/booking/types'
 import ReserveDialog from '@/components/rental/ReserveDialog'
 import PickupDialog from '@/components/rental/PickupDialog'
 import ReportDialog from '@/components/rental/ReportDialog'
+import ContractSuiviControl from '@/components/rental/ContractSuiviControl'
 
-type ContractTransition = 'confirmed' | 'active' | 'completed' | 'cancelled' | 'reporter'
+// 'confirmed' removed (Reprogrammer button is gone). 'active' / 'reporter'
+// stay in the union for symmetry with dialog-driven flows even though no
+// PATCH transition() call uses them today.
+type ContractTransition = 'active' | 'completed' | 'cancelled' | 'reporter'
 import { rentalFormatPhoneIntl } from '@/lib/rental/prospects'
 import {
   RENTAL_PAYMENT_TYPES, RENTAL_PAYMENT_METHODS,
@@ -97,12 +102,32 @@ export default function ContractDetail({ data, canFin, depositMinPercent = 5 }: 
 
   const sc = rentalStatusColor(d.status)
   const phone = d.customer ? rentalFormatPhoneIntl(d.customer.phone) : null
-  const canReserve   = d.status === 'draft' && canFin   // Réserver records the deposit → financial only
+  // Chantier 1: any "À-confirmer" sub-state (draft/tentative_X/reporter) can
+  // be reserved (deposit) or reported (new dates). Reprogrammer removed.
+  const isPending    = isContractPendingStatus(d.status)
+  const canReserve   = isPending && canFin              // Réserver records the deposit → financial only
   const canPickup    = d.status === 'confirmed'         // "Voiture récupérée" → active
-  const canReprogram = d.status === 'reporter'
   const canComplete  = d.status === 'active' || d.status === 'overdue'
-  const canReporter  = d.status === 'draft' || d.status === 'confirmed' || d.status === 'overdue'
+  const canReporter  = isPending                        // → reporter via /report (new dates)
   const canCancel    = d.status !== 'completed' && d.status !== 'cancelled'
+
+  // Chantier 1: direct status change from the header SuiviControl (free
+  // movement among draft/tentative_1/2/3; from reporter back into the
+  // À-confirmer set). The matrix on the server enforces what's legal.
+  async function suiviChange(status: string) {
+    setBusy(true); setError(null)
+    try {
+      const res = await fetch(`/api/rental/rentals/${d.id}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ status }),
+      })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok || !j.rental) { setError(j?.message ?? j?.error ?? 'Mise à jour échouée.'); return }
+      setD((cur) => ({ ...cur, status: j.rental.status }))
+      router.refresh()
+    } catch { setError('Erreur réseau.') } finally { setBusy(false) }
+  }
 
   async function transition(status: ContractTransition, cancellation_reason?: string) {
     setBusy(true); setError(null)
@@ -135,10 +160,16 @@ export default function ContractDetail({ data, canFin, depositMinPercent = 5 }: 
             <bdi>{d.contract_number ?? '—'}</bdi>
           </h1>
         </div>
-        <span className="ms-auto inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider"
-          style={{ background: sc.bg, color: sc.fg, boxShadow: `inset 0 0 0 1px ${sc.ring}` }}>
-          {rentalStatusLabel(d.status)}
-        </span>
+        <div className="ms-auto">
+          {isPending ? (
+            <ContractSuiviControl value={d.status} busy={busy} onChange={suiviChange} />
+          ) : (
+            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider"
+              style={{ background: sc.bg, color: sc.fg, boxShadow: `inset 0 0 0 1px ${sc.ring}` }}>
+              {rentalStatusLabel(d.status)}
+            </span>
+          )}
+        </div>
       </div>
 
       {error && (
@@ -152,9 +183,6 @@ export default function ContractDetail({ data, canFin, depositMinPercent = 5 }: 
         )}
         {canPickup && (
           <Action onClick={() => setPickupOpen(true)} busy={busy} tone="primary" icon={<CarIcon className="w-4 h-4" />}>{RENTAL_ACTION_PICKUP}</Action>
-        )}
-        {canReprogram && (
-          <Action onClick={() => transition('confirmed')} busy={busy} tone="primary" icon={<RotateCcw className="w-4 h-4" />}>Reprogrammer</Action>
         )}
         {canComplete && (
           <Action onClick={() => transition('completed')} busy={busy} tone="primary" icon={<Flag className="w-4 h-4" />}>Terminer</Action>

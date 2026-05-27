@@ -3,34 +3,42 @@
 // RentalContractsList — client renderer for the contracts list page.
 // ─────────────────────────────────────────────────────────────────────
 // Status tabs (from RENTAL_TAB_GROUPS) + per-row quick transitions:
-//   draft                      → Réserver (deposit modal) / Reporter / Annuler
-//   confirmed                  → Voiture récupérée / Reporter / Annuler
+//   À-confirmer (draft / tentative_1/2/3 / reporter)
+//                              → SuiviControl (free movement among the 4 suivi
+//                                buckets) + Réserver (deposit modal) +
+//                                Reporter (new dates modal) + Annuler
+//   confirmed                  → Voiture récupérée / Annuler
 //   active/overdue             → Terminer / Annuler
 //   completed/cancelled        → terminal (no actions)
-// Plain transitions hit PATCH /api/rental/rentals/[id]; "Réserver" goes through
-// the ReserveDialog → POST /reserve (records the deposit then draft→confirmed).
-// On success the row's status updates locally so it moves to the right tab.
-// Labels + grouping come from the centralized helpers — no hardcoded text.
-// Desktop = table; mobile = stacked cards.
+// SuiviControl PATCHes the status directly; "Réserver" → POST /reserve;
+// "Voiture récupérée" → POST /pickup; "Reporter" → POST /report; "Annuler"
+// → PATCH cancel. On success the row's status updates locally so it moves
+// to the right tab. Labels + grouping come from centralized helpers — no
+// hardcoded text. Desktop = table; mobile = stacked cards.
 // ─────────────────────────────────────────────────────────────────────
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import {
   CheckCircle2, Flag, XCircle, Loader2, Plus, FileText, Car as CarIcon, User,
-  CalendarClock, RotateCcw,
+  CalendarClock,
 } from 'lucide-react'
 import {
   RENTAL_TAB_GROUPS, rentalStatusLabel, rentalStatusColor, formatDZD, formatDateFr,
   RENTAL_FROM_PROSPECT_BADGE, RENTAL_FROM_PROSPECT_TITLE,
   RENTAL_ACTION_RESERVE, RENTAL_ACTION_PICKUP,
+  isContractPendingStatus,
 } from '@/components/rental/booking/types'
 import ContactButtons from '@/components/rental/ContactButtons'
 import ReserveDialog from '@/components/rental/ReserveDialog'
 import PickupDialog from '@/components/rental/PickupDialog'
 import ReportDialog from '@/components/rental/ReportDialog'
+import ContractSuiviControl from '@/components/rental/ContractSuiviControl'
 
-type ContractTransition = 'confirmed' | 'active' | 'completed' | 'cancelled' | 'reporter'
+// 'confirmed' removed (Reprogrammer button is gone). 'active' / 'reporter'
+// stay in the union for symmetry with dialog-driven flows even though no
+// PATCH onTransition call uses them today.
+type ContractTransition = 'active' | 'completed' | 'cancelled' | 'reporter'
 
 export type ContractRow = {
   id:                  string
@@ -94,6 +102,33 @@ export default function RentalContractsList({ initialRows, canFin, depositMinPer
 
   const activeGroup = RENTAL_TAB_GROUPS.find((g) => g.key === activeKey) ?? RENTAL_TAB_GROUPS[0]
   const visibleRows = rows.filter((r) => (activeGroup.statuses as readonly string[]).includes(r.status))
+
+  // Chantier 1: SuiviControl direct status change (À-confirmer relance buckets).
+  // Optimistic update + revert on PATCH failure, mirrors the prospects
+  // changeStatus dance. The matrix on the server enforces the legal transitions.
+  async function suiviChange(row: ContractRow, status: string) {
+    const prev = row.status
+    setRows((rs) => rs.map((r) => (r.id === row.id ? { ...r, status } : r)))
+    setBusyId(row.id)
+    setError(null)
+    try {
+      const res = await fetch(`/api/rental/rentals/${row.id}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ status }),
+      })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok || !j.rental) {
+        setRows((rs) => rs.map((r) => (r.id === row.id ? { ...r, status: prev } : r)))
+        setError(j?.message ?? j?.error ?? 'Mise à jour échouée.')
+      }
+    } catch {
+      setRows((rs) => rs.map((r) => (r.id === row.id ? { ...r, status: prev } : r)))
+      setError('Erreur réseau. Réessayez.')
+    } finally {
+      setBusyId(null)
+    }
+  }
 
   async function transition(row: ContractRow, status: ContractTransition, reason?: string) {
     setBusyId(row.id)
@@ -224,7 +259,11 @@ export default function RentalContractsList({ initialRows, canFin, depositMinPer
                     </td>
                     <td className="px-4 py-3 font-semibold text-[var(--text-primary)] tabular-nums"><bdi>{formatDZD(r.total_rental_amount)}</bdi></td>
                     <td className="px-4 py-3 text-[var(--text-secondary)] tabular-nums"><bdi>{formatDZD(r.deposit_amount)}</bdi></td>
-                    <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
+                    <td className="px-4 py-3">
+                      {isContractPendingStatus(r.status)
+                        ? <ContractSuiviControl value={r.status} busy={busyId === r.id} onChange={(next) => suiviChange(r, next)} />
+                        : <StatusBadge status={r.status} />}
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-2">
                         <ContactButtons phone={r.customer?.phone ?? null} />
@@ -249,7 +288,9 @@ export default function RentalContractsList({ initialRows, canFin, depositMinPer
                     </Link>
                     {r.isFromProspect && <RdvBadge />}
                   </div>
-                  <StatusBadge status={r.status} />
+                  {isContractPendingStatus(r.status)
+                    ? <ContractSuiviControl value={r.status} busy={busyId === r.id} onChange={(next) => suiviChange(r, next)} />
+                    : <StatusBadge status={r.status} />}
                 </div>
                 <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
                   <CarIcon className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--accent)' }} />
@@ -364,14 +405,17 @@ function RowActions({
   onCancel: () => void
 }) {
   const s = row.status
-  const canReserve   = s === 'draft' && canFin                                    // → confirmed (deposit, financial)
-  const canPickup    = s === 'confirmed'                                          // → active ("Voiture récupérée")
-  const canReprogram = s === 'reporter'                                           // → confirmed (Reprogrammer)
-  const canComplete  = s === 'active' || s === 'overdue'                          // → completed
-  const canReporter  = s === 'draft' || s === 'confirmed' || s === 'overdue'      // → reporter
-  const canCancel    = s !== 'completed' && s !== 'cancelled'                     // → cancelled
+  // Chantier 1: any "À-confirmer" sub-state can be reserved (deposit) or
+  // reported (new dates). Reprogrammer is gone — reporter→confirmed goes
+  // through /reserve like any other À-confirmer.
+  const isPending    = isContractPendingStatus(s)                                 // draft / tentative_X / reporter
+  const canReserve   = isPending && canFin                                        // → confirmed via /reserve (financial)
+  const canPickup    = s === 'confirmed'                                          // → active   via /pickup
+  const canComplete  = s === 'active' || s === 'overdue'                          // → completed (PATCH)
+  const canReporter  = isPending                                                  // → reporter via /report (new dates)
+  const canCancel    = s !== 'completed' && s !== 'cancelled'                     // → cancelled (PATCH)
 
-  if (!canReserve && !canPickup && !canReprogram && !canComplete && !canReporter && !canCancel) {
+  if (!canReserve && !canPickup && !canComplete && !canReporter && !canCancel) {
     return <span className="text-xs" style={{ color: 'var(--text-muted)' }}>—</span>
   }
   return (
@@ -385,11 +429,6 @@ function RowActions({
       {canPickup && (
         <ActionBtn onClick={onPickup} disabled={busy} tone="primary" icon={<CarIcon className="w-3.5 h-3.5" />}>
           {RENTAL_ACTION_PICKUP}
-        </ActionBtn>
-      )}
-      {canReprogram && (
-        <ActionBtn onClick={() => onTransition(row, 'confirmed')} disabled={busy} tone="primary" icon={<RotateCcw className="w-3.5 h-3.5" />}>
-          Reprogrammer
         </ActionBtn>
       )}
       {canComplete && (

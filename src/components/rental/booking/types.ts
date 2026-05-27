@@ -191,17 +191,27 @@ export function formatDZD(n: number | null | undefined): string {
 // 'reporter' = contract whose start/RDV is postponed (date à revoir). It is
 // excluded from overlap/agenda/active-KPIs by design (those count only
 // confirmed/active/overdue) — a postponed contract doesn't block its vehicle.
+//
+// 'tentative_1/_2/_3' (Chantier 1 / migration_49) = relance sub-statuses
+// under the "À confirmer" group (mirroring the prospects suivi vocabulary).
+// All three behave EXACTLY like draft for overlap/agenda/KPIs/RLS — they're
+// just narrower "À-confirmer" buckets for tracking how many times the loueur
+// has tried to reach the client without payment.
 export type RentalStatus =
-  | 'draft' | 'confirmed' | 'active' | 'completed' | 'cancelled' | 'overdue' | 'reporter'
+  | 'draft' | 'tentative_1' | 'tentative_2' | 'tentative_3'
+  | 'reporter' | 'confirmed' | 'active' | 'completed' | 'cancelled' | 'overdue'
 
 export const RENTAL_STATUS_LABELS: Record<RentalStatus, string> = {
-  draft:     'À confirmer',
-  confirmed: 'Réservé',
-  active:    'En cours de location',
-  completed: 'Terminé — Rendu',
-  overdue:   'En retard',
-  cancelled: 'Annulé',
-  reporter:  'Reporté',
+  draft:        'Nouvelle',
+  tentative_1:  'Ne répond plus 1',
+  tentative_2:  'Ne répond plus 2',
+  tentative_3:  'Ne répond plus 3',
+  reporter:     'Reporté',
+  confirmed:    'Réservé',
+  active:       'En cours de location',
+  completed:    'Terminé — Rendu',
+  overdue:      'En retard',
+  cancelled:    'Annulé',
 }
 
 /** Display label for a rental status value (falls back to the raw value). */
@@ -212,15 +222,19 @@ export function rentalStatusLabel(status: string | null | undefined): string {
 
 // Centralized status badge colors (single source of truth — used by the
 // contracts list + the contract detail). 'reporter' = violet (distinct from
-// overdue's amber).
+// overdue's amber). 'tentative_1/2/3' = escalating yellow → orange → red,
+// mirroring the prospects suivi palette (RENTAL_PROSPECT_SUIVI_BADGE_CLASSES).
 export const RENTAL_STATUS_COLORS: Record<RentalStatus, { bg: string; fg: string; ring: string }> = {
-  draft:     { bg: 'rgba(148,163,184,0.12)', fg: '#94a3b8', ring: 'rgba(148,163,184,0.35)' },
-  confirmed: { bg: 'rgba(59,130,246,0.12)',  fg: '#60a5fa', ring: 'rgba(59,130,246,0.35)' },
-  active:    { bg: 'rgba(16,185,129,0.14)',  fg: '#10b981', ring: 'rgba(16,185,129,0.40)' },
-  completed: { bg: 'rgba(16,185,129,0.14)',  fg: '#10b981', ring: 'rgba(16,185,129,0.40)' },
-  overdue:   { bg: 'rgba(245,158,11,0.14)',  fg: '#fbbf24', ring: 'rgba(245,158,11,0.40)' },
-  cancelled: { bg: 'rgba(244,63,94,0.12)',   fg: '#fb7185', ring: 'rgba(244,63,94,0.40)' },
-  reporter:  { bg: 'rgba(168,85,247,0.14)',  fg: '#c084fc', ring: 'rgba(168,85,247,0.40)' },
+  draft:        { bg: 'rgba(148,163,184,0.12)', fg: '#94a3b8', ring: 'rgba(148,163,184,0.35)' },
+  tentative_1:  { bg: 'rgba(250,204,21,0.14)',  fg: '#facc15', ring: 'rgba(250,204,21,0.40)' },
+  tentative_2:  { bg: 'rgba(251,146,60,0.14)',  fg: '#fb923c', ring: 'rgba(251,146,60,0.40)' },
+  tentative_3:  { bg: 'rgba(239,68,68,0.14)',   fg: '#f87171', ring: 'rgba(239,68,68,0.45)'  },
+  reporter:     { bg: 'rgba(168,85,247,0.14)',  fg: '#c084fc', ring: 'rgba(168,85,247,0.40)' },
+  confirmed:    { bg: 'rgba(59,130,246,0.12)',  fg: '#60a5fa', ring: 'rgba(59,130,246,0.35)' },
+  active:       { bg: 'rgba(16,185,129,0.14)',  fg: '#10b981', ring: 'rgba(16,185,129,0.40)' },
+  completed:    { bg: 'rgba(16,185,129,0.14)',  fg: '#10b981', ring: 'rgba(16,185,129,0.40)' },
+  overdue:      { bg: 'rgba(245,158,11,0.14)',  fg: '#fbbf24', ring: 'rgba(245,158,11,0.40)' },
+  cancelled:    { bg: 'rgba(244,63,94,0.12)',   fg: '#fb7185', ring: 'rgba(244,63,94,0.40)' },
 }
 
 /** Color set for a rental status (falls back to draft's neutral tone). */
@@ -228,16 +242,42 @@ export function rentalStatusColor(status: string | null | undefined): { bg: stri
   return RENTAL_STATUS_COLORS[status as RentalStatus] ?? RENTAL_STATUS_COLORS.draft
 }
 
-// Contracts-list tab grouping. Each status maps to exactly one tab; reporter
-// has its own "Reportés" tab. Kept here as the single source of truth.
+// Contracts-list tab grouping. Each status maps to exactly one tab. NOTE
+// (Chantier 1): the old "Reportés" tab is gone — 'reporter' now lives under
+// the unified "À confirmer" tab alongside draft + tentative_1/2/3 (a postponed
+// contract is just another unpaid lead, handled the same way).
 export const RENTAL_TAB_GROUPS: { key: string; label: string; statuses: RentalStatus[] }[] = [
-  { key: 'pending',   label: 'À confirmer', statuses: ['draft'] },
+  { key: 'pending',   label: 'À confirmer', statuses: ['draft', 'tentative_1', 'tentative_2', 'tentative_3', 'reporter'] },
   { key: 'upcoming',  label: 'Réservés',    statuses: ['confirmed'] },
   { key: 'ongoing',   label: 'En cours',    statuses: ['active', 'overdue'] },
-  { key: 'postponed', label: 'Reportés',    statuses: ['reporter'] },
   { key: 'completed', label: 'Terminés',    statuses: ['completed'] },
   { key: 'cancelled', label: 'Annulés',     statuses: ['cancelled'] },
 ]
+
+// ── À-confirmer suivi sub-statuses ────────────────────────────────────
+// The 4 selectable values in the per-row SuiviControl (mirrors the prospects
+// pipeline). 'reporter' is reached via /report (new dates required) — when
+// the current status is 'reporter' it appears as a DISABLED head entry in
+// the select so the user can move back to draft/tentative_X but can't
+// "re-pick" it from the dropdown.
+export const RENTAL_CONTRACT_SUIVI_OPTIONS: RentalStatus[] = [
+  'draft', 'tentative_1', 'tentative_2', 'tentative_3',
+]
+export const RENTAL_CONTRACT_SUIVI_SET = new Set<string>(RENTAL_CONTRACT_SUIVI_OPTIONS)
+
+/** Label for one of the 4 selectable suivi codes (delegates to rentalStatusLabel). */
+export function rentalContractSuiviLabel(status: string): string {
+  return rentalStatusLabel(status)
+}
+
+/**
+ * True for statuses that render as an editable suivi <select> in the contracts
+ * list/detail (the "À confirmer" group: draft + tentative_X + reporter).
+ */
+export function isContractPendingStatus(status: string | null | undefined): boolean {
+  if (!status) return false
+  return RENTAL_CONTRACT_SUIVI_SET.has(status) || status === 'reporter'
+}
 
 // ── "RDV" badge ───────────────────────────────────────────────────────
 // A contract that originated from a rental demande (prospect confirmed for

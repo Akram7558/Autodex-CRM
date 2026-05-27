@@ -95,8 +95,11 @@ export async function POST(req: NextRequest, { params }: RouteCtx) {
     if (!ctx.isSuperAdmin && rental.showroom_id !== ctx.showroomId) {
       throw new ApiError(403, 'Contrat hors de votre showroom.')
     }
-    if (rental.status !== 'draft') {
-      throw new ApiError(409, 'Seul un contrat « à confirmer » peut être réservé.')
+    // Chantier 1: any "À-confirmer" sub-status can be reserved (draft +
+    // tentative_1/2/3 + reporter). The deposit-recorded transition flips to
+    // 'confirmed' regardless of which sub-bucket the lead was in.
+    if (!['draft', 'tentative_1', 'tentative_2', 'tentative_3', 'reporter'].includes(rental.status)) {
+      throw new ApiError(409, 'Seul un contrat « À confirmer » peut être réservé.')
     }
 
     // ── Amount ─────────────────────────────────────────────────
@@ -162,7 +165,7 @@ export async function POST(req: NextRequest, { params }: RouteCtx) {
       .from('rentals')
       .update({ status: 'confirmed' })
       .eq('id', id)
-      .eq('status', 'draft')
+      .in('status', ['draft', 'tentative_1', 'tentative_2', 'tentative_3', 'reporter'])
       .select('id, contract_number, status')
       .maybeSingle()
 

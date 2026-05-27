@@ -30,13 +30,24 @@ type RouteCtx = { params: Promise<{ id: string }> }
 const ALLOWED_ROLES = new Set(['owner', 'manager', 'closer', 'super_admin'])
 const FIN_ROLES = new Set(['owner', 'manager', 'super_admin'])
 const TRANSITIONS: Record<string, Set<string>> = {
-  draft:     new Set(['cancelled']),                     // → confirmed ONLY via POST /reserve  (deposit required); → reporter via POST /report
-  confirmed: new Set(['cancelled']),                     // → active    ONLY via POST /pickup   (full settlement required); → reporter via POST /report
-  active:    new Set(['completed', 'cancelled']),        // can't postpone an active rental
-  overdue:   new Set(['completed', 'cancelled']),        // → reporter via POST /report (new dates + total recompute)
-  reporter:  new Set(['confirmed', 'cancelled']),        // confirmed = "Reprogrammer" (unchanged); Annuler
-  completed: new Set(),
-  cancelled: new Set(),
+  // À-confirmer sub-statuses (Chantier 1) — free movement between the four
+  // unpaid relance buckets via the per-row SuiviControl. → confirmed only via
+  // POST /reserve (deposit required). → reporter only via POST /report (new
+  // dates + total recompute).
+  draft:        new Set(['tentative_1', 'tentative_2', 'tentative_3', 'cancelled']),
+  tentative_1:  new Set(['draft', 'tentative_2', 'tentative_3', 'cancelled']),
+  tentative_2:  new Set(['draft', 'tentative_1', 'tentative_3', 'cancelled']),
+  tentative_3:  new Set(['draft', 'tentative_1', 'tentative_2', 'cancelled']),
+  // 'reporter' contracts can be moved back to À-confirmer (loueur reached the
+  // client and wants to track relance attempts again). Reprogrammer was
+  // removed — to go reporter → confirmed, use /reserve (deposit required).
+  reporter:     new Set(['draft', 'tentative_1', 'tentative_2', 'tentative_3', 'cancelled']),
+  // confirmed → active ONLY via POST /pickup (full settlement required).
+  confirmed:    new Set(['cancelled']),
+  active:       new Set(['completed', 'cancelled']),     // can't postpone an active rental
+  overdue:      new Set(['completed', 'cancelled']),     // overdue can only be completed/cancelled
+  completed:    new Set(),
+  cancelled:    new Set(),
 }
 
 const DATE_RX = /^\d{4}-\d{2}-\d{2}$/
@@ -82,8 +93,11 @@ export async function PATCH(req: NextRequest, { params }: RouteCtx) {
     // ── A) STATUS TRANSITION ────────────────────────────────────
     if (typeof body.status === 'string' && body.status.length > 0) {
       const target = body.status
-      if (!['confirmed', 'active', 'completed', 'cancelled', 'reporter'].includes(target)) {
-        throw new ApiError(400, "status doit être 'confirmed', 'active', 'completed', 'cancelled' ou 'reporter'.")
+      // 'overdue' is system-driven (NOT a user target). 'reporter' stays in
+      // the whitelist for symmetry with 'confirmed' and 'active', though the
+      // matrix has no edge to it (only POST /report sets it).
+      if (!['draft', 'tentative_1', 'tentative_2', 'tentative_3', 'reporter', 'confirmed', 'active', 'completed', 'cancelled'].includes(target)) {
+        throw new ApiError(400, "status doit être 'draft', 'tentative_1/2/3', 'reporter', 'confirmed', 'active', 'completed' ou 'cancelled'.")
       }
       const current = String(rental.status)
       if (current === target) throw new ApiError(409, 'Le contrat est déjà dans ce statut.')
@@ -91,11 +105,13 @@ export async function PATCH(req: NextRequest, { params }: RouteCtx) {
       if (!allowed.has(target)) {
         throw new ApiError(409, `Transition non autorisée (${current} → ${target}).`)
       }
-      // Re-check availability when re-booking the vehicle: reporter→confirmed
-      // ("Reprogrammer"). A reported contract was excluded from overlap, so
-      // confirm it only if the dates are still free. (draft→confirmed lives in
-      // POST /reserve, confirmed→active in POST /pickup, and {draft,confirmed,
-      // overdue}→reporter in POST /report — none pass through here.)
+      // Overlap re-check is now a defensive no-op here: every path that
+      // (re-)books a vehicle lives in a dedicated route — draft/tentative_X/
+      // reporter→confirmed via POST /reserve (deposit required), confirmed
+      // →active via POST /pickup (full settlement), and {draft,tentative_X,
+      // reporter}→reporter via POST /report (new dates). The matrix has no
+      // PATCH path to 'confirmed', so the block below is unreachable; it's
+      // kept for belt-and-suspenders in case a future state is added.
       if (target === 'confirmed') {
         const { data: overlap, error: rpcErr } = await ctx.authSb.rpc('check_rental_overlap', {
           p_vehicle_id: rental.rental_vehicle_id,
