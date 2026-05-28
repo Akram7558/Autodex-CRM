@@ -37,6 +37,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { ApiError, errorResponse, requireShowroomMember } from '@/lib/api-auth'
 import { toNum } from '@/components/rental/booking/types'
 import { insertRentalPayment, RENTAL_PAYMENT_METHOD_SET } from '@/lib/rental/create-payment'
+import { computeRentalFinance } from '@/lib/rental/finance'
 
 export const runtime = 'nodejs'
 
@@ -69,27 +70,25 @@ async function loadRentalAndTallies(
     .eq('rental_id', id)
   if (payErr) throw new ApiError(500, payErr.message)
 
-  let payeLoyer = 0
-  let cautionPercue = 0
-  let cautionRendue = 0
-  for (const p of (pays ?? []) as { type: string; amount: unknown }[]) {
-    const a = toNum(p.amount)
-    if (p.type === 'rental_payment') payeLoyer += a
-    else if (p.type === 'deposit')    cautionPercue += a
-    else if (p.type === 'refund')     cautionRendue += a
-  }
-  const total = toNum(rental.total_rental_amount)
-  const cautionAttendue = toNum(rental.deposit_amount)
-  const resteLoyer = Math.max(0, total - payeLoyer)
-  const cautionRestante = Math.max(0, cautionAttendue - (cautionPercue - cautionRendue))
+  // Shared pure helper — identical math to the fiche + the list expand panel.
+  const f = computeRentalFinance({
+    total:    rental.total_rental_amount as number | string | null,
+    deposit:  rental.deposit_amount as number | string | null,
+    payments: (pays ?? []) as { type: string; amount: number | string | null }[],
+  })
 
   return {
     rental: rental as {
       id: string; showroom_id: string; status: string; assigned_to: string | null
       contract_number: string | null; total_rental_amount: unknown; deposit_amount: unknown
     },
-    total, payeLoyer, resteLoyer,
-    cautionAttendue, cautionPercue, cautionRendue, cautionRestante,
+    total:           f.totalLoyer,
+    payeLoyer:       f.payeLoyer,
+    resteLoyer:      f.resteLoyer,
+    cautionAttendue: f.cautionAttendue,
+    cautionPercue:   f.cautionPercue,
+    cautionRendue:   f.cautionRendue,
+    cautionRestante: f.cautionRestante,
   }
 }
 

@@ -11,14 +11,15 @@
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@supabase/ssr'
-import RentalContractsList, { type ContractRow } from '@/components/rental/RentalContractsList'
+import RentalContractsList, { type ContractRow, type PaymentRow } from '@/components/rental/RentalContractsList'
+import { toNum } from '@/components/rental/booking/types'
 
 function firstOf<T>(v: T | T[] | null | undefined): T | null {
   if (Array.isArray(v)) return v[0] ?? null
   return v ?? null
 }
 
-type VehicleEmbed = { marque: string; modele: string; annee: number | null }
+type VehicleEmbed = { id: string; marque: string; modele: string; annee: number | null; immatriculation: string }
 type CustomerEmbed = { full_name: string; phone: string }
 type RawRow = {
   id: string
@@ -74,7 +75,7 @@ export default async function Page() {
     .select(
       'id, contract_number, status, start_date, start_time, end_date, end_time, ' +
       'duration_days, total_rental_amount, deposit_amount, created_at, ' +
-      'rental_vehicle:rental_vehicles(marque, modele, annee), ' +
+      'rental_vehicle:rental_vehicles(id, marque, modele, annee, immatriculation), ' +
       'customer:rental_customers(full_name, phone)',
     )
     .order('created_at', { ascending: false })
@@ -102,6 +103,33 @@ export default async function Page() {
     )
   }
 
+  // Chantier 2 (step 2): pre-fetch payments for ALL rows in ONE query so each
+  // expandable row can show its finance summary + payment history without a
+  // per-row round-trip. Financial roles only (mirrors the fiche guard); RLS
+  // already scopes to the showroom + closer-on-own.
+  const paymentsByRental = new Map<string, PaymentRow[]>()
+  if (canFin && raw.length > 0) {
+    const { data: pays } = await supabase
+      .from('rental_payments')
+      .select('rental_id, id, type, amount, method, reference, receipt_url, created_at')
+      .in('rental_id', raw.map((r) => r.id))
+      .order('created_at', { ascending: true })
+    for (const p of (pays ?? []) as Record<string, unknown>[]) {
+      const rid = String(p.rental_id)
+      const arr = paymentsByRental.get(rid) ?? []
+      arr.push({
+        id:          (p.id as string | null) ?? null,
+        type:        String(p.type),
+        amount:      toNum(p.amount),
+        method:      String(p.method),
+        reference:   (p.reference as string | null) ?? null,
+        receipt_url: (p.receipt_url as string | null) ?? null,
+        created_at:  String(p.created_at),
+      })
+      paymentsByRental.set(rid, arr)
+    }
+  }
+
   const rows: ContractRow[] = raw.map((r) => ({
     id:                  r.id,
     contract_number:     r.contract_number ?? null,
@@ -117,6 +145,7 @@ export default async function Page() {
     vehicle:             firstOf(r.rental_vehicle),
     customer:            firstOf(r.customer),
     isFromProspect:      rdvSet.has(r.id),
+    payments:            canFin ? (paymentsByRental.get(r.id) ?? []) : undefined,
   }))
 
   // Per-showroom minimum deposit % (migration_47) for the reserve dialog; 5%

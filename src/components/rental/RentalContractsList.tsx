@@ -17,14 +17,14 @@
 // hardcoded text. Desktop = table; mobile = stacked cards.
 // ─────────────────────────────────────────────────────────────────────
 
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import Link from 'next/link'
 import {
   CheckCircle2, Flag, XCircle, Loader2, Plus, FileText, Car as CarIcon, User,
-  CalendarClock,
+  CalendarClock, ChevronRight, ChevronDown,
 } from 'lucide-react'
 import {
-  RENTAL_TAB_GROUPS, rentalStatusLabel, rentalStatusColor, formatDZD, formatDateFr,
+  RENTAL_TAB_GROUPS, rentalStatusLabel, rentalStatusColor, formatDZD, formatDateFr, toNum,
   RENTAL_FROM_PROSPECT_BADGE, RENTAL_FROM_PROSPECT_TITLE,
   RENTAL_ACTION_RESERVE, RENTAL_ACTION_PICKUP,
   isContractPendingStatus,
@@ -34,11 +34,25 @@ import ReserveDialog from '@/components/rental/ReserveDialog'
 import PickupDialog from '@/components/rental/PickupDialog'
 import ReportDialog from '@/components/rental/ReportDialog'
 import ContractSuiviControl from '@/components/rental/ContractSuiviControl'
+import ChangeVehicleDialog from '@/components/rental/ChangeVehicleDialog'
+import ContractExpandPanel from '@/components/rental/ContractExpandPanel'
 
 // 'confirmed' removed (Reprogrammer button is gone). 'active' / 'reporter'
 // stay in the union for symmetry with dialog-driven flows even though no
 // PATCH onTransition call uses them today.
 type ContractTransition = 'active' | 'completed' | 'cancelled' | 'reporter'
+
+// One payment row attached to a contract (pre-fetched on the list page for
+// financial viewers only). Mirrors ContractDetail's ContractPayment minus notes.
+export type PaymentRow = {
+  id:          string | null
+  type:        string
+  amount:      number
+  method:      string
+  reference:   string | null
+  receipt_url: string | null
+  created_at:  string
+}
 
 export type ContractRow = {
   id:                  string
@@ -52,9 +66,10 @@ export type ContractRow = {
   total_rental_amount: number
   deposit_amount:      number
   created_at:          string
-  vehicle:  { marque: string; modele: string; annee: number | null } | null
+  vehicle:  { id: string; marque: string; modele: string; annee: number | null; immatriculation: string } | null
   customer: { full_name: string; phone: string } | null
   isFromProspect?:     boolean
+  payments?:           PaymentRow[]   // populated only for financial viewers
 }
 
 // Small "RDV" pill for contracts that originated from a rental demande.
@@ -91,6 +106,16 @@ export default function RentalContractsList({ initialRows, canFin, depositMinPer
   const [reserveTarget, setReserveTarget] = useState<ContractRow | null>(null)
   const [pickupTarget, setPickupTarget] = useState<ContractRow | null>(null)
   const [reportTarget, setReportTarget] = useState<ContractRow | null>(null)
+  const [vehicleTarget, setVehicleTarget] = useState<ContractRow | null>(null)
+  // Chantier 2 (step 2): expandable rows. Multiple may be open at once.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  function toggleExpand(id: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
 
   const countByKey = useMemo(() => {
     const m: Record<string, number> = {}
@@ -235,84 +260,133 @@ export default function RentalContractsList({ initialRows, canFin, depositMinPer
                 </tr>
               </thead>
               <tbody>
-                {visibleRows.map((r) => (
-                  <tr key={r.id} className="border-t" style={{ borderColor: 'var(--border)' }}>
-                    <td className="px-4 py-3 font-medium">
-                      <div className="flex items-center gap-1.5">
-                        <Link href={`/dashboard/location/contrats/${r.id}`} className="text-emerald-600 dark:text-emerald-400 hover:underline">
-                          <bdi>{r.contract_number ?? 'Voir'}</bdi>
-                        </Link>
-                        {r.isFromProspect && <RdvBadge />}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-[var(--text-secondary)]">
-                      {r.vehicle ? <bdi>{r.vehicle.marque} {r.vehicle.modele}{r.vehicle.annee ? ` · ${r.vehicle.annee}` : ''}</bdi> : '—'}
-                    </td>
-                    <td className="px-4 py-3 text-[var(--text-secondary)]">
-                      {r.customer ? (
-                        <span><span className="text-[var(--text-primary)]">{r.customer.full_name}</span><br /><bdi className="text-xs tabular-nums">{r.customer.phone}</bdi></span>
-                      ) : '—'}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-[var(--text-secondary)] whitespace-nowrap">
-                      {formatDateFr(r.start_date)} → {formatDateFr(r.end_date)}<br />
-                      <span className="text-[var(--text-muted)]">{r.duration_days} j</span>
-                    </td>
-                    <td className="px-4 py-3 font-semibold text-[var(--text-primary)] tabular-nums"><bdi>{formatDZD(r.total_rental_amount)}</bdi></td>
-                    <td className="px-4 py-3 text-[var(--text-secondary)] tabular-nums"><bdi>{formatDZD(r.deposit_amount)}</bdi></td>
-                    <td className="px-4 py-3">
-                      {isContractPendingStatus(r.status)
-                        ? <ContractSuiviControl value={r.status} busy={busyId === r.id} onChange={(next) => suiviChange(r, next)} />
-                        : <StatusBadge status={r.status} />}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-2">
-                        <ContactButtons phone={r.customer?.phone ?? null} />
-                        <RowActions row={r} busy={busyId === r.id} canFin={canFin} onTransition={transition} onReserve={() => setReserveTarget(r)} onPickup={() => setPickupTarget(r)} onReport={() => setReportTarget(r)} onCancel={() => setCancelTarget(r)} />
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {visibleRows.map((r) => {
+                  const open = expanded.has(r.id)
+                  return (
+                    <Fragment key={r.id}>
+                      <tr className="border-t" style={{ borderColor: 'var(--border)' }}>
+                        <td className="px-4 py-3 font-medium">
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => toggleExpand(r.id)}
+                              aria-expanded={open}
+                              aria-label={open ? 'Réduire' : 'Développer'}
+                              className="inline-flex items-center justify-center w-5 h-5 rounded transition-colors hover:bg-[var(--bg-elevated)]"
+                              style={{ color: 'var(--text-muted)' }}
+                            >
+                              {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                            </button>
+                            <Link href={`/dashboard/location/contrats/${r.id}`} className="text-emerald-600 dark:text-emerald-400 hover:underline">
+                              <bdi>{r.contract_number ?? 'Voir'}</bdi>
+                            </Link>
+                            {r.isFromProspect && <RdvBadge />}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-[var(--text-secondary)]">
+                          {r.vehicle ? <bdi>{r.vehicle.marque} {r.vehicle.modele}{r.vehicle.annee ? ` · ${r.vehicle.annee}` : ''}</bdi> : '—'}
+                        </td>
+                        <td className="px-4 py-3 text-[var(--text-secondary)]">
+                          {r.customer ? (
+                            <span><span className="text-[var(--text-primary)]">{r.customer.full_name}</span><br /><bdi className="text-xs tabular-nums">{r.customer.phone}</bdi></span>
+                          ) : '—'}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-[var(--text-secondary)] whitespace-nowrap">
+                          {formatDateFr(r.start_date)} → {formatDateFr(r.end_date)}<br />
+                          <span className="text-[var(--text-muted)]">{r.duration_days} j</span>
+                        </td>
+                        <td className="px-4 py-3 font-semibold text-[var(--text-primary)] tabular-nums"><bdi>{formatDZD(r.total_rental_amount)}</bdi></td>
+                        <td className="px-4 py-3 text-[var(--text-secondary)] tabular-nums"><bdi>{formatDZD(r.deposit_amount)}</bdi></td>
+                        <td className="px-4 py-3">
+                          {isContractPendingStatus(r.status)
+                            ? <ContractSuiviControl value={r.status} busy={busyId === r.id} onChange={(next) => suiviChange(r, next)} />
+                            : <StatusBadge status={r.status} />}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-end gap-2">
+                            <ContactButtons phone={r.customer?.phone ?? null} />
+                            <RowActions row={r} busy={busyId === r.id} canFin={canFin} onTransition={transition} onReserve={() => setReserveTarget(r)} onPickup={() => setPickupTarget(r)} onReport={() => setReportTarget(r)} onCancel={() => setCancelTarget(r)} />
+                          </div>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td colSpan={8} className="p-0" style={{ borderTop: 'none' }}>
+                          <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
+                            <div className="overflow-hidden">
+                              <ContractExpandPanel
+                                row={r}
+                                canFin={canFin}
+                                onChangeVehicle={() => setVehicleTarget(r)}
+                              />
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    </Fragment>
+                  )
+                })}
               </tbody>
             </table>
           </div>
 
           {/* Mobile cards */}
           <div className="md:hidden space-y-3">
-            {visibleRows.map((r) => (
-              <div key={r.id} className="rounded-2xl p-4 space-y-3"
-                style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <Link href={`/dashboard/location/contrats/${r.id}`} className="font-semibold text-emerald-600 dark:text-emerald-400 hover:underline truncate">
-                      <bdi>{r.contract_number ?? 'Voir'}</bdi>
-                    </Link>
-                    {r.isFromProspect && <RdvBadge />}
+            {visibleRows.map((r) => {
+              const open = expanded.has(r.id)
+              return (
+                <div key={r.id} className="rounded-2xl p-4 space-y-3"
+                  style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <button
+                        type="button"
+                        onClick={() => toggleExpand(r.id)}
+                        aria-expanded={open}
+                        aria-label={open ? 'Réduire' : 'Développer'}
+                        className="inline-flex items-center justify-center w-5 h-5 rounded flex-shrink-0"
+                        style={{ color: 'var(--text-muted)' }}
+                      >
+                        {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                      </button>
+                      <Link href={`/dashboard/location/contrats/${r.id}`} className="font-semibold text-emerald-600 dark:text-emerald-400 hover:underline truncate">
+                        <bdi>{r.contract_number ?? 'Voir'}</bdi>
+                      </Link>
+                      {r.isFromProspect && <RdvBadge />}
+                    </div>
+                    {isContractPendingStatus(r.status)
+                      ? <ContractSuiviControl value={r.status} busy={busyId === r.id} onChange={(next) => suiviChange(r, next)} />
+                      : <StatusBadge status={r.status} />}
                   </div>
-                  {isContractPendingStatus(r.status)
-                    ? <ContractSuiviControl value={r.status} busy={busyId === r.id} onChange={(next) => suiviChange(r, next)} />
-                    : <StatusBadge status={r.status} />}
+                  <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+                    <CarIcon className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--accent)' }} />
+                    {r.vehicle ? <bdi>{r.vehicle.marque} {r.vehicle.modele}{r.vehicle.annee ? ` · ${r.vehicle.annee}` : ''}</bdi> : '—'}
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+                    <User className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--accent)' }} />
+                    {r.customer ? <span>{r.customer.full_name} · <bdi className="tabular-nums">{r.customer.phone}</bdi></span> : '—'}
+                  </div>
+                  <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    {formatDateFr(r.start_date)} → {formatDateFr(r.end_date)} · {r.duration_days} j
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span style={{ color: 'var(--text-secondary)' }}>Total <bdi className="font-semibold text-[var(--text-primary)] tabular-nums">{formatDZD(r.total_rental_amount)}</bdi></span>
+                    <span style={{ color: 'var(--text-secondary)' }}>Caution <bdi className="tabular-nums">{formatDZD(r.deposit_amount)}</bdi></span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <ContactButtons phone={r.customer?.phone ?? null} />
+                    <RowActions row={r} busy={busyId === r.id} canFin={canFin} onTransition={transition} onReserve={() => setReserveTarget(r)} onPickup={() => setPickupTarget(r)} onReport={() => setReportTarget(r)} onCancel={() => setCancelTarget(r)} />
+                  </div>
+                  {/* Expand panel */}
+                  <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
+                    <div className="overflow-hidden">
+                      <div className="-mx-4 -mb-4 mt-1 border-t" style={{ borderColor: 'var(--border)' }}>
+                        <ContractExpandPanel row={r} canFin={canFin} onChangeVehicle={() => setVehicleTarget(r)} />
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-                  <CarIcon className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--accent)' }} />
-                  {r.vehicle ? <bdi>{r.vehicle.marque} {r.vehicle.modele}{r.vehicle.annee ? ` · ${r.vehicle.annee}` : ''}</bdi> : '—'}
-                </div>
-                <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-                  <User className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--accent)' }} />
-                  {r.customer ? <span>{r.customer.full_name} · <bdi className="tabular-nums">{r.customer.phone}</bdi></span> : '—'}
-                </div>
-                <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                  {formatDateFr(r.start_date)} → {formatDateFr(r.end_date)} · {r.duration_days} j
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span style={{ color: 'var(--text-secondary)' }}>Total <bdi className="font-semibold text-[var(--text-primary)] tabular-nums">{formatDZD(r.total_rental_amount)}</bdi></span>
-                  <span style={{ color: 'var(--text-secondary)' }}>Caution <bdi className="tabular-nums">{formatDZD(r.deposit_amount)}</bdi></span>
-                </div>
-                <div className="flex items-center justify-between gap-2">
-                  <ContactButtons phone={r.customer?.phone ?? null} />
-                  <RowActions row={r} busy={busyId === r.id} canFin={canFin} onTransition={transition} onReserve={() => setReserveTarget(r)} onPickup={() => setPickupTarget(r)} onReport={() => setReportTarget(r)} onCancel={() => setCancelTarget(r)} />
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </>
       )}
@@ -381,6 +455,45 @@ export default function RentalContractsList({ initialRows, canFin, depositMinPer
                 : row
             )))
             setReportTarget(null)
+          }}
+        />
+      )}
+
+      {/* Change-vehicle dialog (Chantier 2) — server recomputes rate/caution/total */}
+      {vehicleTarget && (
+        <ChangeVehicleDialog
+          kind="contract"
+          id={vehicleTarget.id}
+          currentVehicleId={vehicleTarget.vehicle?.id ?? null}
+          currentVehicleLabel={vehicleTarget.vehicle
+            ? `${vehicleTarget.vehicle.marque} ${vehicleTarget.vehicle.modele}${vehicleTarget.vehicle.annee ? ` · ${vehicleTarget.vehicle.annee}` : ''}`
+            : null}
+          durationDays={vehicleTarget.duration_days}
+          onClose={() => setVehicleTarget(null)}
+          onSaved={(result) => {
+            const j = result as { rental?: {
+              id: string; rental_vehicle_id: string
+              total_rental_amount: number | string; deposit_amount: number | string; duration_days: number | string
+              rental_vehicle:
+                | { marque: string; modele: string; annee: number | null; immatriculation: string }
+                | { marque: string; modele: string; annee: number | null; immatriculation: string }[]
+                | null
+            } }
+            const rr = j?.rental
+            if (!rr) { setVehicleTarget(null); return }
+            const embed = Array.isArray(rr.rental_vehicle) ? rr.rental_vehicle[0] : rr.rental_vehicle
+            setRows((prev) => prev.map((row) => (row.id === rr.id
+              ? {
+                  ...row,
+                  vehicle: embed
+                    ? { id: rr.rental_vehicle_id, marque: embed.marque, modele: embed.modele, annee: embed.annee ?? null, immatriculation: embed.immatriculation }
+                    : row.vehicle,
+                  total_rental_amount: toNum(rr.total_rental_amount),
+                  deposit_amount:      toNum(rr.deposit_amount),
+                  duration_days:       toNum(rr.duration_days),
+                }
+              : row)))
+            setVehicleTarget(null)
           }}
         />
       )}

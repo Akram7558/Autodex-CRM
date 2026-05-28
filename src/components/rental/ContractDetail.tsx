@@ -27,6 +27,8 @@ import ReserveDialog from '@/components/rental/ReserveDialog'
 import PickupDialog from '@/components/rental/PickupDialog'
 import ReportDialog from '@/components/rental/ReportDialog'
 import ContractSuiviControl from '@/components/rental/ContractSuiviControl'
+import ReceiptLink from '@/components/rental/ReceiptLink'
+import { computeRentalFinance } from '@/lib/rental/finance'
 
 // 'confirmed' removed (Reprogrammer button is gone). 'active' / 'reporter'
 // stay in the union for symmetry with dialog-driven flows even though no
@@ -47,19 +49,6 @@ export type ContractPayment = {
   notes: string | null
   receipt_url: string | null   // private storage path; null for cash
   created_at: string
-}
-
-/**
- * Open a payment receipt: resolves the private storage path to a 1h signed
- * URL via /api/rental/uploads/read, then opens it in a new tab. Silent on
- * failure (we don't block the page on a flaky signed URL).
- */
-async function openReceiptPath(path: string): Promise<void> {
-  try {
-    const res = await fetch(`/api/rental/uploads/read?path=${encodeURIComponent(path)}`)
-    const j = await res.json().catch(() => ({}))
-    if (res.ok && j?.url) window.open(j.url, '_blank', 'noopener,noreferrer')
-  } catch { /* ignore */ }
 }
 
 export type ContractDetailData = {
@@ -616,22 +605,11 @@ function PaymentsSection({
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
-  // ── Finance categories (correct math) ───────────────────────────
-  // LOYER (rent) — only 'rental_payment' counts against the rental total.
-  const totalLoyer = toNum(total)
-  const payeLoyer  = payments.filter((p) => p.type === 'rental_payment').reduce((a, p) => a + toNum(p.amount), 0)
-  const resteLoyer = Math.max(0, totalLoyer - payeLoyer)
-
-  // FRAIS (additional revenue) — extra_charge/km_excess/late_fee/damage_fee/fuel_charge.
+  // ── Finance categories (shared pure helper — single source of truth) ──
+  const { totalLoyer, payeLoyer, resteLoyer, totalFrais, cautionAttendue, cautionPercue, cautionRendue } =
+    computeRentalFinance({ total, deposit, payments })
+  // fraisLines kept locally for the per-line breakdown render below.
   const fraisLines = payments.filter((p) => isExtraFeeType(p.type))
-  const totalFrais = fraisLines.reduce((a, p) => a + toNum(p.amount), 0)
-
-  // CAUTION (held money, NOT revenue). Refunds are counted here as "Rendue"
-  // (deposit returned) and are NOT subtracted from loyer/frais — single
-  // place to avoid double-counting.
-  const cautionAttendue = toNum(deposit)
-  const cautionPercue   = payments.filter((p) => p.type === 'deposit').reduce((a, p) => a + toNum(p.amount), 0)
-  const cautionRendue   = payments.filter((p) => p.type === 'refund').reduce((a, p) => a + toNum(p.amount), 0)
 
   const depStatus: { label: string; bg: string; fg: string } =
     cautionPercue === 0
@@ -756,15 +734,7 @@ function PaymentsSection({
                     {rentalPaymentTypeLabel(p.type)}
                     <span className="text-xs font-normal" style={{ color: 'var(--text-muted)' }}> · {rentalPaymentMethodLabel(p.method)}</span>
                   </span>
-                  {p.receipt_url && (
-                    <button
-                      type="button"
-                      onClick={() => openReceiptPath(p.receipt_url!)}
-                      title="Ouvrir le reçu"
-                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider hover:opacity-90"
-                      style={{ background: 'var(--accent-subtle)', color: 'var(--accent)' }}
-                    >📎 Reçu</button>
-                  )}
+                  {p.receipt_url && <ReceiptLink path={p.receipt_url} />}
                 </div>
                 <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
                   {fmtDate(p.created_at)}{p.reference ? ` · ${p.reference}` : ''}{p.notes ? ` · ${p.notes}` : ''}
