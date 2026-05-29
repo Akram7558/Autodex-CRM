@@ -23,7 +23,10 @@ import { supabase } from '@/lib/supabase'
 type Kind = 'cin' | 'permis'
 
 const MAX_BYTES = 5 * 1024 * 1024 // 5 MB
-const ACCEPT = 'image/jpeg,image/png,image/webp,application/pdf'
+// MIME-based so the mobile native picker offers Camera + Photo Library +
+// Files; desktop still accepts PDF scans. (Validation below still restricts
+// to jpg/jpeg/png/webp/pdf by extension.)
+const ACCEPT = 'image/*,application/pdf'
 
 export default function DocumentUploader({
   kind, value, customerId, onChange,
@@ -34,10 +37,14 @@ export default function DocumentUploader({
   onChange:    (path: string | null) => void
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
+  const camRef  = useRef<HTMLInputElement>(null)
   const [localPreview, setLocalPreview] = useState<string | null>(null)
   const [uploading,    setUploading]    = useState(false)
   const [progress,     setProgress]     = useState(0)
   const [error,        setError]        = useState<string | null>(null)
+  // Camera-capture affordance only makes sense on touch / coarse-pointer
+  // devices. SSR-safe: default false (hidden), reveal after mount.
+  const [isCoarse, setIsCoarse] = useState(false)
 
   // Clean up any object-URL we created so we don't leak.
   useEffect(() => {
@@ -48,7 +55,13 @@ export default function DocumentUploader({
     }
   }, [localPreview])
 
-  function pick() { fileRef.current?.click() }
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return
+    setIsCoarse(window.matchMedia('(pointer: coarse)').matches)
+  }, [])
+
+  function pick()       { fileRef.current?.click() }
+  function pickCamera() { camRef.current?.click() }
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -122,32 +135,59 @@ export default function DocumentUploader({
         className="hidden"
         aria-label={`Téléverser ${label}`}
       />
+      {/* Separate input that asks the OS for the rear camera directly.
+          Same onChange → same upload + validation as the file picker. */}
+      <input
+        ref={camRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={onFile}
+        className="hidden"
+        aria-label={`Prendre une photo du ${label}`}
+      />
 
       {!hasFile ? (
-        <button
-          type="button"
-          onClick={pick}
-          className="w-full rounded-xl p-5 flex flex-col items-center gap-2 transition-colors duration-150 ease-out"
-          style={{
-            background: 'var(--bg-elevated)',
-            border: '1.5px dashed var(--border-strong)',
-            color: 'var(--text-secondary)',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--accent) 45%, transparent)'
-            e.currentTarget.style.color = 'var(--text-primary)'
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = 'var(--border-strong)'
-            e.currentTarget.style.color = 'var(--text-secondary)'
-          }}
-        >
-          <Camera className="w-5 h-5" />
-          <span className="text-xs font-semibold">Cliquer pour téléverser le {label}</span>
-          <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-            JPG, PNG, WebP, PDF — 5 Mo max
-          </span>
-        </button>
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={pick}
+            className="w-full rounded-xl p-5 flex flex-col items-center gap-2 transition-colors duration-150 ease-out"
+            style={{
+              background: 'var(--bg-elevated)',
+              border: '1.5px dashed var(--border-strong)',
+              color: 'var(--text-secondary)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--accent) 45%, transparent)'
+              e.currentTarget.style.color = 'var(--text-primary)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = 'var(--border-strong)'
+              e.currentTarget.style.color = 'var(--text-secondary)'
+            }}
+          >
+            <Camera className="w-5 h-5" />
+            <span className="text-xs font-semibold">Cliquer pour téléverser le {label}</span>
+            <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+              JPG, PNG, WebP, PDF — 5 Mo max
+            </span>
+          </button>
+          {isCoarse && (
+            <button
+              type="button"
+              onClick={pickCamera}
+              className="w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl text-xs font-semibold transition-colors"
+              style={{
+                background: 'var(--accent-subtle)',
+                border: '1px solid var(--border)',
+                color: 'var(--accent)',
+              }}
+            >
+              📷 Prendre une photo
+            </button>
+          )}
+        </div>
       ) : (
         <div
           className="relative rounded-xl overflow-hidden"
@@ -180,6 +220,17 @@ export default function DocumentUploader({
               {label} · téléversé
             </span>
             <div className="flex items-center gap-1">
+              {isCoarse && (
+                <button
+                  type="button"
+                  onClick={pickCamera}
+                  className="px-2 py-1 rounded-md text-xs font-medium transition-colors"
+                  style={{ color: 'var(--accent)' }}
+                  aria-label={`Reprendre une photo du ${label}`}
+                >
+                  📷
+                </button>
+              )}
               <button
                 type="button"
                 onClick={pick}
