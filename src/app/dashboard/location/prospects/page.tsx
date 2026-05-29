@@ -64,6 +64,9 @@ export default async function Page() {
     redirect('/dashboard/location')
   }
   const showroomId = (roleRow?.showroom_id as string | null) ?? null
+  // Only owner/manager/super_admin may bulk-trash cancelled (perdue) demandes
+  // (closer is excluded, mirroring the trash endpoint's role guard).
+  const canTrash = role === 'owner' || role === 'manager' || role === 'super_admin'
 
   let q = supabase
     .from('rental_prospects')
@@ -81,6 +84,10 @@ export default async function Page() {
     // wizard) — hide them from the pipeline entirely, like convertie. Net set
     // here: nouvelle / tentative_1-3 / reporter / perdue.
     .neq('status', 'rdv_planifie')
+    // Soft-delete (corbeille, migration 51): trashed prospects carry a
+    // deleted_at timestamp and must never appear in the list or its derived
+    // counts. NULL = not trashed.
+    .is('deleted_at', null)
     .order('created_at', { ascending: false })
     .limit(100)
   if (showroomId) q = q.eq('showroom_id', showroomId)
@@ -104,5 +111,5 @@ export default async function Page() {
     contract_number:     firstOf(r.converted)?.contract_number ?? null,
   }))
 
-  return <RentalProspectsList initialRows={rows} />
+  return <RentalProspectsList initialRows={rows} canTrash={canTrash} />
 }

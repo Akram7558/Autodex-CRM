@@ -26,7 +26,7 @@ import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
-  Car as CarIcon, CalendarRange, CalendarCheck, Loader2, Inbox,
+  Car as CarIcon, CalendarRange, CalendarCheck, Loader2, Inbox, Trash2,
 } from 'lucide-react'
 import ContactButtons from '@/components/rental/ContactButtons'
 import ChangeVehicleDialog from '@/components/rental/ChangeVehicleDialog'
@@ -110,7 +110,14 @@ function matchesStatusFilter(status: string, filter: string): boolean {
   return status === filter
 }
 
-export default function RentalProspectsList({ initialRows }: { initialRows: ProspectRow[] }) {
+export default function RentalProspectsList({
+  initialRows,
+  canTrash = false,
+}: {
+  initialRows: ProspectRow[]
+  // Only owner/manager/super_admin may bulk-trash cancelled (perdue) demandes.
+  canTrash?: boolean
+}) {
   const [rows, setRows] = useState<ProspectRow[]>(initialRows)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -119,6 +126,11 @@ export default function RentalProspectsList({ initialRows }: { initialRows: Pros
   const [vehicleTarget, setVehicleTarget] = useState<ProspectRow | null>(null)
   // Single status filter over the whole list. '__all__' = no filter.
   const [statusFilter, setStatusFilter] = useState<string>('__all__')
+  // Soft-delete (corbeille): multi-select state, only used in the "Annulée"
+  // (perdue) view for owner/manager/super_admin.
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [trashOpen, setTrashOpen] = useState(false)
+  const [trashBusy, setTrashBusy] = useState(false)
   const router = useRouter()
 
   // Per-option counts over the full row set, shown inline in the dropdown.
@@ -131,6 +143,63 @@ export default function RentalProspectsList({ initialRows }: { initialRows: Pros
   }, [rows])
 
   const visibleRows = rows.filter((r) => matchesStatusFilter(r.status, statusFilter))
+
+  // Multi-select is offered ONLY in the cancelled ("Annulée" = perdue) view,
+  // and only to roles allowed to trash.
+  const showTrash = canTrash && statusFilter === 'perdue'
+  const allSelected = showTrash && visibleRows.length > 0 && visibleRows.every((r) => selected.has(r.id))
+
+  // Switch filter + drop any selection (selection only makes sense within the
+  // perdue view).
+  function pickFilter(v: string) {
+    setStatusFilter(v)
+    setSelected(new Set())
+  }
+  function toggleOne(id: string) {
+    setSelected((s) => {
+      const next = new Set(s)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+  function toggleAll() {
+    setSelected(allSelected ? new Set() : new Set(visibleRows.map((r) => r.id)))
+  }
+
+  async function confirmTrash() {
+    const ids = visibleRows.filter((r) => selected.has(r.id)).map((r) => r.id)
+    if (ids.length === 0) { setTrashOpen(false); return }
+    setTrashBusy(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/rental/prospects/trash', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(j?.message ?? j?.error ?? 'Mise à la corbeille échouée.')
+        setTrashBusy(false)
+        setTrashOpen(false)
+        return
+      }
+      // Remove the trashed rows from local state instantly; they're filtered
+      // out server-side on the next load too.
+      const trashedSet = new Set(ids)
+      setRows((rs) => rs.filter((r) => !trashedSet.has(r.id)))
+      setSelected(new Set())
+      setTrashBusy(false)
+      setTrashOpen(false)
+    } catch {
+      setError('Erreur réseau. Réessayez.')
+      setTrashBusy(false)
+      setTrashOpen(false)
+    }
+  }
+
+  const selectedCount = visibleRows.filter((r) => selected.has(r.id)).length
 
   async function changeStatus(row: ProspectRow, status: RentalProspectStatus) {
     const prev = row.status
@@ -230,7 +299,7 @@ export default function RentalProspectsList({ initialRows }: { initialRows: Pros
             <button
               key={opt.value}
               type="button"
-              onClick={() => setStatusFilter(opt.value)}
+              onClick={() => pickFilter(opt.value)}
               aria-current={active ? 'page' : undefined}
               className="inline-flex items-center gap-2 px-4 h-10 rounded-xl text-sm font-medium transition-colors duration-150 motion-reduce:transition-none"
               style={active
@@ -258,6 +327,25 @@ export default function RentalProspectsList({ initialRows }: { initialRows: Pros
         </p>
       )}
 
+      {/* Bulk action bar — visible in the "Annulée" view once rows are picked. */}
+      {showTrash && selectedCount > 0 && (
+        <div className="flex items-center justify-between gap-3 rounded-xl px-4 py-3"
+          style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}>
+          <span className="text-sm font-medium text-[var(--text-primary)]">
+            {selectedCount} sélectionné{selectedCount > 1 ? 's' : ''}
+          </span>
+          <button
+            type="button"
+            onClick={() => setTrashOpen(true)}
+            className="inline-flex items-center gap-2 h-9 px-4 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-90"
+            style={{ background: '#e11d48' }}
+          >
+            <Trash2 className="w-4 h-4" />
+            Mettre à la corbeille ({selectedCount})
+          </button>
+        </div>
+      )}
+
       {visibleRows.length === 0 ? (
         <div className="rounded-2xl py-16 text-center"
           style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
@@ -277,12 +365,34 @@ export default function RentalProspectsList({ initialRows }: { initialRows: Pros
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+                  {showTrash && (
+                    <th className="px-4 py-2.5 w-10">
+                      <input
+                        type="checkbox"
+                        aria-label="Tout sélectionner"
+                        checked={allSelected}
+                        onChange={toggleAll}
+                        className="h-4 w-4 cursor-pointer accent-rose-600 align-middle"
+                      />
+                    </th>
+                  )}
                   <Th>Client</Th><Th>Véhicule</Th><Th>Motif</Th><Th>Dates</Th><Th>Suivi</Th><Th>Reçu</Th><Th end>Actions</Th>
                 </tr>
               </thead>
               <tbody>
                 {visibleRows.map((r) => (
                   <tr key={r.id} className="border-t align-top" style={{ borderColor: 'var(--border)' }}>
+                    {showTrash && (
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          aria-label={`Sélectionner ${r.full_name}`}
+                          checked={selected.has(r.id)}
+                          onChange={() => toggleOne(r.id)}
+                          className="h-4 w-4 cursor-pointer accent-rose-600 align-middle"
+                        />
+                      </td>
+                    )}
                     <td className="px-4 py-3">
                       <div className="font-medium text-[var(--text-primary)]">{r.full_name}</div>
                       <div className="text-xs tabular-nums" style={{ color: 'var(--text-secondary)' }}>{r.phone}</div>
@@ -322,9 +432,20 @@ export default function RentalProspectsList({ initialRows }: { initialRows: Pros
               <div key={r.id} className="rounded-2xl p-4 space-y-3"
                 style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
                 <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="font-semibold text-[var(--text-primary)] truncate">{r.full_name}</div>
-                    <div className="text-xs tabular-nums" style={{ color: 'var(--text-secondary)' }}>{r.phone}</div>
+                  <div className="flex items-start gap-2 min-w-0">
+                    {showTrash && (
+                      <input
+                        type="checkbox"
+                        aria-label={`Sélectionner ${r.full_name}`}
+                        checked={selected.has(r.id)}
+                        onChange={() => toggleOne(r.id)}
+                        className="mt-1 h-4 w-4 flex-shrink-0 cursor-pointer accent-rose-600"
+                      />
+                    )}
+                    <div className="min-w-0">
+                      <div className="font-semibold text-[var(--text-primary)] truncate">{r.full_name}</div>
+                      <div className="text-xs tabular-nums" style={{ color: 'var(--text-secondary)' }}>{r.phone}</div>
+                    </div>
                   </div>
                   <SuiviControl row={r} busy={busyId === r.id} onChange={changeStatus} />
                 </div>
@@ -355,6 +476,16 @@ export default function RentalProspectsList({ initialRows }: { initialRows: Pros
             ))}
           </div>
         </>
+      )}
+
+      {/* Soft-delete confirm — moves the picked perdue demandes to the corbeille. */}
+      {trashOpen && (
+        <TrashDialog
+          count={selectedCount}
+          busy={trashBusy}
+          onClose={() => setTrashOpen(false)}
+          onConfirm={confirmTrash}
+        />
       )}
 
       {/* "RDV planifié" → confirm, then move the prospect into Contrats. */}
@@ -403,6 +534,60 @@ export default function RentalProspectsList({ initialRows }: { initialRows: Pros
 
 function Th({ children, end }: { children: React.ReactNode; end?: boolean }) {
   return <th className={'px-4 py-2.5 font-semibold ' + (end ? 'text-end' : 'text-start')}>{children}</th>
+}
+
+// Soft-delete ("corbeille") confirmation. Mirrors RdvDialog but with a red
+// destructive confirm. Recovery is DB-only — there's no restore UI.
+function TrashDialog({
+  count, busy, onClose, onConfirm,
+}: {
+  count: number
+  busy: boolean
+  onClose: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <div
+      onClick={busy ? undefined : onClose}
+      className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center p-4"
+      style={{ background: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(4px)' }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Mettre à la corbeille"
+        onClick={(e) => e.stopPropagation()}
+        className="w-full sm:max-w-md rounded-2xl p-5"
+        style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', boxShadow: 'var(--shadow-glass)' }}
+      >
+        <h3 className="text-base font-semibold text-[var(--text-primary)]">Mettre à la corbeille ?</h3>
+        <p className="mt-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
+          {count} élément{count > 1 ? 's' : ''} seron{count > 1 ? 't' : 'a'} retiré{count > 1 ? 's' : ''} de la liste.
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            className="h-10 px-4 rounded-lg text-sm font-medium disabled:opacity-50"
+            style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
+          >
+            Annuler
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={busy}
+            className="inline-flex items-center gap-2 h-10 px-4 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
+            style={{ background: '#e11d48' }}
+          >
+            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+            Confirmer
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // Colored suivi dropdown — or a solid terminal badge for converted rows.

@@ -58,6 +58,8 @@ export default async function Page({ params }: { params: Promise<Params> }) {
       rental_vehicle:rental_vehicles ( marque, modele, annee, immatriculation )
     `)
     .eq('customer_id', id)
+    // Soft-delete (corbeille, migration 51): hide trashed contracts.
+    .is('deleted_at', null)
     .order('start_date', { ascending: false })
 
   const canEdit   = role === 'owner' || role === 'manager' || role === 'super_admin'

@@ -64,6 +64,9 @@ export default async function Page({ searchParams }: RouteCtx) {
     .from('rental_prospects')
     .select('id, showroom_id, status, rental_vehicle_id, full_name, phone, desired_start_date, desired_end_date, converted_rental_id')
     .eq('id', from_prospect)
+    // Soft-delete (corbeille, migration 51): a trashed prospect must not be
+    // loadable into the booking wizard.
+    .is('deleted_at', null)
     .maybeSingle()
 
   // Unknown / out-of-showroom / already linked to a contract → empty wizard

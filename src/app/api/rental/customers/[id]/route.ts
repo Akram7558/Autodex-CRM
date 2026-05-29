@@ -47,6 +47,8 @@ export async function GET(req: NextRequest, { params }: RouteCtx) {
         rental_vehicle:rental_vehicles ( marque, modele, annee, immatriculation )
       `)
       .eq('customer_id', id)
+      // Soft-delete (corbeille, migration 51): hide trashed contracts.
+      .is('deleted_at', null)
       .order('start_date', { ascending: false })
     if (rErr) throw new ApiError(500, rErr.message)
 

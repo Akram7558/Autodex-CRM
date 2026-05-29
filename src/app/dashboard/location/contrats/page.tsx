@@ -78,6 +78,10 @@ export default async function Page() {
       'rental_vehicle:rental_vehicles(id, marque, modele, annee, immatriculation), ' +
       'customer:rental_customers(full_name, phone)',
     )
+    // Soft-delete (corbeille, migration 51): trashed contracts carry a
+    // deleted_at timestamp and must never appear in the list or its derived
+    // counts. NULL = not trashed.
+    .is('deleted_at', null)
     .order('created_at', { ascending: false })
     .limit(100)
   if (showroomId) q = q.eq('showroom_id', showroomId)

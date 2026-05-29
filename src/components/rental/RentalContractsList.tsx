@@ -21,7 +21,7 @@ import { Fragment, useMemo, useState } from 'react'
 import Link from 'next/link'
 import {
   CheckCircle2, Flag, XCircle, Loader2, Plus, FileText, Car as CarIcon, User,
-  CalendarClock, ChevronRight, ChevronDown,
+  CalendarClock, ChevronRight, ChevronDown, Trash2,
 } from 'lucide-react'
 import {
   RENTAL_TAB_GROUPS, rentalStatusLabel, rentalStatusColor, formatDZD, formatDateFr, toNum,
@@ -121,6 +121,11 @@ export default function RentalContractsList({ initialRows, canFin, depositMinPer
   const [vehicleTarget, setVehicleTarget] = useState<ContractRow | null>(null)
   // Chantier 2 (step 2): expandable rows. Multiple may be open at once.
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  // Soft-delete (corbeille): multi-select state, only used in the "Annulés"
+  // (cancelled) tab for owner/manager/super_admin (canFin role set).
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [trashOpen, setTrashOpen] = useState(false)
+  const [trashBusy, setTrashBusy] = useState(false)
   function toggleExpand(id: string) {
     setExpanded((prev) => {
       const next = new Set(prev)
@@ -139,6 +144,62 @@ export default function RentalContractsList({ initialRows, canFin, depositMinPer
 
   const activeGroup = RENTAL_TAB_GROUPS.find((g) => g.key === activeKey) ?? RENTAL_TAB_GROUPS[0]
   const visibleRows = rows.filter((r) => (activeGroup.statuses as readonly string[]).includes(r.status))
+
+  // Multi-select is offered ONLY in the cancelled ("Annulés") tab, and only to
+  // roles allowed to trash (canFin === owner/manager/super_admin).
+  const showTrash = canFin && activeKey === 'cancelled'
+  const allSelected = showTrash && visibleRows.length > 0 && visibleRows.every((r) => selected.has(r.id))
+  const selectedCount = visibleRows.filter((r) => selected.has(r.id)).length
+
+  // Switch tab + drop any selection (selection only makes sense within the
+  // cancelled tab).
+  function pickTab(key: string) {
+    setActiveKey(key)
+    setSelected(new Set())
+  }
+  function toggleOne(id: string) {
+    setSelected((s) => {
+      const next = new Set(s)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+  function toggleAll() {
+    setSelected(allSelected ? new Set() : new Set(visibleRows.map((r) => r.id)))
+  }
+
+  async function confirmTrash() {
+    const ids = visibleRows.filter((r) => selected.has(r.id)).map((r) => r.id)
+    if (ids.length === 0) { setTrashOpen(false); return }
+    setTrashBusy(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/rental/rentals/trash', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(j?.message ?? j?.error ?? 'Mise à la corbeille échouée.')
+        setTrashBusy(false)
+        setTrashOpen(false)
+        return
+      }
+      // Remove the trashed rows from local state instantly; they're filtered
+      // out server-side on the next load too.
+      const trashedSet = new Set(ids)
+      setRows((rs) => rs.filter((r) => !trashedSet.has(r.id)))
+      setSelected(new Set())
+      setTrashBusy(false)
+      setTrashOpen(false)
+    } catch {
+      setError('Erreur réseau. Réessayez.')
+      setTrashBusy(false)
+      setTrashOpen(false)
+    }
+  }
 
   // Chantier 1: SuiviControl direct status change (À-confirmer relance buckets).
   // Optimistic update + revert on PATCH failure, mirrors the prospects
@@ -218,7 +279,7 @@ export default function RentalContractsList({ initialRows, canFin, depositMinPer
             <button
               key={g.key}
               type="button"
-              onClick={() => setActiveKey(g.key)}
+              onClick={() => pickTab(g.key)}
               aria-current={active ? 'page' : undefined}
               className="inline-flex items-center gap-2 px-4 h-10 rounded-xl text-sm font-medium transition-colors duration-150 motion-reduce:transition-none"
               style={active
@@ -246,6 +307,25 @@ export default function RentalContractsList({ initialRows, canFin, depositMinPer
         </p>
       )}
 
+      {/* Bulk action bar — visible in the "Annulés" tab once rows are picked. */}
+      {showTrash && selectedCount > 0 && (
+        <div className="flex items-center justify-between gap-3 rounded-xl px-4 py-3"
+          style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}>
+          <span className="text-sm font-medium text-[var(--text-primary)]">
+            {selectedCount} sélectionné{selectedCount > 1 ? 's' : ''}
+          </span>
+          <button
+            type="button"
+            onClick={() => setTrashOpen(true)}
+            className="inline-flex items-center gap-2 h-9 px-4 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-90"
+            style={{ background: '#e11d48' }}
+          >
+            <Trash2 className="w-4 h-4" />
+            Mettre à la corbeille ({selectedCount})
+          </button>
+        </div>
+      )}
+
       {/* Empty state */}
       {visibleRows.length === 0 ? (
         <div className="rounded-2xl py-16 text-center"
@@ -267,6 +347,17 @@ export default function RentalContractsList({ initialRows, canFin, depositMinPer
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+                  {showTrash && (
+                    <th className="px-4 py-2.5 w-10">
+                      <input
+                        type="checkbox"
+                        aria-label="Tout sélectionner"
+                        checked={allSelected}
+                        onChange={toggleAll}
+                        className="h-4 w-4 cursor-pointer accent-rose-600 align-middle"
+                      />
+                    </th>
+                  )}
                   <Th>Contrat</Th><Th>Véhicule</Th><Th>Client</Th><Th>Période</Th>
                   <Th>Total</Th><Th>Caution</Th><Th>Statut</Th><Th end>Actions</Th>
                 </tr>
@@ -277,6 +368,17 @@ export default function RentalContractsList({ initialRows, canFin, depositMinPer
                   return (
                     <Fragment key={r.id}>
                       <tr className="border-t" style={{ borderColor: 'var(--border)' }}>
+                        {showTrash && (
+                          <td className="px-4 py-3">
+                            <input
+                              type="checkbox"
+                              aria-label={`Sélectionner ${r.contract_number ?? 'contrat'}`}
+                              checked={selected.has(r.id)}
+                              onChange={() => toggleOne(r.id)}
+                              className="h-4 w-4 cursor-pointer accent-rose-600 align-middle"
+                            />
+                          </td>
+                        )}
                         <td className="px-4 py-3 font-medium">
                           <div className="flex items-center gap-1.5">
                             <button
@@ -322,7 +424,7 @@ export default function RentalContractsList({ initialRows, canFin, depositMinPer
                         </td>
                       </tr>
                       <tr>
-                        <td colSpan={8} className="p-0" style={{ borderTop: 'none' }}>
+                        <td colSpan={showTrash ? 9 : 8} className="p-0" style={{ borderTop: 'none' }}>
                           <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
                             <div className="overflow-hidden">
                               <ContractExpandPanel
@@ -350,6 +452,15 @@ export default function RentalContractsList({ initialRows, canFin, depositMinPer
                   style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5 min-w-0">
+                      {showTrash && (
+                        <input
+                          type="checkbox"
+                          aria-label={`Sélectionner ${r.contract_number ?? 'contrat'}`}
+                          checked={selected.has(r.id)}
+                          onChange={() => toggleOne(r.id)}
+                          className="h-4 w-4 flex-shrink-0 cursor-pointer accent-rose-600"
+                        />
+                      )}
                       <button
                         type="button"
                         onClick={() => toggleExpand(r.id)}
@@ -401,6 +512,16 @@ export default function RentalContractsList({ initialRows, canFin, depositMinPer
             })}
           </div>
         </>
+      )}
+
+      {/* Soft-delete confirm — moves the picked cancelled contracts to the corbeille. */}
+      {trashOpen && (
+        <TrashDialog
+          count={selectedCount}
+          busy={trashBusy}
+          onClose={() => setTrashOpen(false)}
+          onConfirm={confirmTrash}
+        />
       )}
 
       {/* Cancel confirm dialog */}
@@ -515,6 +636,60 @@ export default function RentalContractsList({ initialRows, canFin, depositMinPer
 
 function Th({ children, end }: { children: React.ReactNode; end?: boolean }) {
   return <th className={'px-4 py-2.5 font-semibold ' + (end ? 'text-end' : 'text-start')}>{children}</th>
+}
+
+// Soft-delete ("corbeille") confirmation. Mirrors CancelDialog's modal shell
+// with a red destructive confirm. Recovery is DB-only — there's no restore UI.
+function TrashDialog({
+  count, busy, onClose, onConfirm,
+}: {
+  count: number
+  busy: boolean
+  onClose: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <div
+      onClick={busy ? undefined : onClose}
+      className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center p-4"
+      style={{ background: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(4px)' }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Mettre à la corbeille"
+        onClick={(e) => e.stopPropagation()}
+        className="w-full sm:max-w-md rounded-2xl p-5"
+        style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', boxShadow: 'var(--shadow-glass)' }}
+      >
+        <h3 className="text-base font-semibold text-[var(--text-primary)]">Mettre à la corbeille ?</h3>
+        <p className="mt-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
+          {count} élément{count > 1 ? 's' : ''} seron{count > 1 ? 't' : 'a'} retiré{count > 1 ? 's' : ''} de la liste.
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            className="h-10 px-4 rounded-lg text-sm font-medium disabled:opacity-50"
+            style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
+          >
+            Annuler
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={busy}
+            className="inline-flex items-center gap-2 h-10 px-4 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
+            style={{ background: '#e11d48' }}
+          >
+            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+            Confirmer
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function RowActions({
