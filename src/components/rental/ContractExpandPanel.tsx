@@ -18,6 +18,7 @@ import { computeRentalFinance } from '@/lib/rental/finance'
 import { rentalPaymentTypeLabel, rentalPaymentMethodLabel } from '@/lib/rental/payments'
 import ContactButtons from '@/components/rental/ContactButtons'
 import ReceiptLink from '@/components/rental/ReceiptLink'
+import DownloadContractButton from '@/components/rental/DownloadContractButton'
 import type { ActivityRow, ContractRow } from '@/components/rental/RentalContractsList'
 
 const VEHICLE_CHANGEABLE = new Set(['draft', 'tentative_1', 'tentative_2', 'tentative_3', 'reporter', 'confirmed'])
@@ -89,6 +90,11 @@ export default function ContractExpandPanel({
           Détails financiers réservés au gérant.
         </p>
       )}
+
+      {/* PDF download — every status / every role that can view the contract. */}
+      <div className="mt-4">
+        <DownloadContractButton rentalId={row.id} contractNumber={row.contract_number} variant="subtle" />
+      </div>
     </div>
   )
 }

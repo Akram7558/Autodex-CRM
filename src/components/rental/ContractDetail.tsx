@@ -28,6 +28,7 @@ import PickupDialog from '@/components/rental/PickupDialog'
 import ReportDialog from '@/components/rental/ReportDialog'
 import ContractSuiviControl from '@/components/rental/ContractSuiviControl'
 import ReceiptLink from '@/components/rental/ReceiptLink'
+import DownloadContractButton from '@/components/rental/DownloadContractButton'
 import { computeRentalFinance } from '@/lib/rental/finance'
 
 // 'confirmed' removed (Reprogrammer button is gone). 'active' / 'reporter'
@@ -187,6 +188,8 @@ export default function ContractDetail({ data, canFin, depositMinPercent = 5 }: 
           style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
           <Pencil className="w-3.5 h-3.5" /> {editing ? 'Fermer' : 'Modifier'}
         </button>
+        {/* Available on every status / role that can view the contract. */}
+        <DownloadContractButton rentalId={d.id} contractNumber={d.contract_number} className="ms-auto" />
       </div>
 
       {/* Edit panel */}
