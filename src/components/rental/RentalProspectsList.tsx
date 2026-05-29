@@ -2,8 +2,9 @@
 // ─────────────────────────────────────────────────────────────────────
 // RentalProspectsList — rental prospects pipeline (mirrors sales suivi UX).
 // ─────────────────────────────────────────────────────────────────────
-// A single status filter <select> (Tentative 1/2/3 grouped as "Tentatives")
-// over the full row set + a per-row COLORED suivi <select>
+// A single status filter as pill tabs (Tentative 1/2/3 grouped as "Tentatives",
+// identical styling to the Contrats list tabs) over the full row set + a
+// per-row COLORED suivi <select>
 // (RENTAL_PROSPECT_SUIVI_OPTIONS / *_BADGE_CLASSES), plus Call/Message
 // popovers (tel:/sms:/wa.me) — same interaction model as
 // the sales Prospects page. Rental-specific content kept: the REASON chip
@@ -221,21 +222,33 @@ export default function RentalProspectsList({ initialRows }: { initialRows: Pros
       </div>
 
       {/* Single status filter over the full row set (replaces the 3 tabs).
-          Same dropdown on mobile and desktop. Counts shown inline per option. */}
-      <div className="flex flex-wrap items-center gap-3">
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          aria-label="Filtrer par statut"
-          className="h-10 px-3 rounded-xl text-sm"
-          style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
-        >
-          {STATUS_FILTER_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label} ({countByFilter[opt.value] ?? 0})
-            </option>
-          ))}
-        </select>
+          Pill tabs visually identical to the Contrats list tabs. */}
+      <div className="flex flex-wrap gap-1.5">
+        {STATUS_FILTER_OPTIONS.map((opt) => {
+          const active = opt.value === statusFilter
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => setStatusFilter(opt.value)}
+              aria-current={active ? 'page' : undefined}
+              className="inline-flex items-center gap-2 px-4 h-10 rounded-xl text-sm font-medium transition-colors duration-150 motion-reduce:transition-none"
+              style={active
+                ? { background: 'var(--accent)', color: '#fff' }
+                : { background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
+            >
+              {opt.label}
+              <span
+                className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 text-[11px] rounded-full tabular-nums"
+                style={active
+                  ? { background: 'rgba(255,255,255,0.25)', color: '#fff' }
+                  : { background: 'var(--bg-surface)', color: 'var(--text-muted)' }}
+              >
+                {countByFilter[opt.value] ?? 0}
+              </span>
+            </button>
+          )
+        })}
       </div>
 
       {error && (
