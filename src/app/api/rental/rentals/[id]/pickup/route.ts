@@ -34,6 +34,7 @@
 // ─────────────────────────────────────────────────────────────────────
 
 import { NextResponse, type NextRequest } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 import { ApiError, errorResponse, requireShowroomMember } from '@/lib/api-auth'
 import { toNum, formatDZD } from '@/components/rental/booking/types'
 import { insertRentalPayment, RENTAL_PAYMENT_METHOD_SET } from '@/lib/rental/create-payment'
@@ -46,18 +47,49 @@ type RouteCtx = { params: Promise<{ id: string }> }
 
 const ALLOWED_ROLES = new Set(['owner', 'manager', 'closer', 'super_admin'])
 
+// Service-role client — used ONLY to persist the customer's CIN/permis photo
+// paths at pickup time. rental_customers UPDATE RLS is owner/manager-only
+// (migration 38), but a pickup can be performed by a closer-on-own; rather
+// than broaden the RLS policy (which would let closers edit every customer
+// field globally), we write through the service role and scope the UPDATE
+// explicitly to this rental's customer + showroom. No other column is touched.
+function adminClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !key) throw new ApiError(500, 'Service role key missing.')
+  return createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
+}
+
 // ── Shared load + scope (returns the rental row + tallies; mirrors RLS) ──
 async function loadRentalAndTallies(
   ctx: Awaited<ReturnType<typeof requireShowroomMember>>,
   id: string,
 ) {
-  const { data: rental, error: loadErr } = await ctx.authSb
+  const { data: rentalRaw, error: loadErr } = await ctx.authSb
     .from('rentals')
-    .select('id, showroom_id, status, assigned_to, contract_number, total_rental_amount, deposit_amount')
+    .select(
+      'id, showroom_id, status, assigned_to, contract_number, total_rental_amount, ' +
+      'deposit_amount, customer_id, rental_customers(cin_photo_url, permis_photo_url)',
+    )
     .eq('id', id)
     .maybeSingle()
   if (loadErr) throw new ApiError(500, loadErr.message)
-  if (!rental) throw new ApiError(404, 'Contrat introuvable.')
+  if (!rentalRaw) throw new ApiError(404, 'Contrat introuvable.')
+
+  // The embedded relation makes supabase-js infer a parser-union type, so we
+  // cast through unknown to the concrete row shape we selected.
+  const rental = rentalRaw as unknown as {
+    id: string; showroom_id: string; status: string; assigned_to: string | null
+    contract_number: string | null; total_rental_amount: unknown; deposit_amount: unknown
+    customer_id: string
+    rental_customers:
+      | { cin_photo_url: string | null; permis_photo_url: string | null }
+      | { cin_photo_url: string | null; permis_photo_url: string | null }[]
+      | null
+  }
+
   if (!ctx.isSuperAdmin && rental.showroom_id !== ctx.showroomId) {
     throw new ApiError(403, 'Contrat hors de votre showroom.')
   }
@@ -78,11 +110,16 @@ async function loadRentalAndTallies(
     payments: (pays ?? []) as { type: string; amount: number | string | null }[],
   })
 
+  // The embedded customer comes back as a row or single-element array
+  // depending on supabase-js version — flatten to read the photo paths.
+  const custEmbed = rental.rental_customers
+  const cust = Array.isArray(custEmbed) ? (custEmbed[0] ?? null) : custEmbed
+
   return {
-    rental: rental as {
-      id: string; showroom_id: string; status: string; assigned_to: string | null
-      contract_number: string | null; total_rental_amount: unknown; deposit_amount: unknown
-    },
+    rental,
+    customerId:      rental.customer_id,
+    cinPhotoPath:    cust?.cin_photo_url ?? null,
+    permisPhotoPath: cust?.permis_photo_url ?? null,
     total:           f.totalLoyer,
     payeLoyer:       f.payeLoyer,
     resteLoyer:      f.resteLoyer,
@@ -115,6 +152,10 @@ export async function GET(req: NextRequest, { params }: RouteCtx) {
       cautionAttendue: t.cautionAttendue,
       cautionPercue:   t.cautionPercue,
       cautionRestante: t.cautionRestante,
+      // Document gate (PickupDialog "Documents du client" section).
+      customerId:      t.customerId,
+      cinPhotoPath:    t.cinPhotoPath,
+      permisPhotoPath: t.permisPhotoPath,
     })
   } catch (err) {
     return errorResponse(err)
@@ -151,8 +192,62 @@ export async function POST(req: NextRequest, { params }: RouteCtx) {
       throw new ApiError(409, 'Seul un contrat « Réservé » peut être récupéré.')
     }
 
-    // ── Validate each submitted payment ────────────────────────
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>
+
+    // ── DOCUMENT GATE: CIN + permis photos mandatory before pickup ──
+    // Runs BEFORE any payment insert so a missing-document failure never
+    // needs a rollback. Freshly-uploaded paths (if any) are persisted onto
+    // the customer first (canonical, reusable across that client's rentals),
+    // then the gate re-reads the authoritative paths from the DB — the
+    // client value is never trusted for the gate itself.
+    const docPrefix = `${t.rental.showroom_id}/customers/`
+    const incomingCin =
+      typeof body.cin_photo_url === 'string' ? body.cin_photo_url.trim() : ''
+    const incomingPermis =
+      typeof body.permis_photo_url === 'string' ? body.permis_photo_url.trim() : ''
+
+    const custUpdate: { cin_photo_url?: string; permis_photo_url?: string } = {}
+    if (incomingCin) {
+      if (!incomingCin.startsWith(docPrefix)) {
+        throw new ApiError(400, 'Chemin de la CIN invalide.')
+      }
+      custUpdate.cin_photo_url = incomingCin
+    }
+    if (incomingPermis) {
+      if (!incomingPermis.startsWith(docPrefix)) {
+        throw new ApiError(400, 'Chemin du permis invalide.')
+      }
+      custUpdate.permis_photo_url = incomingPermis
+    }
+    if (Object.keys(custUpdate).length > 0) {
+      // Service-role write, scoped to this rental's customer + showroom so a
+      // closer-on-own pickup can persist the docs despite owner/manager-only
+      // RLS on rental_customers UPDATE.
+      const admin = adminClient()
+      const { error: cuErr } = await admin
+        .from('rental_customers')
+        .update(custUpdate)
+        .eq('id', t.customerId)
+        .eq('showroom_id', t.rental.showroom_id)
+      if (cuErr) throw new ApiError(500, cuErr.message)
+    }
+
+    // Re-read from DB (RLS SELECT is allowed for all pickup roles incl.
+    // closer) — both photos must now be on file.
+    const { data: custRow, error: custErr } = await ctx.authSb
+      .from('rental_customers')
+      .select('cin_photo_url, permis_photo_url')
+      .eq('id', t.customerId)
+      .maybeSingle()
+    if (custErr) throw new ApiError(500, custErr.message)
+    if (!custRow?.cin_photo_url || !custRow?.permis_photo_url) {
+      throw new ApiError(
+        400,
+        'Documents manquants — la photo de la CIN et celle du permis sont obligatoires avant la récupération.',
+      )
+    }
+
+    // ── Validate each submitted payment ────────────────────────
     const rawPayments = Array.isArray(body.payments) ? body.payments : []
     const expectedPrefix = `${ctx.showroomId}/rentals/${id}/`
 

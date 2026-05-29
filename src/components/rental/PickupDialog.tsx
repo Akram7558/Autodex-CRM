@@ -20,11 +20,13 @@
 // ─────────────────────────────────────────────────────────────────────
 
 import { useEffect, useState } from 'react'
-import { Loader2, CheckCircle2, Image as ImageIcon, Upload, Wallet, ShieldCheck } from 'lucide-react'
+import { Loader2, CheckCircle2, Image as ImageIcon, Upload, Wallet, ShieldCheck, FileText, FileCheck2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatDZD, toNum, RENTAL_ACTION_PICKUP } from '@/components/rental/booking/types'
 import { RENTAL_PAYMENT_METHODS } from '@/lib/rental/payments'
 import { uploadViaSignedUrl, validatePhotoFile, extOf } from '@/lib/rental/storage'
+import DocumentUploader from '@/components/rental/DocumentUploader'
+import ReceiptLink from '@/components/rental/ReceiptLink'
 
 export type PickupResult = {
   rental:   { id: string; contract_number: string | null; status: string }
@@ -42,6 +44,10 @@ type Tallies = {
   cautionAttendue: number
   cautionPercue:   number
   cautionRestante: number
+  // Document gate.
+  customerId:      string
+  cinPhotoPath:    string | null
+  permisPhotoPath: string | null
 }
 
 export default function PickupDialog({
@@ -71,6 +77,10 @@ export default function PickupDialog({
   const [cNotes, setCNotes]     = useState('')
   const [cFile, setCFile]       = useState<File | null>(null)
   const [cFileErr, setCFileErr] = useState<string | null>(null)
+
+  // Documents — newly-uploaded CIN / permis paths (override the on-file path).
+  const [cinUploaded,    setCinUploaded]    = useState<string | null>(null)
+  const [permisUploaded, setPermisUploaded] = useState<string | null>(null)
 
   const [busy, setBusy] = useState(false)
   const [err, setErr]   = useState<string | null>(null)
@@ -114,8 +124,15 @@ export default function PickupDialog({
   const rMissingPhoto  = rNeedsPhoto && !rFile
   const cMissingPhoto  = cNeedsPhoto && !cFile
 
+  // Document gate: the customer must have BOTH CIN + permis photos on file
+  // (already stored, or uploaded just now in this dialog).
+  const cinPath    = cinUploaded    ?? data?.cinPhotoPath    ?? null
+  const permisPath = permisUploaded ?? data?.permisPhotoPath ?? null
+  const docsOk     = !!cinPath && !!permisPath
+
   const canSubmit =
     !loading && !busy && !loadErr && !!data
+    && docsOk
     && (!needRent    || (rAmt > 0 && !rBelow && !rMissingPhoto))
     && (!needCaution || (cAmt > 0 && !cBelow && !cMissingPhoto))
 
@@ -137,6 +154,7 @@ export default function PickupDialog({
   async function submit() {
     if (!data) return
     // Local validation (server is authoritative; this is UX only).
+    if (!docsOk) { setErr('Documents manquants : CIN + permis obligatoires.'); return }
     if (needRent) {
       if (!(rAmt > 0))     { setErr('Montant loyer invalide.'); return }
       if (rBelow)          { setErr(`Loyer restant à régler: ${formatDZD(data.resteLoyer)}.`); return }
@@ -191,7 +209,12 @@ export default function PickupDialog({
       const res = await fetch(`/api/rental/rentals/${rentalId}/pickup`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ payments }),
+        body:    JSON.stringify({
+          payments,
+          // Persist any docs uploaded in this dialog onto the customer.
+          ...(cinUploaded    ? { cin_photo_url:    cinUploaded }    : {}),
+          ...(permisUploaded ? { permis_photo_url: permisUploaded } : {}),
+        }),
       })
       const j = await res.json().catch(() => ({}))
       if (!res.ok || !j.rental) {
@@ -263,6 +286,28 @@ export default function PickupDialog({
                 ✅ Tout est réglé — prêt à récupérer.
               </div>
             )}
+
+            {/* Documents du client — CIN + permis mandatory before pickup */}
+            <div className="mt-4 rounded-xl p-4 space-y-3" style={{ background: 'var(--bg-elevated)' }}>
+              <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                <FileText className="w-3.5 h-3.5" /> Documents du client
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <DocSlot
+                  label="CIN" kind="cin" customerId={data.customerId}
+                  existingPath={data.cinPhotoPath} uploadedPath={cinUploaded} onUploaded={setCinUploaded}
+                />
+                <DocSlot
+                  label="Permis" kind="permis" customerId={data.customerId}
+                  existingPath={data.permisPhotoPath} uploadedPath={permisUploaded} onUploaded={setPermisUploaded}
+                />
+              </div>
+              {!docsOk && (
+                <p className="text-xs" style={{ color: '#fb7185' }}>
+                  Documents manquants : CIN + permis obligatoires.
+                </p>
+              )}
+            </div>
 
             {/* Rent block */}
             {needRent && (
@@ -345,6 +390,53 @@ function SummaryBox({
       <p className="mt-1.5 text-sm font-bold tabular-nums" style={{ color: isWarn ? '#fbbf24' : '#10b981' }}>
         <bdi>{isWarn ? `Reste: ${highlight}` : highlight}</bdi>
       </p>
+    </div>
+  )
+}
+
+// One document slot (CIN or Permis). Compact "✓ sur fichier" row with an
+// "Ouvrir" link + "Remplacer" when a path is on file; an inline
+// DocumentUploader (same accepted types as the customer form, incl. PDF)
+// when missing or while replacing.
+function DocSlot({
+  label, kind, customerId, existingPath, uploadedPath, onUploaded,
+}: {
+  label:        string
+  kind:         'cin' | 'permis'
+  customerId:   string
+  existingPath: string | null
+  uploadedPath: string | null
+  onUploaded:   (p: string | null) => void
+}) {
+  const [replacing, setReplacing] = useState(false)
+  const path = uploadedPath ?? existingPath
+
+  if (path && !replacing) {
+    return (
+      <div className="rounded-lg p-3 flex items-center gap-2"
+        style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
+        <FileCheck2 className="w-4 h-4 shrink-0" style={{ color: '#10b981' }} />
+        <span className="text-xs font-medium flex-1 truncate" style={{ color: 'var(--text-primary)' }}>
+          {label} sur fichier
+        </span>
+        <ReceiptLink path={path} />
+        <button type="button" onClick={() => setReplacing(true)}
+          className="text-[11px] font-medium" style={{ color: 'var(--accent)' }}>
+          Remplacer
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <p className="text-[11px] font-medium" style={{ color: 'var(--text-secondary)' }}>{label}</p>
+      <DocumentUploader
+        kind={kind}
+        value={uploadedPath}
+        customerId={customerId}
+        onChange={(p) => { onUploaded(p); if (p) setReplacing(false) }}
+      />
     </div>
   )
 }
