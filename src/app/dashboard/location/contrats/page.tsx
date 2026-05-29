@@ -11,7 +11,7 @@
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@supabase/ssr'
-import RentalContractsList, { type ContractRow, type PaymentRow } from '@/components/rental/RentalContractsList'
+import RentalContractsList, { type ContractRow, type PaymentRow, type ActivityRow } from '@/components/rental/RentalContractsList'
 import { toNum } from '@/components/rental/booking/types'
 
 function firstOf<T>(v: T | T[] | null | undefined): T | null {
@@ -130,6 +130,37 @@ export default async function Page() {
     }
   }
 
+  // Chantier 3: pre-fetch the activity log for ALL rows in ONE query so each
+  // expandable row can show its timeline without a per-row round-trip. Financial
+  // roles only (mirrors the payments prefetch + the fiche guard); RLS already
+  // scopes to the showroom + closer-on-own. Newest-first; capped at 500 across
+  // the page (per-contract slicing happens client-side).
+  const activitiesByRental = new Map<string, ActivityRow[]>()
+  if (canFin && raw.length > 0) {
+    const { data: acts } = await supabase
+      .from('rental_activities')
+      .select('rental_id, id, type, title, body, created_at, actor:users(full_name)')
+      .in('rental_id', raw.map((r) => r.id))
+      .order('created_at', { ascending: false })
+      .limit(500)
+    for (const a of (acts ?? []) as Record<string, unknown>[]) {
+      const rid = String(a.rental_id)
+      const arr = activitiesByRental.get(rid) ?? []
+      const actorEmbed = Array.isArray(a.actor) ? a.actor[0] : a.actor
+      arr.push({
+        id:         String(a.id),
+        type:       String(a.type),
+        title:      String(a.title),
+        body:       (a.body as string | null) ?? null,
+        created_at: String(a.created_at),
+        actor:      actorEmbed
+          ? { full_name: String((actorEmbed as { full_name?: unknown }).full_name ?? '') }
+          : null,
+      })
+      activitiesByRental.set(rid, arr)
+    }
+  }
+
   const rows: ContractRow[] = raw.map((r) => ({
     id:                  r.id,
     contract_number:     r.contract_number ?? null,
@@ -146,6 +177,7 @@ export default async function Page() {
     customer:            firstOf(r.customer),
     isFromProspect:      rdvSet.has(r.id),
     payments:            canFin ? (paymentsByRental.get(r.id) ?? []) : undefined,
+    activities:          canFin ? (activitiesByRental.get(r.id) ?? []) : undefined,
   }))
 
   // Per-showroom minimum deposit % (migration_47) for the reserve dialog; 5%

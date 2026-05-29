@@ -54,6 +54,17 @@ export type PaymentRow = {
   created_at:  string
 }
 
+// One activity-log row attached to a contract (Chantier 3 — pre-fetched on
+// the list page for financial viewers only; closers see no timeline in V1).
+export type ActivityRow = {
+  id:         string
+  type:       string
+  title:      string
+  body:       string | null
+  created_at: string
+  actor:      { full_name: string } | null
+}
+
 export type ContractRow = {
   id:                  string
   contract_number:     string | null
@@ -69,7 +80,8 @@ export type ContractRow = {
   vehicle:  { id: string; marque: string; modele: string; annee: number | null; immatriculation: string } | null
   customer: { full_name: string; phone: string } | null
   isFromProspect?:     boolean
-  payments?:           PaymentRow[]   // populated only for financial viewers
+  payments?:           PaymentRow[]    // populated only for financial viewers
+  activities?:         ActivityRow[]   // populated only for financial viewers (Chantier 3)
 }
 
 // Small "RDV" pill for contracts that originated from a rental demande.

@@ -21,7 +21,8 @@
 
 import { NextResponse, type NextRequest } from 'next/server'
 import { ApiError, errorResponse, requireShowroomMember } from '@/lib/api-auth'
-import { toNum } from '@/components/rental/booking/types'
+import { toNum, formatDateFr, rentalStatusLabel } from '@/components/rental/booking/types'
+import { logRentalActivity } from '@/lib/rental/activity'
 
 export const runtime = 'nodejs'
 
@@ -152,6 +153,26 @@ export async function PATCH(req: NextRequest, { params }: RouteCtx) {
         } catch { /* ignore — the cancel already succeeded */ }
       }
 
+      // Best-effort audit trail (Chantier 3) — never fails the transition.
+      if (target === 'cancelled') {
+        const reason = body.cancellation_reason ? String(body.cancellation_reason).slice(0, 500) : null
+        await logRentalActivity(ctx.authSb, {
+          showroomId: rental.showroom_id,
+          rentalId:   id,
+          actorId:    ctx.user.id,
+          type:       'cancelled',
+          title:      `Annulé${reason ? ' — ' + reason : ''}`,
+        })
+      } else {
+        await logRentalActivity(ctx.authSb, {
+          showroomId: rental.showroom_id,
+          rentalId:   id,
+          actorId:    ctx.user.id,
+          type:       'status_change',
+          title:      `Statut → ${rentalStatusLabel(target)}`,
+        })
+      }
+
       return NextResponse.json({ rental: data })
     }
 
@@ -259,6 +280,31 @@ export async function PATCH(req: NextRequest, { params }: RouteCtx) {
       .maybeSingle()
     if (error) throw new ApiError(400, error.message)
     if (!data) throw new ApiError(404, 'Contrat introuvable.')
+
+    // Best-effort audit trail (Chantier 3) — never fails the edit. One log
+    // per edit: vehicle change wins, else a date change; notes-only and
+    // financial-only edits are not logged in V1.
+    if (vehicleChanged) {
+      const rv = (data as Record<string, unknown>).rental_vehicle
+      const ve = (Array.isArray(rv) ? rv[0] : rv) as { marque?: string; modele?: string } | null | undefined
+      const label = ve ? `${ve.marque ?? ''} ${ve.modele ?? ''}`.trim() : ''
+      await logRentalActivity(ctx.authSb, {
+        showroomId: rental.showroom_id,
+        rentalId:   id,
+        actorId:    ctx.user.id,
+        type:       'vehicle_changed',
+        title:      `Véhicule changé → ${label}`,
+      })
+    } else if (newStart !== String(rental.start_date) || newEnd !== String(rental.end_date)) {
+      await logRentalActivity(ctx.authSb, {
+        showroomId: rental.showroom_id,
+        rentalId:   id,
+        actorId:    ctx.user.id,
+        type:       'dates_changed',
+        title:      `Dates modifiées → ${formatDateFr(newStart)} → ${formatDateFr(newEnd)}`,
+      })
+    }
+
     return NextResponse.json({ rental: data })
   } catch (err) {
     return errorResponse(err)

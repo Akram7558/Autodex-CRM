@@ -7,13 +7,18 @@
 // shared computeRentalFinance helper.
 // ─────────────────────────────────────────────────────────────────────
 
-import { Car as CarIcon, User, CalendarRange, Banknote, Receipt } from 'lucide-react'
+import { useState } from 'react'
+import {
+  Car as CarIcon, User, CalendarRange, Banknote, Receipt, History,
+  FilePlus, Tag, ShieldCheck, CalendarClock, Repeat, Calendar, Wallet, XCircle, FileText,
+  type LucideIcon,
+} from 'lucide-react'
 import { formatDZD, formatDateFr } from '@/components/rental/booking/types'
 import { computeRentalFinance } from '@/lib/rental/finance'
 import { rentalPaymentTypeLabel, rentalPaymentMethodLabel } from '@/lib/rental/payments'
 import ContactButtons from '@/components/rental/ContactButtons'
 import ReceiptLink from '@/components/rental/ReceiptLink'
-import type { ContractRow } from '@/components/rental/RentalContractsList'
+import type { ActivityRow, ContractRow } from '@/components/rental/RentalContractsList'
 
 const VEHICLE_CHANGEABLE = new Set(['draft', 'tentative_1', 'tentative_2', 'tentative_3', 'reporter', 'confirmed'])
 
@@ -75,7 +80,10 @@ export default function ContractExpandPanel({
       </div>
 
       {canFin ? (
-        <FinanceAndPayments row={row} />
+        <>
+          <FinanceAndPayments row={row} />
+          <ActivityTimeline activities={row.activities} />
+        </>
       ) : (
         <p className="mt-4 text-xs" style={{ color: 'var(--text-muted)' }}>
           Détails financiers réservés au gérant.
@@ -161,5 +169,99 @@ function FinLine({ label, children, tone }: { label: string; children: React.Rea
       <span style={{ color: 'var(--text-secondary)' }}>{label}</span>
       <bdi className="tabular-nums font-semibold" style={{ color }}>{children}</bdi>
     </div>
+  )
+}
+
+// ── Activity timeline (Chantier 3) ────────────────────────────────────
+// Per-type icon + tint. Tints mirror RENTAL_STATUS_COLORS (active=emerald,
+// reporter=violet, cancelled=rose, confirmed=blue, overdue=amber) so the log
+// reads with the same palette as the status badges. Types without a tint
+// (created / status_change / vehicle_changed / dates_changed) fall back to
+// the neutral accent.
+const ACTIVITY_ICON: Record<string, LucideIcon> = {
+  created:         FilePlus,
+  status_change:   Tag,
+  reserved:        ShieldCheck,
+  picked_up:       CarIcon,
+  reported:        CalendarClock,
+  vehicle_changed: Repeat,
+  dates_changed:   Calendar,
+  payment:         Wallet,
+  cancelled:       XCircle,
+}
+const ACTIVITY_TINT: Record<string, { bg: string; fg: string }> = {
+  reserved:  { bg: 'rgba(16,185,129,0.14)', fg: '#10b981' },
+  reported:  { bg: 'rgba(168,85,247,0.14)', fg: '#c084fc' },
+  cancelled: { bg: 'rgba(244,63,94,0.14)',  fg: '#fb7185' },
+  picked_up: { bg: 'rgba(59,130,246,0.14)', fg: '#60a5fa' },
+  payment:   { bg: 'rgba(245,158,11,0.14)', fg: '#fbbf24' },
+}
+const ACTIVITY_CAP = 20
+
+// created_at is a UTC timestamptz. Render the Algiers wall-clock (UTC+1, no
+// DST — same convention as lib/rental/agenda.ts): shift +1h then format the
+// date via the shared formatDateFr + append HH:MM. Derived from the ISO
+// string (not the runtime TZ) so SSR and the client agree (no hydration drift).
+function formatActivityWhen(ts: string): string {
+  const d = new Date(ts)
+  if (Number.isNaN(d.getTime())) return formatDateFr(ts.slice(0, 10))
+  const algiers = new Date(d.getTime() + 60 * 60 * 1000).toISOString()
+  return `${formatDateFr(algiers.slice(0, 10))} ${algiers.slice(11, 16)}`
+}
+
+function ActivityTimeline({ activities }: { activities?: ActivityRow[] }) {
+  const [showAll, setShowAll] = useState(false)
+  const items = activities ?? []
+  const shown = showAll ? items : items.slice(0, ACTIVITY_CAP)
+
+  return (
+    <div className="mt-4 rounded-xl p-3" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
+      <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--text-muted)' }}>
+        <History className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} /> Historique d&apos;activité
+      </p>
+      {items.length === 0 ? (
+        <p className="text-xs py-2" style={{ color: 'var(--text-muted)' }}>Aucune activité enregistrée.</p>
+      ) : (
+        <>
+          <ul className="space-y-2.5">
+            {shown.map((a) => <ActivityLine key={a.id} a={a} />)}
+          </ul>
+          {items.length > ACTIVITY_CAP && (
+            <button
+              type="button"
+              onClick={() => setShowAll((v) => !v)}
+              className="mt-2.5 text-xs font-semibold transition-opacity hover:opacity-80"
+              style={{ color: 'var(--accent)' }}
+            >
+              {showAll ? 'Voir moins' : `Voir plus (${items.length - ACTIVITY_CAP})`}
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+function ActivityLine({ a }: { a: ActivityRow }) {
+  const Icon = ACTIVITY_ICON[a.type] ?? FileText
+  const tint = ACTIVITY_TINT[a.type] ?? { bg: 'var(--accent-subtle)', fg: 'var(--accent)' }
+  return (
+    <li className="flex items-start gap-2.5">
+      <span
+        className="flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 mt-0.5"
+        style={{ background: tint.bg, color: tint.fg }}
+      >
+        <Icon className="w-3.5 h-3.5" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-medium text-[var(--text-primary)] break-words">{a.title}</p>
+        <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+          par {a.actor?.full_name ?? 'Système'} · {formatActivityWhen(a.created_at)}
+        </p>
+        {a.body && (
+          <p className="text-[11px] mt-0.5 break-words" style={{ color: 'var(--text-secondary)' }}>{a.body}</p>
+        )}
+      </div>
+    </li>
   )
 }

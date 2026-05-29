@@ -36,8 +36,10 @@
 
 import { NextResponse, type NextRequest } from 'next/server'
 import { ApiError, errorResponse, requireShowroomMember } from '@/lib/api-auth'
-import { toNum, rentalMinDeposit, RENTAL_MIN_DEPOSIT_PERCENT_FLOOR } from '@/components/rental/booking/types'
+import { toNum, formatDZD, rentalMinDeposit, RENTAL_MIN_DEPOSIT_PERCENT_FLOOR } from '@/components/rental/booking/types'
 import { insertRentalPayment, RENTAL_PAYMENT_METHOD_SET } from '@/lib/rental/create-payment'
+import { rentalPaymentMethodLabel } from '@/lib/rental/payments'
+import { logRentalActivity } from '@/lib/rental/activity'
 
 export const runtime = 'nodejs'
 
@@ -178,6 +180,16 @@ export async function POST(req: NextRequest, { params }: RouteCtx) {
         'La réservation a échoué (le contrat a changé de statut). Aucun paiement conservé.',
       )
     }
+
+    // Best-effort audit trail (Chantier 3) — never fails the reservation.
+    const modeLabel = mode === 'acompte' ? 'Acompte' : 'Caution'
+    await logRentalActivity(ctx.authSb, {
+      showroomId: rental.showroom_id,
+      rentalId:   id,
+      actorId:    ctx.user.id,
+      type:       'reserved',
+      title:      `Réservé — ${modeLabel} ${formatDZD(amt)} (${rentalPaymentMethodLabel(method)})`,
+    })
 
     return NextResponse.json({ rental: updated, payment }, { status: 201 })
   } catch (err) {

@@ -28,7 +28,8 @@
 
 import { NextResponse, type NextRequest } from 'next/server'
 import { ApiError, errorResponse, requireShowroomMember } from '@/lib/api-auth'
-import { toNum, computeDurationDays } from '@/components/rental/booking/types'
+import { toNum, computeDurationDays, formatDateFr, formatDZD } from '@/components/rental/booking/types'
+import { logRentalActivity } from '@/lib/rental/activity'
 
 export const runtime = 'nodejs'
 
@@ -194,6 +195,15 @@ export async function POST(req: NextRequest, { params }: RouteCtx) {
       .maybeSingle()
     if (updErr) throw new ApiError(400, updErr.message)
     if (!updated) throw new ApiError(409, "Le contrat a changé d'état pendant l'opération.")
+
+    // Best-effort audit trail (Chantier 3) — never fails the reschedule.
+    await logRentalActivity(ctx.authSb, {
+      showroomId: rental.showroom_id,
+      rentalId:   id,
+      actorId:    ctx.user.id,
+      type:       'reported',
+      title:      `Reporté · ${formatDateFr(newStart)} → ${formatDateFr(newEnd)} · ${formatDZD(newTotal)}`,
+    })
 
     return NextResponse.json(
       { rental: updated, warning: { had_conflict: hadConflict, ...(conflicts ? { conflicts } : {}) } },

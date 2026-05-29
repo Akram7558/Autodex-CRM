@@ -15,10 +15,12 @@
 
 import { NextResponse, type NextRequest } from 'next/server'
 import { ApiError, errorResponse, requireShowroomMember } from '@/lib/api-auth'
-import { toNum } from '@/components/rental/booking/types'
+import { toNum, formatDZD } from '@/components/rental/booking/types'
 import {
   insertRentalPayment, RENTAL_PAYMENT_TYPE_SET, RENTAL_PAYMENT_METHOD_SET,
 } from '@/lib/rental/create-payment'
+import { rentalPaymentTypeLabel, rentalPaymentMethodLabel } from '@/lib/rental/payments'
+import { logRentalActivity } from '@/lib/rental/activity'
 
 export const runtime = 'nodejs'
 
@@ -56,6 +58,15 @@ export async function POST(req: NextRequest) {
 
     const data = await insertRentalPayment(ctx.authSb, {
       rentalId, type, amount, method, reference, notes, createdBy: ctx.user.id,
+    })
+
+    // Best-effort audit trail (Chantier 3) — never fails the payment.
+    await logRentalActivity(ctx.authSb, {
+      showroomId: rental.showroom_id,
+      rentalId,
+      actorId:    ctx.user.id,
+      type:       'payment',
+      title:      `Paiement ${rentalPaymentTypeLabel(type)} ${formatDZD(amount)} (${rentalPaymentMethodLabel(method)})`,
     })
 
     return NextResponse.json({ payment: data }, { status: 201 })

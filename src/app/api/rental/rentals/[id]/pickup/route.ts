@@ -35,9 +35,10 @@
 
 import { NextResponse, type NextRequest } from 'next/server'
 import { ApiError, errorResponse, requireShowroomMember } from '@/lib/api-auth'
-import { toNum } from '@/components/rental/booking/types'
+import { toNum, formatDZD } from '@/components/rental/booking/types'
 import { insertRentalPayment, RENTAL_PAYMENT_METHOD_SET } from '@/lib/rental/create-payment'
 import { computeRentalFinance } from '@/lib/rental/finance'
+import { logRentalActivity } from '@/lib/rental/activity'
 
 export const runtime = 'nodejs'
 
@@ -244,6 +245,21 @@ export async function POST(req: NextRequest, { params }: RouteCtx) {
           'La récupération a échoué (le contrat a changé de statut). Aucun paiement conservé.',
         )
       }
+
+      // Best-effort audit trail (Chantier 3) — never fails the pickup. Safe
+      // inside the try: logRentalActivity swallows its own errors and never
+      // throws, so it can't trigger the payment rollback below.
+      const logParts: string[] = []
+      if (submittedRent > 0)    logParts.push(`Loyer ${formatDZD(submittedRent)}`)
+      if (submittedCaution > 0) logParts.push(`Caution ${formatDZD(submittedCaution)}`)
+      const summary = logParts.length ? ' — ' + logParts.join(' · ') : ' — déjà réglé'
+      await logRentalActivity(ctx.authSb, {
+        showroomId: t.rental.showroom_id,
+        rentalId:   id,
+        actorId:    ctx.user.id,
+        type:       'picked_up',
+        title:      `Voiture récupérée${summary}`,
+      })
 
       return NextResponse.json(
         { rental: updated, payments: insertedRows },

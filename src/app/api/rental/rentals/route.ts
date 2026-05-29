@@ -29,6 +29,7 @@ import {
   insertRentalWithContractNumber, linkProspectToRental,
   type RentalInsertCore,
 } from '@/lib/rental/create-rental'
+import { logRentalActivity } from '@/lib/rental/activity'
 
 export const runtime = 'nodejs'
 
@@ -158,6 +159,15 @@ export async function POST(req: NextRequest) {
     const { id: rentalId, contract_number } = await insertRentalWithContractNumber(
       ctx.authSb, baseRow, { signaturePath, signedAt },
     )
+
+    // Best-effort audit trail (Chantier 3) — never fails the creation.
+    await logRentalActivity(ctx.authSb, {
+      showroomId: showroomId,
+      rentalId,
+      actorId:    ctx.user.id,
+      type:       'created',
+      title:      `Contrat créé · ${contract_number ?? 'sans n°'}`,
+    })
 
     // Link the originating prospect, if any. Best-effort + status='rdv_planifie':
     // a converted prospect MOVES into Contrats as an RDV — it disappears from
