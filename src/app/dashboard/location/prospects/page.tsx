@@ -4,7 +4,7 @@
 // Server component: resolves role + showroom, fetches the showroom's
 // rental_prospects (LEFT JOIN rental_vehicles for the requested car, and
 // the converted contract's number when set), order created_at desc, limit
-// 100 → client list (status tabs + actions). SEPARATE from sales
+// 100 → client list (single status filter + actions). SEPARATE from sales
 // prospects. Gated by middleware (ROUTE_ACL: /dashboard/location →
 // owner/manager/closer/super_admin) and RLS.
 // ─────────────────────────────────────────────────────────────────────
@@ -75,8 +75,12 @@ export default async function Page() {
     )
     // Chantier 4: a prospect linked to a contract (converted_rental_id set)
     // has MOVED to the Contrats section — hide it from the pipeline (and from
-    // the tab counts, which are derived client-side from these rows).
+    // the filter counts, which are derived client-side from these rows).
     .is('converted_rental_id', null)
+    // rdv_planifie prospects have moved into Contrats (or await the booking
+    // wizard) — hide them from the pipeline entirely, like convertie. Net set
+    // here: nouvelle / tentative_1-3 / reporter / perdue.
+    .neq('status', 'rdv_planifie')
     .order('created_at', { ascending: false })
     .limit(100)
   if (showroomId) q = q.eq('showroom_id', showroomId)

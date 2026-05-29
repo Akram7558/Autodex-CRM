@@ -81,19 +81,11 @@ export const RENTAL_PROSPECT_SUIVI_BADGE_CLASSES: Record<RentalProspectStatus, s
   perdue:       'bg-slate-500 text-white border-slate-600 dark:bg-slate-600 dark:text-white dark:border-slate-700',
 }
 
-// Grouped tabs for coarse filtering of the pipeline. NOTE (Chantier 4): a
-// prospect confirmed for an RDV MOVES into the Contrats section (it gets a
-// converted_rental_id and is filtered out of this list), so there is no
-// "Converties" tab here anymore — those live in Contrats with an "RDV" badge.
-// 'rdv_planifie' is kept folded into "En cours" (not given its own tab): a
-// prospect can land back on this status WITHOUT a link when its contract is
-// cancelled (cancel→reopen sets converted_rental_id=null + status=rdv_planifie),
-// and such reopened prospects must remain visible/actionable here.
-export const RENTAL_PROSPECT_TABS: { id: string; label: string; statuses: RentalProspectStatus[] }[] = [
-  { id: 'nouvelles',  label: 'Nouvelles',  statuses: ['nouvelle'] },
-  { id: 'encours',    label: 'En cours',   statuses: ['tentative_1', 'tentative_2', 'tentative_3', 'reporter', 'rdv_planifie'] },
-  { id: 'annulees',   label: 'Annulées',   statuses: ['perdue'] },
-]
+// NOTE: the pipeline UI uses a single status filter (RentalProspectsList), not
+// coarse tabs. rdv_planifie + convertie prospects are excluded from the list
+// server-side, so the visible set is nouvelle / tentative_1-3 / reporter /
+// perdue. (Cancelling a contract reopens its prospect to rdv_planifie — which,
+// under the current filter, keeps it hidden from this pipeline.)
 
 // Phone helper mirroring the sales formatPhoneIntl (module-local there, so
 // re-implemented here). Rental phones are already +213-normalized.

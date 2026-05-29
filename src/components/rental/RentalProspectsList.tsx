@@ -2,22 +2,23 @@
 // ─────────────────────────────────────────────────────────────────────
 // RentalProspectsList — rental prospects pipeline (mirrors sales suivi UX).
 // ─────────────────────────────────────────────────────────────────────
-// Grouped tabs (RENTAL_PROSPECT_TABS) for coarse filtering + a per-row
-// COLORED suivi <select> (RENTAL_PROSPECT_SUIVI_OPTIONS / *_BADGE_CLASSES),
-// plus Call/Message popovers (tel:/sms:/wa.me) — same interaction model as
+// A single status filter <select> (Tentative 1/2/3 grouped as "Tentatives")
+// over the full row set + a per-row COLORED suivi <select>
+// (RENTAL_PROSPECT_SUIVI_OPTIONS / *_BADGE_CLASSES), plus Call/Message
+// popovers (tel:/sms:/wa.me) — same interaction model as
 // the sales Prospects page. Rental-specific content kept: the REASON chip
 // (key signal), requested vehicle, desired dates, message.
 //
-// Changing the dropdown PATCHes /api/rental/prospects/[id] (optimistic;
-// revert + toast on error) and the row moves to the matching tab. The dropdown
-// holds the relance statuses only (nouvelle / tentative_1-3 / reporter /
-// perdue). "RDV planifié" is a SEPARATE per-row action button (Chantier 5):
-// it opens a confirmation modal, then POSTs /api/rental/prospects/[id]/schedule
-// which MOVES the prospect into Contrats (auto-creates a draft when the vehicle
-// + dates are known, or opens the booking wizard otherwise) and redirects
-// there. Linked prospects are filtered out of this list server-side, so there
-// is no manual "Convertir en contrat" button. All labels/colors come from
-// src/lib/rental/prospects.ts (no hardcoded French/colors here).
+// Changing the per-row suivi dropdown PATCHes /api/rental/prospects/[id]
+// (optimistic; revert + toast on error). That dropdown holds the relance
+// statuses only (nouvelle / tentative_1-3 / reporter / perdue). "RDV planifié"
+// is a SEPARATE per-row action button (Chantier 5): it opens a confirmation
+// modal, then POSTs /api/rental/prospects/[id]/schedule which MOVES the
+// prospect into Contrats (auto-creates a draft when the vehicle + dates are
+// known, or opens the booking wizard otherwise) and redirects there. rdv_planifie
+// and convertie prospects are filtered out of this list server-side (so the
+// row vanishes once scheduled, and there is no manual "Convertir en contrat"
+// button). All labels/colors come from src/lib/rental/prospects.ts.
 // ─────────────────────────────────────────────────────────────────────
 
 import { useMemo, useState } from 'react'
@@ -30,7 +31,7 @@ import ContactButtons from '@/components/rental/ContactButtons'
 import ChangeVehicleDialog from '@/components/rental/ChangeVehicleDialog'
 import { cn } from '@/lib/utils'
 import {
-  RENTAL_PROSPECT_TABS, RENTAL_PROSPECT_SUIVI_OPTIONS,
+  RENTAL_PROSPECT_SUIVI_OPTIONS,
   RENTAL_PROSPECT_SUIVI_BADGE_CLASSES, rentalProspectStatusLabel,
   rentalProspectReasonLabel,
   type RentalProspectStatus,
@@ -88,31 +89,47 @@ function Dates({ r }: { r: ProspectRow }) {
   return <span>{formatDateFr(r.desired_start_date ?? '')} → {formatDateFr(r.desired_end_date ?? '')}</span>
 }
 
+// Single status filter over the full row set (the 3 coarse tabs were collapsed
+// into this one dropdown). 'tentatives' groups tentative_1/2/3; rdv_planifie +
+// convertie never appear (excluded server-side), so the list only ever holds
+// nouvelle / tentative_* / reporter / perdue.
+const TENTATIVE_SET = new Set<string>(['tentative_1', 'tentative_2', 'tentative_3'])
+
+const STATUS_FILTER_OPTIONS: { value: string; label: string }[] = [
+  { value: '__all__',    label: 'Tous les statuts' },
+  { value: 'nouvelle',   label: 'Nouvelle' },
+  { value: 'tentatives', label: 'Tentatives' },
+  { value: 'reporter',   label: 'Reporter' },
+  { value: 'perdue',     label: 'Annulée' },
+]
+
+function matchesStatusFilter(status: string, filter: string): boolean {
+  if (filter === '__all__')    return true
+  if (filter === 'tentatives') return TENTATIVE_SET.has(status)
+  return status === filter
+}
+
 export default function RentalProspectsList({ initialRows }: { initialRows: ProspectRow[] }) {
   const [rows, setRows] = useState<ProspectRow[]>(initialRows)
-  const [activeTab, setActiveTab] = useState<string>('nouvelles')
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [rdvTarget, setRdvTarget] = useState<ProspectRow | null>(null)
   const [rdvBusy, setRdvBusy] = useState(false)
   const [vehicleTarget, setVehicleTarget] = useState<ProspectRow | null>(null)
-  // Per-status filter (within the active tab). '__all__' = no extra filter.
+  // Single status filter over the whole list. '__all__' = no filter.
   const [statusFilter, setStatusFilter] = useState<string>('__all__')
   const router = useRouter()
 
-  const countByTab = useMemo(() => {
+  // Per-option counts over the full row set, shown inline in the dropdown.
+  const countByFilter = useMemo(() => {
     const m: Record<string, number> = {}
-    for (const t of RENTAL_PROSPECT_TABS) {
-      m[t.id] = rows.filter((r) => (t.statuses as readonly string[]).includes(r.status)).length
+    for (const opt of STATUS_FILTER_OPTIONS) {
+      m[opt.value] = rows.filter((r) => matchesStatusFilter(r.status, opt.value)).length
     }
     return m
   }, [rows])
 
-  const tab = RENTAL_PROSPECT_TABS.find((t) => t.id === activeTab) ?? RENTAL_PROSPECT_TABS[0]
-  const visibleRows = rows.filter((r) =>
-    (tab.statuses as readonly string[]).includes(r.status)
-    && (statusFilter === '__all__' || r.status === statusFilter),
-  )
+  const visibleRows = rows.filter((r) => matchesStatusFilter(r.status, statusFilter))
 
   async function changeStatus(row: ProspectRow, status: RentalProspectStatus) {
     const prev = row.status
@@ -165,6 +182,11 @@ export default function RentalProspectsList({ initialRows }: { initialRows: Pros
         setRdvTarget(null)
         return
       }
+      // The prospect is now rdv_planifie (moved into Contrats, or awaiting the
+      // wizard) — it's filtered out of this list server-side, so drop it from
+      // the displayed rows immediately. It vanishes without a hard refresh and
+      // won't reappear if the user navigates back.
+      setRows((rs) => rs.filter((r) => r.id !== target.id))
       // Auto-created a draft contract → open it. Otherwise → the prefilled
       // wizard. Both navigate away, so we keep the busy state.
       if (j.mode === 'created' && j.rentalId) {
@@ -198,33 +220,9 @@ export default function RentalProspectsList({ initialRows }: { initialRows: Pros
         </p>
       </div>
 
-      {/* Grouped tabs + per-status filter (within the active tab) */}
+      {/* Single status filter over the full row set (replaces the 3 tabs).
+          Same dropdown on mobile and desktop. Counts shown inline per option. */}
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex flex-wrap gap-1.5">
-          {RENTAL_PROSPECT_TABS.map((t) => {
-            const active = t.id === activeTab
-            return (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => { setActiveTab(t.id); setStatusFilter('__all__') }}
-                aria-current={active ? 'page' : undefined}
-                className="inline-flex items-center gap-2 px-4 h-10 rounded-xl text-sm font-medium transition-colors duration-150 motion-reduce:transition-none"
-                style={active
-                  ? { background: 'var(--accent)', color: '#fff' }
-                  : { background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
-              >
-                {t.label}
-                <span className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 text-[11px] rounded-full tabular-nums"
-                  style={active
-                    ? { background: 'rgba(255,255,255,0.25)', color: '#fff' }
-                    : { background: 'var(--bg-surface)', color: 'var(--text-muted)' }}>
-                  {countByTab[t.id] ?? 0}
-                </span>
-              </button>
-            )
-          })}
-        </div>
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
@@ -232,9 +230,10 @@ export default function RentalProspectsList({ initialRows }: { initialRows: Pros
           className="h-10 px-3 rounded-xl text-sm"
           style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
         >
-          <option value="__all__">Tous les statuts</option>
-          {tab.statuses.map((s) => (
-            <option key={s} value={s}>{rentalProspectStatusLabel(s)}</option>
+          {STATUS_FILTER_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label} ({countByFilter[opt.value] ?? 0})
+            </option>
           ))}
         </select>
       </div>
@@ -253,7 +252,9 @@ export default function RentalProspectsList({ initialRows }: { initialRows: Pros
             style={{ background: 'var(--accent-subtle)', color: 'var(--accent)' }}>
             <Inbox className="w-7 h-7" />
           </div>
-          <p className="text-sm font-medium text-[var(--text-primary)]">Aucune demande dans cette catégorie</p>
+          <p className="text-sm font-medium text-[var(--text-primary)]">
+            {statusFilter === '__all__' ? 'Aucune demande' : 'Aucune demande pour ce filtre'}
+          </p>
         </div>
       ) : (
         <>
