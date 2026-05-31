@@ -106,6 +106,16 @@ function validateCreate(body: unknown): CreateBody {
 
 // ─── GET ───────────────────────────────────────────────────────────
 
+// Explicit column allow-list for the list endpoint — the union of every
+// consumer's needs (fleet grid + edit modal, booking wizard, contract +
+// change-vehicle pickers). Heavy/unused columns (showroom_id, current_km,
+// fuel_level, updated_at) are dropped to trim the payload. Keep `photos_urls`:
+// it feeds the bulk image-sign below and the booking wizard's own preview.
+const VEHICLE_LIST_COLUMNS =
+  'id, marque, modele, annee, immatriculation, couleur, type_carburant, ' +
+  'boite_vitesse, nb_places, photos_urls, description, daily_rate, weekly_rate, ' +
+  'monthly_rate, deposit_amount, km_included_per_day, extra_km_rate, is_active, created_at'
+
 export async function GET(req: NextRequest) {
   try {
     // TEMP perf instrumentation — remove once the latency budget is tuned.
@@ -119,12 +129,13 @@ export async function GET(req: NextRequest) {
     const search   = req.nextUrl.searchParams.get('search')?.trim() ?? ''
     const activeQS = req.nextUrl.searchParams.get('is_active')
 
-    // select('*') is intentional: the rows feed the edit modal's initial
-    // values, not just the cards. Bounded with limit(50) — pagination UI
+    // Explicit columns (was select('*')): exactly the fields every consumer
+    // reads — the rows feed the edit modal's initial values, the cards, and
+    // the booking/contract pickers. Bounded with limit(50) — pagination UI
     // can come later (fleets are small; Classique caps at 5).
     let q = ctx.authSb
       .from('rental_vehicles')
-      .select('*')
+      .select(VEHICLE_LIST_COLUMNS)
       .order('created_at', { ascending: false })
       .limit(50)
 
@@ -143,7 +154,33 @@ export async function GET(req: NextRequest) {
     const { data, error } = await q
     console.log(`[perf] rental:api:vehicles:query ${(performance.now() - tQuery).toFixed(0)}ms`)
     if (error) throw new ApiError(500, error.message)
-    return NextResponse.json({ vehicles: data ?? [] })
+
+    // Bulk-sign the FIRST photo of every vehicle in ONE storage round-trip
+    // (was one client-side createSignedUrl per card). Attaches a 1h
+    // `photo_signed_url` to each row; null when the vehicle has no photo.
+    const rows = (data ?? []) as unknown as Record<string, unknown>[]
+    const firstPhotos = Array.from(new Set(
+      rows
+        .map((v) => (Array.isArray(v.photos_urls) ? (v.photos_urls[0] as string | undefined) : undefined))
+        .filter((p): p is string => typeof p === 'string' && p.length > 0),
+    ))
+    const signedByPath = new Map<string, string>()
+    if (firstPhotos.length > 0) {
+      const tSign = performance.now()
+      const { data: signed } = await ctx.authSb
+        .storage.from('rental-documents')
+        .createSignedUrls(firstPhotos, 60 * 60)
+      console.log(`[perf] rental:api:vehicles:sign ${(performance.now() - tSign).toFixed(0)}ms`)
+      for (const s of signed ?? []) {
+        if (s.path && s.signedUrl) signedByPath.set(s.path, s.signedUrl)
+      }
+    }
+    const vehicles = rows.map((v) => {
+      const first = Array.isArray(v.photos_urls) ? (v.photos_urls[0] as string | undefined) : undefined
+      return { ...v, photo_signed_url: first ? (signedByPath.get(first) ?? null) : null }
+    })
+
+    return NextResponse.json({ vehicles })
   } catch (err) {
     return errorResponse(err)
   }

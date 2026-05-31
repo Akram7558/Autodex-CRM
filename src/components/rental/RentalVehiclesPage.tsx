@@ -10,11 +10,10 @@
 // re-query supabase from the browser.
 // ─────────────────────────────────────────────────────────────────────
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Plus, Search, Pencil, Trash2, MoreVertical, Car as CarIcon } from 'lucide-react'
 import RentalVehicleFormModal from '@/components/rental/RentalVehicleFormModal'
 import UpgradeModal from '@/components/rental/UpgradeModal'
-import { getSignedReadUrl } from '@/lib/rental/storage'
 
 const CLASSIQUE_LIMIT = 5
 
@@ -40,6 +39,8 @@ type Vehicle = {
   extra_km_rate:        number | null
   is_active:            boolean
   created_at:           string
+  // Pre-signed (server-side, 1h) read URL for photos_urls[0]; null when none.
+  photo_signed_url:     string | null
 }
 
 function formatDzd(n: number | null | undefined): string {
@@ -58,7 +59,8 @@ export default function RentalVehiclesPage({
   const [vehicles, setVehicles] = useState<Vehicle[]>([])
   const [loading, setLoading]   = useState(true)
   const [error, setError]       = useState<string | null>(null)
-  const [search, setSearch]     = useState('')
+  const [searchRaw, setSearchRaw] = useState('')
+  const [search, setSearch]       = useState('')
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing]   = useState<Vehicle | null>(null)
   const [upgradeOpen, setUpgradeOpen] = useState(false)
@@ -67,6 +69,15 @@ export default function RentalVehiclesPage({
   const [toast, setToast] = useState<string | null>(null)
 
   function flashToast(m: string) { setToast(m); setTimeout(() => setToast(null), 2500) }
+
+  // Debounce the search input — 300ms (mirrors the clients page) so the fleet
+  // isn't refetched on every keystroke.
+  const debTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (debTimer.current) clearTimeout(debTimer.current)
+    debTimer.current = setTimeout(() => setSearch(searchRaw.trim()), 300)
+    return () => { if (debTimer.current) clearTimeout(debTimer.current) }
+  }, [searchRaw])
 
   const fetchAll = useCallback(async () => {
     setLoading(true); setError(null)
@@ -178,8 +189,8 @@ export default function RentalVehiclesPage({
           />
           <input
             type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={searchRaw}
+            onChange={(e) => setSearchRaw(e.target.value)}
             placeholder="Rechercher par marque, modèle ou immatriculation…"
             className="w-full ps-10 pe-4 py-2.5 rounded-lg text-sm transition"
             style={{
@@ -250,7 +261,7 @@ export default function RentalVehiclesPage({
               key={v.id}
               className="glass-card rounded-2xl overflow-hidden flex flex-col lift-on-hover"
             >
-              <VehicleCardImage path={v.photos_urls?.[0] ?? null}>
+              <VehicleCardImage url={v.photo_signed_url ?? null}>
                 <span
                   className="absolute top-2 end-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ring-1"
                   style={{
@@ -398,27 +409,15 @@ export default function RentalVehiclesPage({
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Card image — lazy-resolves a 1h signed read URL from the storage
-// path stored on `rental_vehicles.photos_urls[0]`. While the URL
-// resolves (or when the vehicle has no photos), shows the emerald
-// gradient + Car icon placeholder used in Phase 1.
+// Card image — renders the pre-signed read URL (1h) that the list API now
+// bulk-signs server-side from `rental_vehicles.photos_urls[0]`. When the
+// vehicle has no photo (url null), shows the emerald gradient + Car icon
+// placeholder used in Phase 1.
 // ─────────────────────────────────────────────────────────────────────
 
 function VehicleCardImage({
-  path, children,
-}: { path: string | null; children?: React.ReactNode }) {
-  const [url, setUrl] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    if (!path) { setUrl(null); return }
-    ;(async () => {
-      const u = await getSignedReadUrl(path)
-      if (!cancelled) setUrl(u)
-    })()
-    return () => { cancelled = true }
-  }, [path])
-
+  url, children,
+}: { url: string | null; children?: React.ReactNode }) {
   return (
     <div
       className="relative aspect-[4/3] overflow-hidden"

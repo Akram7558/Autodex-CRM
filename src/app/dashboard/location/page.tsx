@@ -68,46 +68,66 @@ async function loadHub(): Promise<HubData> {
 
   const agenda = await computeRentalAgenda(supabase, { showroomId, role, userId: user.id })
 
-  // 1) Contrats actifs — confirmed/active/overdue (closer → own).
-  let cq = supabase.from('rentals').select('id', { count: 'exact', head: true })
-    .in('status', ['confirmed', 'active', 'overdue'])
-  if (showroomId) cq = cq.eq('showroom_id', showroomId)
-  if (isCloser) cq = cq.eq('assigned_to', user.id)
-  const { count: activeContracts } = await cq
+  // KPI reads — four independent aggregate queries. The agenda above already
+  // fans out internally (3-way Promise.all); these four were still serial, so
+  // fire them concurrently and await once. Revenue stays gated to financial
+  // roles (closer excluded). [perf] timer mirrors the API-route convention.
+  const tKpis = performance.now()
+  const [activeContracts, fleetTotal, rentedToday, monthRevenue] = await Promise.all([
+    // 1) Contrats actifs — confirmed/active/overdue (closer → own).
+    (async (): Promise<number> => {
+      let cq = supabase.from('rentals').select('id', { count: 'exact', head: true })
+        .in('status', ['confirmed', 'active', 'overdue'])
+      if (showroomId) cq = cq.eq('showroom_id', showroomId)
+      if (isCloser) cq = cq.eq('assigned_to', user.id)
+      const { count } = await cq
+      return count ?? 0
+    })(),
 
-  // 2) Véhicules disponibles — active fleet minus those rented today.
-  let fq = supabase.from('rental_vehicles').select('id', { count: 'exact', head: true }).eq('is_active', true)
-  if (showroomId) fq = fq.eq('showroom_id', showroomId)
-  const { count: fleetTotal } = await fq
+    // 2a) Flotte active (total count).
+    (async (): Promise<number> => {
+      let fq = supabase.from('rental_vehicles').select('id', { count: 'exact', head: true }).eq('is_active', true)
+      if (showroomId) fq = fq.eq('showroom_id', showroomId)
+      const { count } = await fq
+      return count ?? 0
+    })(),
 
-  let bq = supabase.from('rentals').select('rental_vehicle_id')
-    .in('status', ['confirmed', 'active', 'overdue'])
-    .lte('start_date', today).gte('end_date', today)
-  if (showroomId) bq = bq.eq('showroom_id', showroomId)
-  const { data: busy } = await bq
-  const rented = new Set((busy ?? []).map((r) => (r as { rental_vehicle_id: string }).rental_vehicle_id))
-  const fleetAvailable = Math.max(0, (fleetTotal ?? 0) - rented.size)
+    // 2b) Véhicules loués aujourd'hui (disponibles = flotte − loués).
+    (async (): Promise<string[]> => {
+      let bq = supabase.from('rentals').select('rental_vehicle_id')
+        .in('status', ['confirmed', 'active', 'overdue'])
+        .lte('start_date', today).gte('end_date', today)
+      if (showroomId) bq = bq.eq('showroom_id', showroomId)
+      const { data: busy } = await bq
+      return (busy ?? []).map((r) => (r as { rental_vehicle_id: string }).rental_vehicle_id)
+    })(),
+
+    // 3) Revenus du mois (Africa/Algiers) — owner/manager/super_admin only.
+    // Revenue = rental_payment + extra fees − refunds; deposit excluded.
+    (async (): Promise<number | null> => {
+      if (!canFin) return null
+      const monthStartUtc = new Date(`${today.slice(0, 7)}-01T00:00:00+01:00`).toISOString()
+      const { data: pays } = await supabase
+        .from('rental_payments')
+        .select('type, amount')
+        .gte('created_at', monthStartUtc)
+        .in('type', [RENT_PAYMENT_TYPE, ...EXTRA_FEE_TYPES, REFUND_PAYMENT_TYPE])
+      return (pays ?? []).reduce((acc, p) => {
+        const amt = toNum((p as { amount: string | number | null }).amount)
+        return (p as { type: string }).type === REFUND_PAYMENT_TYPE ? acc - amt : acc + amt
+      }, 0)
+    })(),
+  ])
+  console.log(`[perf] rental:hub:kpis ${(performance.now() - tKpis).toFixed(0)}ms`)
+
+  // Véhicules disponibles — active fleet minus those rented today.
+  const rented = new Set(rentedToday)
+  const fleetAvailable = Math.max(0, fleetTotal - rented.size)
 
   // 4) Remises + retours du jour (from the agenda, today only).
   const todayCount =
     agenda.pickups.filter((p) => p.date === today).length +
     agenda.returns.filter((r) => r.date === today).length
-
-  // 3) Revenus du mois (Africa/Algiers) — owner/manager/super_admin only.
-  // Revenue = rental_payment + extra fees − refunds; deposit excluded.
-  let monthRevenue: number | null = null
-  if (canFin) {
-    const monthStartUtc = new Date(`${today.slice(0, 7)}-01T00:00:00+01:00`).toISOString()
-    const { data: pays } = await supabase
-      .from('rental_payments')
-      .select('type, amount')
-      .gte('created_at', monthStartUtc)
-      .in('type', [RENT_PAYMENT_TYPE, ...EXTRA_FEE_TYPES, REFUND_PAYMENT_TYPE])
-    monthRevenue = (pays ?? []).reduce((acc, p) => {
-      const amt = toNum((p as { amount: string | number | null }).amount)
-      return (p as { type: string }).type === REFUND_PAYMENT_TYPE ? acc - amt : acc + amt
-    }, 0)
-  }
 
   return {
     agenda, today, tomorrow, canFin,

@@ -13,6 +13,12 @@ export const runtime = 'nodejs'
 
 const ALLOWED_ROLES = new Set(['owner', 'manager', 'closer', 'super_admin'])
 
+// Explicit column allow-list for the list endpoint — exactly the fields the
+// clients grid + the booking customer-picker consume (was select('*')).
+const CUSTOMER_LIST_COLUMNS =
+  'id, full_name, phone, email, wilaya, blacklisted, blacklist_reason, ' +
+  'total_rentals, total_spent, created_at'
+
 // ─── GET ───────────────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
@@ -37,7 +43,7 @@ export async function GET(req: NextRequest) {
 
     let q = ctx.authSb
       .from('rental_customers')
-      .select('*', { count: 'exact' })
+      .select(CUSTOMER_LIST_COLUMNS, { count: 'exact' })
       .range(offset, offset + limit - 1)
     if (ctx.showroomId) q = q.eq('showroom_id', ctx.showroomId)
     if (blacklistQS === 'true')  q = q.eq('blacklisted', true)
