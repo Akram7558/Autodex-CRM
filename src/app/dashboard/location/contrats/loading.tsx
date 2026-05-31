@@ -1,0 +1,57 @@
+// ─────────────────────────────────────────────────────────────────────
+// Instant skeleton for /dashboard/location/contrats (rental contracts list).
+// ─────────────────────────────────────────────────────────────────────
+// Overrides the parent location/loading.tsx for this segment. Shape mirrors
+// RentalContractsList EXACTLY — max-w-6xl wrapper, header (badge + title +
+// "Nouvelle location" button), the 5 status pill tabs, and the bordered
+// table — so the real list drops in with zero reflow.
+//
+// Presentational only: no data, no hooks, no imports.
+export default function ContratsLoading() {
+  return (
+    <div className="p-6 md:p-10 max-w-6xl mx-auto space-y-6">
+      {/* Header: badge + title (left) · "Nouvelle location" button (right) */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="space-y-2">
+          <div className="h-3 w-20 rounded bg-[var(--bg-elevated)] animate-pulse" />
+          <div className="h-7 w-40 rounded-lg bg-[var(--bg-elevated)] animate-pulse" />
+        </div>
+        <div className="h-11 w-44 rounded-xl bg-[var(--bg-elevated)] animate-pulse" />
+      </div>
+
+      {/* 5 status pill tabs */}
+      <div className="flex flex-wrap gap-1.5">
+        <div className="h-10 w-28 rounded-xl bg-[var(--bg-elevated)] animate-pulse" />
+        <div className="h-10 w-24 rounded-xl bg-[var(--bg-elevated)] animate-pulse" />
+        <div className="h-10 w-24 rounded-xl bg-[var(--bg-elevated)] animate-pulse" />
+        <div className="h-10 w-28 rounded-xl bg-[var(--bg-elevated)] animate-pulse" />
+        <div className="h-10 w-24 rounded-xl bg-[var(--bg-elevated)] animate-pulse" />
+      </div>
+
+      {/* Bordered table — header strip + ~6 row bars */}
+      <div
+        className="rounded-2xl overflow-hidden"
+        style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
+      >
+        <div className="px-4 py-2.5 flex items-center gap-3">
+          <div className="h-3 w-16 rounded bg-[var(--bg-elevated)] animate-pulse opacity-70 shrink-0" />
+          <div className="h-3 flex-1 min-w-0 rounded bg-[var(--bg-elevated)] animate-pulse opacity-70" />
+          <div className="hidden sm:block h-3 w-24 rounded bg-[var(--bg-elevated)] animate-pulse opacity-70 shrink-0" />
+          <div className="h-3 w-16 rounded bg-[var(--bg-elevated)] animate-pulse opacity-70 shrink-0" />
+        </div>
+        {Array.from({ length: 6 }, (_, i) => (
+          <div
+            key={i}
+            className="px-4 py-4 flex items-center gap-3 border-t"
+            style={{ borderColor: 'var(--border)' }}
+          >
+            <div className="h-4 w-20 rounded bg-[var(--bg-elevated)] animate-pulse shrink-0" />
+            <div className="h-4 flex-1 min-w-0 rounded bg-[var(--bg-elevated)] animate-pulse" />
+            <div className="hidden sm:block h-4 w-28 rounded bg-[var(--bg-elevated)] animate-pulse shrink-0" />
+            <div className="h-6 w-20 rounded-full bg-[var(--bg-elevated)] animate-pulse shrink-0" />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}

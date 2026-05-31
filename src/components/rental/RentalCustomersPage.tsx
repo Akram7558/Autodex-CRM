@@ -192,9 +192,27 @@ export default function RentalCustomersPage() {
 
       {/* Grid */}
       {loading ? (
+        // Skeleton mirrors the real client card anatomy (avatar + name/phone
+        // lines + footer stats) so its height matches and there's no reflow
+        // when the real cards land. Header + filters above stay live.
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {Array.from({ length: 6 }, (_, i) => (
-            <div key={i} className="glass-card h-[148px] rounded-2xl animate-pulse" />
+            <div key={i} className="glass-card rounded-2xl p-5 flex flex-col gap-3">
+              <div className="flex items-start gap-3">
+                <div className="w-12 h-12 rounded-xl bg-[var(--bg-elevated)] animate-pulse shrink-0" />
+                <div className="flex-1 min-w-0 space-y-2 pt-0.5">
+                  <div className="h-4 w-2/3 rounded bg-[var(--bg-elevated)] animate-pulse" />
+                  <div className="h-3 w-1/2 rounded bg-[var(--bg-elevated)] animate-pulse" />
+                </div>
+              </div>
+              <div
+                className="flex items-center justify-between pt-2 border-t"
+                style={{ borderColor: 'var(--border)' }}
+              >
+                <div className="h-3 w-16 rounded bg-[var(--bg-elevated)] animate-pulse" />
+                <div className="h-3 w-24 rounded bg-[var(--bg-elevated)] animate-pulse" />
+              </div>
+            </div>
           ))}
         </div>
       ) : customers.length === 0 ? (

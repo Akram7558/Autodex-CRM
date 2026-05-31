@@ -218,9 +218,25 @@ export default function RentalVehiclesPage({
 
       {/* Grid */}
       {loading ? (
+        // Skeleton mirrors the real vehicle card anatomy (aspect-[4/3] image
+        // + p-4 content + footer) so its height matches and there's no reflow
+        // when the real cards land. Header + search above stay live.
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {Array.from({ length: 3 }, (_, i) => (
-            <div key={i} className="glass-card h-[280px] animate-pulse rounded-2xl" />
+            <div key={i} className="glass-card rounded-2xl overflow-hidden flex flex-col">
+              <div className="aspect-[4/3] animate-pulse" style={{ background: 'var(--bg-elevated)' }} />
+              <div className="p-4 flex-1 flex flex-col gap-2">
+                <div className="h-4 w-2/3 rounded bg-[var(--bg-elevated)] animate-pulse" />
+                <div className="h-3 w-1/3 rounded bg-[var(--bg-elevated)] animate-pulse" />
+                <div
+                  className="mt-auto pt-2 border-t flex items-center justify-between"
+                  style={{ borderColor: 'var(--border)' }}
+                >
+                  <div className="h-3 w-16 rounded bg-[var(--bg-elevated)] animate-pulse" />
+                  <div className="h-3 w-20 rounded bg-[var(--bg-elevated)] animate-pulse" />
+                </div>
+              </div>
+            </div>
           ))}
         </div>
       ) : vehicles.length === 0 ? (
