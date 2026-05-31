@@ -29,6 +29,8 @@ import {
   RENTAL_ACTION_RESERVE, RENTAL_ACTION_PICKUP,
   isContractPendingStatus,
 } from '@/components/rental/booking/types'
+import { supabase } from '@/lib/supabase'
+import { getCurrentUserRole } from '@/lib/auth'
 import ContactButtons from '@/components/rental/ContactButtons'
 import ReserveDialog from '@/components/rental/ReserveDialog'
 import PickupDialog from '@/components/rental/PickupDialog'
@@ -109,8 +111,44 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
-export default function RentalContractsList({ initialRows, canFin, depositMinPercent = 5 }: { initialRows: ContractRow[]; canFin: boolean; depositMinPercent?: number }) {
-  const [rows, setRows] = useState<ContractRow[]>(initialRows)
+// ── Client fetch shapes (moved verbatim from the old server page) ────────
+// Supabase embeds (rental_vehicle / customer) arrive as object OR 1-element
+// array depending on the relationship inference; firstOf normalizes both.
+function firstOf<T>(v: T | T[] | null | undefined): T | null {
+  if (Array.isArray(v)) return v[0] ?? null
+  return v ?? null
+}
+
+type VehicleEmbed = { id: string; marque: string; modele: string; annee: number | null; immatriculation: string }
+type CustomerEmbed = { full_name: string; phone: string }
+type RawRow = {
+  id: string
+  contract_number: string | null
+  status: string
+  start_date: string
+  start_time: string | null
+  end_date: string
+  end_time: string | null
+  duration_days: number | null
+  total_rental_amount: number | null
+  deposit_amount: number | null
+  created_at: string
+  rental_vehicle: VehicleEmbed | VehicleEmbed[] | null
+  customer: CustomerEmbed | CustomerEmbed[] | null
+}
+
+export default function RentalContractsList() {
+  // Self-fetching (sales client-fetch pattern, mirroring VentesView): the
+  // thin route renders this component immediately so the navigation commits
+  // INSTANTLY; we then resolve role + load the list on mount behind an
+  // internal skeleton. canFin / depositMinPercent are derived from the
+  // client-side auth + settings read instead of arriving as server props.
+  const [rows, setRows] = useState<ContractRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [canFin, setCanFin] = useState(false)
+  const [depositMinPercent, setDepositMinPercent] = useState(5)
+  const [reloadKey, setReloadKey] = useState(0)
   const [activeKey, setActiveKey] = useState<string>(RENTAL_TAB_GROUPS[0].key) // default = first tab
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -140,6 +178,179 @@ export default function RentalContractsList({ initialRows, canFin, depositMinPer
     mq.addEventListener('change', update)
     return () => mq.removeEventListener('change', update)
   }, [])
+
+  // ── Mount fetch (replaces the old server component) ────────────────────
+  // Replicates the previous server query EXACTLY, just from the browser
+  // client. RLS is the row-scoping boundary: the authed cookie session only
+  // sees its own showroom (and a closer only their own rentals via the
+  // assigned_to policy) — the explicit .eq() filters below mirror the old
+  // server query for parity + defense-in-depth, NOT as the security boundary.
+  // canFin gating is DISPLAY-ONLY (it just hides money UI + skips the
+  // financial reads); the real protection for those tables is RLS.
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setLoadError(null)
+    ;(async () => {
+      // Resolve identity/role/showroom client-side — the same mechanism the
+      // sales Views use (supabase.auth.getUser() + user_roles via getCurrentUserRole).
+      const me = await getCurrentUserRole()
+      if (cancelled) return
+      if (!me || (me.role !== 'owner' && me.role !== 'manager' && me.role !== 'closer' && me.role !== 'super_admin')) {
+        // Middleware already gates this route; treat an unexpected/absent role
+        // as an empty (non-financial) view rather than crashing.
+        setRows([]); setCanFin(false); setLoading(false)
+        return
+      }
+      const { userId, role, showroomId } = me
+      // Financial roles may record deposits + see payments/activities. Closers
+      // don't take money, so they neither see nor fetch financial data.
+      const fin = role === 'owner' || role === 'manager' || role === 'super_admin'
+
+      // Main list — EXACT old server filters: not trashed (deleted_at IS NULL),
+      // newest first, cap 100, + showroom scope, + closer-on-own. NO status
+      // filter (the tabs filter client-side and the pill counts need ALL statuses).
+      let q = supabase
+        .from('rentals')
+        .select(
+          'id, contract_number, status, start_date, start_time, end_date, end_time, ' +
+          'duration_days, total_rental_amount, deposit_amount, created_at, ' +
+          'rental_vehicle:rental_vehicles(id, marque, modele, annee, immatriculation), ' +
+          'customer:rental_customers(full_name, phone)',
+        )
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+        .limit(100)
+      if (showroomId) q = q.eq('showroom_id', showroomId)
+      if (role === 'closer') q = q.eq('assigned_to', userId)
+
+      const { data, error: listErr } = await q
+      if (cancelled) return
+      if (listErr) {
+        setLoadError('Impossible de charger les contrats.')
+        setLoading(false)
+        return
+      }
+      const raw = (data ?? []) as unknown as RawRow[]
+
+      // Four independent follow-up reads, fired concurrently (mirrors the old
+      // server Promise.all). rdvSet is NOT canFin-gated; payments/activities/
+      // depositMin are — exactly like the server gate.
+      const [rdvSet, paymentsByRental, activitiesByRental, depositMin] = await Promise.all([
+        // Which of these contracts originated from a rental demande? Badge them.
+        (async (): Promise<Set<string>> => {
+          let lq = supabase
+            .from('rental_prospects')
+            .select('converted_rental_id')
+            .not('converted_rental_id', 'is', null)
+          if (showroomId) lq = lq.eq('showroom_id', showroomId)
+          const { data: links } = await lq
+          return new Set(
+            (links ?? [])
+              .map((l) => (l as { converted_rental_id: string | null }).converted_rental_id)
+              .filter((v): v is string => !!v),
+          )
+        })(),
+        // Payments for ALL rows in one query (financial roles only). RLS scopes.
+        (async (): Promise<Map<string, PaymentRow[]>> => {
+          const byRental = new Map<string, PaymentRow[]>()
+          if (fin && raw.length > 0) {
+            const { data: pays } = await supabase
+              .from('rental_payments')
+              .select('rental_id, id, type, amount, method, reference, receipt_url, created_at')
+              .in('rental_id', raw.map((r) => r.id))
+              .order('created_at', { ascending: true })
+            for (const p of (pays ?? []) as Record<string, unknown>[]) {
+              const rid = String(p.rental_id)
+              const arr = byRental.get(rid) ?? []
+              arr.push({
+                id:          (p.id as string | null) ?? null,
+                type:        String(p.type),
+                amount:      toNum(p.amount),
+                method:      String(p.method),
+                reference:   (p.reference as string | null) ?? null,
+                receipt_url: (p.receipt_url as string | null) ?? null,
+                created_at:  String(p.created_at),
+              })
+              byRental.set(rid, arr)
+            }
+          }
+          return byRental
+        })(),
+        // Activity log for ALL rows in one query (financial roles only). Newest
+        // first, capped at 500 across the page; per-contract slicing is client-side.
+        (async (): Promise<Map<string, ActivityRow[]>> => {
+          const byRental = new Map<string, ActivityRow[]>()
+          if (fin && raw.length > 0) {
+            const { data: acts } = await supabase
+              .from('rental_activities')
+              .select('rental_id, id, type, title, body, created_at, actor:users(full_name)')
+              .in('rental_id', raw.map((r) => r.id))
+              .order('created_at', { ascending: false })
+              .limit(500)
+            for (const a of (acts ?? []) as Record<string, unknown>[]) {
+              const rid = String(a.rental_id)
+              const arr = byRental.get(rid) ?? []
+              const actorEmbed = Array.isArray(a.actor) ? a.actor[0] : a.actor
+              arr.push({
+                id:         String(a.id),
+                type:       String(a.type),
+                title:      String(a.title),
+                body:       (a.body as string | null) ?? null,
+                created_at: String(a.created_at),
+                actor:      actorEmbed
+                  ? { full_name: String((actorEmbed as { full_name?: unknown }).full_name ?? '') }
+                  : null,
+              })
+              byRental.set(rid, arr)
+            }
+          }
+          return byRental
+        })(),
+        // Per-showroom minimum deposit % for the reserve dialog; 5% fallback.
+        (async (): Promise<number> => {
+          if (!showroomId) return 5
+          const { data: settingsRow } = await supabase
+            .from('rental_settings')
+            .select('deposit_min_percent')
+            .eq('showroom_id', showroomId)
+            .maybeSingle()
+          return Math.min(100, Math.max(5, Number(settingsRow?.deposit_min_percent ?? 5) || 5))
+        })(),
+      ])
+      if (cancelled) return
+
+      const mapped: ContractRow[] = raw.map((r) => ({
+        id:                  r.id,
+        contract_number:     r.contract_number ?? null,
+        status:              r.status,
+        start_date:          r.start_date,
+        start_time:          r.start_time ?? null,
+        end_date:            r.end_date,
+        end_time:            r.end_time ?? null,
+        duration_days:       Number(r.duration_days ?? 0),
+        total_rental_amount: Number(r.total_rental_amount ?? 0),
+        deposit_amount:      Number(r.deposit_amount ?? 0),
+        created_at:          r.created_at,
+        vehicle:             firstOf(r.rental_vehicle),
+        customer:            firstOf(r.customer),
+        isFromProspect:      rdvSet.has(r.id),
+        payments:            fin ? (paymentsByRental.get(r.id) ?? []) : undefined,
+        activities:          fin ? (activitiesByRental.get(r.id) ?? []) : undefined,
+      }))
+
+      setRows(mapped)
+      setCanFin(fin)
+      setDepositMinPercent(depositMin)
+      setLoading(false)
+    })().catch(() => {
+      if (cancelled) return
+      setLoadError('Impossible de charger les contrats.')
+      setLoading(false)
+    })
+    return () => { cancelled = true }
+  }, [reloadKey])
+
   function toggleExpand(id: string) {
     setExpanded((prev) => {
       const next = new Set(prev)
@@ -326,6 +537,50 @@ export default function RentalContractsList({ initialRows, canFin, depositMinPer
         </p>
       )}
 
+      {loading ? (
+        /* Internal skeleton — reuses the contrats/loading.tsx table shape.
+           Header + tabs above stay live (instant) so only the data region
+           shows a skeleton, mirroring the sibling client Views. */
+        <div className="rounded-2xl overflow-hidden"
+          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
+          <div className="px-4 py-2.5 flex items-center gap-3">
+            <div className="h-3 w-16 rounded bg-[var(--bg-elevated)] animate-pulse opacity-70 shrink-0" />
+            <div className="h-3 flex-1 min-w-0 rounded bg-[var(--bg-elevated)] animate-pulse opacity-70" />
+            <div className="hidden sm:block h-3 w-24 rounded bg-[var(--bg-elevated)] animate-pulse opacity-70 shrink-0" />
+            <div className="h-3 w-16 rounded bg-[var(--bg-elevated)] animate-pulse opacity-70 shrink-0" />
+          </div>
+          {Array.from({ length: 6 }, (_, i) => (
+            <div key={i} className="px-4 py-4 flex items-center gap-3 border-t" style={{ borderColor: 'var(--border)' }}>
+              <div className="h-4 w-20 rounded bg-[var(--bg-elevated)] animate-pulse shrink-0" />
+              <div className="h-4 flex-1 min-w-0 rounded bg-[var(--bg-elevated)] animate-pulse" />
+              <div className="hidden sm:block h-4 w-28 rounded bg-[var(--bg-elevated)] animate-pulse shrink-0" />
+              <div className="h-6 w-20 rounded-full bg-[var(--bg-elevated)] animate-pulse shrink-0" />
+            </div>
+          ))}
+        </div>
+      ) : loadError ? (
+        /* Graceful fetch-failure state with retry (re-runs the mount effect). */
+        <div className="rounded-2xl py-16 text-center"
+          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
+          <div className="mx-auto w-14 h-14 rounded-2xl flex items-center justify-center mb-3"
+            style={{ background: 'rgba(244,63,94,0.12)', color: '#fb7185' }}>
+            <FileText className="w-7 h-7" />
+          </div>
+          <p className="text-sm font-medium text-[var(--text-primary)]">{loadError}</p>
+          <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
+            Vérifiez votre connexion et réessayez.
+          </p>
+          <button
+            type="button"
+            onClick={() => setReloadKey((k) => k + 1)}
+            className="mt-4 inline-flex items-center gap-2 h-9 px-4 rounded-lg text-sm font-semibold text-white"
+            style={{ background: 'var(--accent)' }}
+          >
+            Réessayer
+          </button>
+        </div>
+      ) : (
+        <>
       {/* Bulk action bar — visible in the "Annulés" tab once rows are picked. */}
       {showTrash && selectedCount > 0 && (
         <div className="flex items-center justify-between gap-3 rounded-xl px-4 py-3"
@@ -529,6 +784,8 @@ export default function RentalContractsList({ initialRows, canFin, depositMinPer
               )
             })}
           </div>
+      )}
+        </>
       )}
 
       {/* Soft-delete confirm — moves the picked cancelled contracts to the corbeille. */}
