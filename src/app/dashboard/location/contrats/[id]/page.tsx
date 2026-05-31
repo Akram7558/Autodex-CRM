@@ -11,6 +11,7 @@
 import { cookies } from 'next/headers'
 import { redirect, notFound } from 'next/navigation'
 import { createServerClient } from '@supabase/ssr'
+import { getServerAuth } from '@/lib/server-auth'
 import ContractDetail, {
   type ContractDetailData, type ContractPayment,
 } from '@/components/rental/ContractDetail'
@@ -58,17 +59,15 @@ export default async function Page({ params }: RouteCtx) {
     },
   })
 
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect(`/login?redirect=/dashboard/location/contrats/${id}`)
-
-  const { data: roleRow } = await supabase
-    .from('user_roles').select('role, showroom_id').eq('user_id', user.id).maybeSingle()
-  const role = (roleRow?.role as string | undefined) ?? null
+  // Auth deduped: identity/role/showroom come from the cached getServerAuth
+  // (getSession-based — middleware already getUser()-validated this request),
+  // dropping the redundant getUser() network round-trip on this page.
+  const tAuth = performance.now()
+  const { userId, role, showroomId, isSuperAdmin } = await getServerAuth()
+  console.log(`[perf] rental:contrat-detail:auth ${(performance.now() - tAuth).toFixed(0)}ms`)
   if (role !== 'owner' && role !== 'manager' && role !== 'closer' && role !== 'super_admin') {
     redirect('/dashboard/location')
   }
-  const showroomId = (roleRow?.showroom_id as string | null) ?? null
-  const isSuperAdmin = role === 'super_admin'
   const canFin = role === 'owner' || role === 'manager' || isSuperAdmin
 
   // Fetch the rental (RLS-scoped) with vehicle + customer joins.
@@ -87,7 +86,7 @@ export default async function Page({ params }: RouteCtx) {
   const rental = (rentalRaw ?? null) as unknown as RawRental | null
   if (!rental) notFound()
   if (!isSuperAdmin && rental.showroom_id !== showroomId) notFound()
-  if (role === 'closer' && rental.assigned_to !== user.id) notFound()
+  if (role === 'closer' && rental.assigned_to !== userId) notFound()
 
   const veh = firstOf(rental.rental_vehicle)
   const cust = firstOf(rental.customer)

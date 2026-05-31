@@ -16,6 +16,7 @@
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@supabase/ssr'
+import { getServerAuth } from '@/lib/server-auth'
 import RentalVehiclesPage, { type PlanType } from '@/components/rental/RentalVehiclesPage'
 
 // PostgREST returns to-one embeds as an object, but supabase-js can widen
@@ -48,11 +49,13 @@ export default async function Page() {
     },
   })
 
-  // TEMP perf instrumentation — remove once the latency budget is tuned.
-  const tGetUser = performance.now()
-  const { data: { user } } = await supabase.auth.getUser()
-  console.log(`[perf] rental:vehicules:getUser ${(performance.now() - tGetUser).toFixed(0)}ms`)
-  if (!user) redirect('/login?redirect=/dashboard/location/vehicules')
+  // Auth deduped: identity comes from the cached getServerAuth (getSession-
+  // based — middleware already getUser()-validated this request), dropping
+  // the redundant getUser() network round-trip. We only need the user id here;
+  // role + plan_type still come from the nested query below (unchanged).
+  const tAuth = performance.now()
+  const { userId } = await getServerAuth()
+  console.log(`[perf] rental:vehicules:auth ${(performance.now() - tAuth).toFixed(0)}ms`)
 
   // Single nested query: role + showroom + plan_type in one round trip
   // (previously user_roles then a separate showrooms+saas_plans query).
@@ -60,7 +63,7 @@ export default async function Page() {
   const { data: roleRow } = await supabase
     .from('user_roles')
     .select('role, showroom_id, showrooms(saas_plans(plan_type))')
-    .eq('user_id', user.id)
+    .eq('user_id', userId)
     .maybeSingle()
   console.log(`[perf] rental:vehicules:role+plan-query ${(performance.now() - tQuery).toFixed(0)}ms`)
 

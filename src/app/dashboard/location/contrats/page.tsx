@@ -11,6 +11,7 @@
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@supabase/ssr'
+import { getServerAuth } from '@/lib/server-auth'
 import RentalContractsList, { type ContractRow, type PaymentRow, type ActivityRow } from '@/components/rental/RentalContractsList'
 import { toNum } from '@/components/rental/booking/types'
 
@@ -50,19 +51,15 @@ export default async function Page() {
     },
   })
 
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login?redirect=/dashboard/location/contrats')
-
-  const { data: roleRow } = await supabase
-    .from('user_roles')
-    .select('role, showroom_id')
-    .eq('user_id', user.id)
-    .maybeSingle()
-  const role = (roleRow?.role as string | undefined) ?? null
+  // Auth deduped: identity/role/showroom come from the cached getServerAuth
+  // (getSession-based — middleware already getUser()-validated this request),
+  // so the page no longer pays the redundant getUser() network round-trip.
+  const tAuth = performance.now()
+  const { userId, role, showroomId } = await getServerAuth()
+  console.log(`[perf] rental:contrats:auth ${(performance.now() - tAuth).toFixed(0)}ms`)
   if (role !== 'owner' && role !== 'manager' && role !== 'closer' && role !== 'super_admin') {
     redirect('/dashboard/location')
   }
-  const showroomId = (roleRow?.showroom_id as string | null) ?? null
   // Financial roles may "Réserver" (record the mandatory deposit). Closers
   // don't take money, so the reserve action is hidden for them (consistent
   // with the payments/financials guard).
@@ -85,7 +82,7 @@ export default async function Page() {
     .order('created_at', { ascending: false })
     .limit(100)
   if (showroomId) q = q.eq('showroom_id', showroomId)
-  if (role === 'closer') q = q.eq('assigned_to', user.id)
+  if (role === 'closer') q = q.eq('assigned_to', userId)
 
   const { data } = await q
   const raw = (data ?? []) as unknown as RawRow[]

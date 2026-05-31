@@ -11,6 +11,7 @@
 import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
+import { getServerAuth } from '@/lib/server-auth'
 import { Calendar, FileText, KeyRound, Car, BadgeDollarSign, ArrowRight } from 'lucide-react'
 import RentalAgendaWidget from '@/components/rental/RentalAgendaWidget'
 import {
@@ -56,17 +57,16 @@ async function loadHub(): Promise<HubData> {
       setAll() {},
     },
   })
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return empty
-
-  const { data: roleRow } = await supabase
-    .from('user_roles').select('role, showroom_id').eq('user_id', user.id).maybeSingle()
-  const role = (roleRow?.role as string | undefined) ?? ''
-  const showroomId = (roleRow?.showroom_id as string | null) ?? null
+  // Auth deduped: identity/role/showroom come from the cached getServerAuth
+  // (getSession-based — middleware already getUser()-validated this request),
+  // dropping the redundant getUser() network round-trip on this page.
+  const tAuth = performance.now()
+  const { userId, role, showroomId } = await getServerAuth()
+  console.log(`[perf] rental:hub:auth ${(performance.now() - tAuth).toFixed(0)}ms`)
   const isCloser = role === 'closer'
   const canFin = role === 'owner' || role === 'manager' || role === 'super_admin'
 
-  const agenda = await computeRentalAgenda(supabase, { showroomId, role, userId: user.id })
+  const agenda = await computeRentalAgenda(supabase, { showroomId, role: role ?? '', userId })
 
   // KPI reads — four independent aggregate queries. The agenda above already
   // fans out internally (3-way Promise.all); these four were still serial, so
@@ -79,7 +79,7 @@ async function loadHub(): Promise<HubData> {
       let cq = supabase.from('rentals').select('id', { count: 'exact', head: true })
         .in('status', ['confirmed', 'active', 'overdue'])
       if (showroomId) cq = cq.eq('showroom_id', showroomId)
-      if (isCloser) cq = cq.eq('assigned_to', user.id)
+      if (isCloser) cq = cq.eq('assigned_to', userId)
       const { count } = await cq
       return count ?? 0
     })(),
