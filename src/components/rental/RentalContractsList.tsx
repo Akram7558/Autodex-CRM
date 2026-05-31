@@ -17,7 +17,7 @@
 // hardcoded text. Desktop = table; mobile = stacked cards.
 // ─────────────────────────────────────────────────────────────────────
 
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import {
   CheckCircle2, Flag, XCircle, Loader2, Plus, FileText, Car as CarIcon, User,
@@ -126,6 +126,20 @@ export default function RentalContractsList({ initialRows, canFin, depositMinPer
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [trashOpen, setTrashOpen] = useState(false)
   const [trashBusy, setTrashBusy] = useState(false)
+  // Single-layout-per-viewport (perf): instead of mounting BOTH the desktop
+  // table and the mobile cards and CSS-hiding one, render only the one that
+  // matches the viewport. SSR-safe: default true → server + first client paint
+  // render the desktop table (no hydration mismatch); reconcile after mount and
+  // keep reacting to resize across the md (768px) breakpoint.
+  const [isDesktop, setIsDesktop] = useState(true)
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return
+    const mq = window.matchMedia('(min-width: 768px)')
+    const update = () => setIsDesktop(mq.matches)
+    update()
+    mq.addEventListener('change', update)
+    return () => mq.removeEventListener('change', update)
+  }, [])
   function toggleExpand(id: string) {
     setExpanded((prev) => {
       const next = new Set(prev)
@@ -143,7 +157,12 @@ export default function RentalContractsList({ initialRows, canFin, depositMinPer
   }, [rows])
 
   const activeGroup = RENTAL_TAB_GROUPS.find((g) => g.key === activeKey) ?? RENTAL_TAB_GROUPS[0]
-  const visibleRows = rows.filter((r) => (activeGroup.statuses as readonly string[]).includes(r.status))
+  // Memoized so typing in unrelated inputs / toggling rows doesn't re-filter the
+  // whole list on every render. Keyed on rows + the active group.
+  const visibleRows = useMemo(
+    () => rows.filter((r) => (activeGroup.statuses as readonly string[]).includes(r.status)),
+    [rows, activeGroup],
+  )
 
   // Multi-select is offered ONLY in the cancelled ("Annulés") tab, and only to
   // roles allowed to trash (canFin === owner/manager/super_admin).
@@ -339,10 +358,9 @@ export default function RentalContractsList({ initialRows, canFin, depositMinPer
             Les contrats apparaîtront ici selon leur statut.
           </p>
         </div>
-      ) : (
-        <>
-          {/* Desktop table */}
-          <div className="hidden md:block rounded-2xl overflow-hidden"
+      ) : isDesktop ? (
+          /* Desktop table — single layout per viewport (perf) */
+          <div className="rounded-2xl overflow-hidden"
             style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
             <table className="w-full text-sm">
               <thead>
@@ -423,28 +441,28 @@ export default function RentalContractsList({ initialRows, canFin, depositMinPer
                           </div>
                         </td>
                       </tr>
-                      <tr>
-                        <td colSpan={showTrash ? 9 : 8} className="p-0" style={{ borderTop: 'none' }}>
-                          <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
-                            <div className="overflow-hidden">
+                      {open && (
+                        <tr>
+                          <td colSpan={showTrash ? 9 : 8} className="p-0" style={{ borderTop: 'none' }}>
+                            <div className="overflow-hidden animate-fade-in">
                               <ContractExpandPanel
                                 row={r}
                                 canFin={canFin}
                                 onChangeVehicle={() => setVehicleTarget(r)}
                               />
                             </div>
-                          </div>
-                        </td>
-                      </tr>
+                          </td>
+                        </tr>
+                      )}
                     </Fragment>
                   )
                 })}
               </tbody>
             </table>
           </div>
-
-          {/* Mobile cards */}
-          <div className="md:hidden space-y-3">
+      ) : (
+          /* Mobile cards — single layout per viewport (perf) */
+          <div className="space-y-3">
             {visibleRows.map((r) => {
               const open = expanded.has(r.id)
               return (
@@ -499,19 +517,18 @@ export default function RentalContractsList({ initialRows, canFin, depositMinPer
                     <ContactButtons phone={r.customer?.phone ?? null} />
                     <RowActions row={r} busy={busyId === r.id} canFin={canFin} onTransition={transition} onReserve={() => setReserveTarget(r)} onPickup={() => setPickupTarget(r)} onReport={() => setReportTarget(r)} onCancel={() => setCancelTarget(r)} />
                   </div>
-                  {/* Expand panel */}
-                  <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
-                    <div className="overflow-hidden">
+                  {/* Expand panel — mounted only when open (perf) */}
+                  {open && (
+                    <div className="overflow-hidden animate-fade-in">
                       <div className="-mx-4 -mb-4 mt-1 border-t" style={{ borderColor: 'var(--border)' }}>
                         <ContractExpandPanel row={r} canFin={canFin} onChangeVehicle={() => setVehicleTarget(r)} />
                       </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               )
             })}
           </div>
-        </>
       )}
 
       {/* Soft-delete confirm — moves the picked cancelled contracts to the corbeille. */}
