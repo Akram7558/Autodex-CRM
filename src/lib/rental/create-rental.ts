@@ -7,10 +7,13 @@
 // so they live here instead of being duplicated.
 //
 // insertRentalWithContractNumber:
-//   generates a per-showroom LOC-YYYY-NNNN number (no DB sequence exists,
-//   the column has a GLOBAL UNIQUE) and inserts, bumping NNNN + retrying on
-//   a 23505 collision, and degrading gracefully if the signature_url column
-//   is absent (migration 43 not run). Throws ApiError(400) if all fail.
+//   generates a PER-SHOWROOM LOC-YYYY-NNNN number (no DB sequence exists;
+//   the table has a composite UNIQUE(showroom_id, contract_number) as of
+//   migration 55) by taking MAX(NNNN)+1 over THIS showroom's rows for the
+//   year — soft-deleted rows INCLUDED, so a trashed contract keeps its
+//   number and it is never reused — then inserts, bumping NNNN + retrying
+//   on a 23505 collision, and degrading gracefully if the signature_url
+//   column is absent (migration 43 not run). Throws ApiError(400) if all fail.
 //
 // linkProspectToRental:
 //   best-effort link of an originating rental_prospect to a fresh rental —
@@ -50,13 +53,26 @@ export async function insertRentalWithContractNumber(
   const signedAt = opts?.signedAt ?? null
 
   const year = new Date().getFullYear()
-  const { count } = await authSb
-    .from('rentals')
-    .select('id', { count: 'exact', head: true })
-    .eq('showroom_id', core.showroom_id)
-    .gte('created_at', `${year}-01-01`)
 
-  let seq = (count ?? 0) + 1
+  // Next sequence = highest existing NNNN for THIS showroom this year, + 1.
+  // Numbering is PER-SHOWROOM (composite UNIQUE(showroom_id, contract_number),
+  // migration 55), so we MAX over this showroom's rows only. We deliberately
+  // do NOT filter deleted_at: soft-deleted (corbeille) contracts keep their
+  // number, so MAX never re-mints a trashed one. NNNN is zero-padded to 4
+  // digits, so lexical DESC order == numeric DESC and the first row holds the
+  // max. The 12-attempt 23505 retry below remains the concurrency backstop.
+  const prefix = `LOC-${year}-`
+  const { data: lastRow } = await authSb
+    .from('rentals')
+    .select('contract_number')
+    .eq('showroom_id', core.showroom_id)
+    .like('contract_number', `${prefix}%`)
+    .order('contract_number', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const maxSuffix = parseInt(String(lastRow?.contract_number ?? '').slice(prefix.length), 10)
+  let seq = (Number.isFinite(maxSuffix) ? maxSuffix : 0) + 1
   let includeSignature = !!signaturePath
   let lastErr: { code?: string; message?: string } | null = null
 
@@ -77,7 +93,8 @@ export async function insertRentalWithContractNumber(
     }
     lastErr = error
 
-    // contract_number already taken (global UNIQUE) → bump and retry.
+    // contract_number already taken for this showroom (composite UNIQUE,
+    // migration 55) → bump and retry.
     if (error.code === '23505') { seq += 1; continue }
 
     // signature_url column absent (migration 43 not run) → drop it, keep
