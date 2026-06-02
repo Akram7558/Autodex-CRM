@@ -10,8 +10,10 @@
 //   generates a PER-SHOWROOM LOC-YYYY-NNNN number (no DB sequence exists;
 //   the table has a composite UNIQUE(showroom_id, contract_number) as of
 //   migration 55) by taking MAX(NNNN)+1 over THIS showroom's rows for the
-//   year — soft-deleted rows INCLUDED, so a trashed contract keeps its
-//   number and it is never reused — then inserts, bumping NNNN + retrying
+//   year — read via the SERVICE-ROLE admin client so an RLS-scoped closer
+//   still sees the full-showroom max (not just their own rows), and with
+//   soft-deleted rows INCLUDED so a trashed contract keeps its number and
+//   it is never reused — then inserts, bumping NNNN + retrying
 //   on a 23505 collision, and degrading gracefully if the signature_url
 //   column is absent (migration 43 not run). Throws ApiError(400) if all fail.
 //
@@ -22,7 +24,7 @@
 //   throws: a failed/no-match link must never fail the rental creation.
 // ─────────────────────────────────────────────────────────────────────
 
-import type { SupabaseClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { ApiError } from '@/lib/api-auth'
 
 /** The validated, server-derived rental row minus contract_number/signature. */
@@ -44,6 +46,22 @@ export type RentalInsertCore = {
   notes:               string | null
 }
 
+/**
+ * Service-role client for the ONE contract-number MAX read below. The number
+ * generator must see the FULL showroom sequence; a closer's RLS scope on
+ * rentals is own-rows-only (assigned_to/created_by — migration 38), so an
+ * RLS-scoped read would undercount and collide. Used for that single scoped
+ * read only — NEVER for the INSERT. Mirrors adminClient() in the pickup route.
+ */
+function adminClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !key) throw new ApiError(500, 'Service role key missing.')
+  return createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
+}
+
 export async function insertRentalWithContractNumber(
   authSb: SupabaseClient,
   core: RentalInsertCore,
@@ -56,13 +74,19 @@ export async function insertRentalWithContractNumber(
 
   // Next sequence = highest existing NNNN for THIS showroom this year, + 1.
   // Numbering is PER-SHOWROOM (composite UNIQUE(showroom_id, contract_number),
-  // migration 55), so we MAX over this showroom's rows only. We deliberately
-  // do NOT filter deleted_at: soft-deleted (corbeille) contracts keep their
-  // number, so MAX never re-mints a trashed one. NNNN is zero-padded to 4
-  // digits, so lexical DESC order == numeric DESC and the first row holds the
-  // max. The 12-attempt 23505 retry below remains the concurrency backstop.
+  // migration 55), so we MAX over this showroom's rows only. This MAX read
+  // goes through the SERVICE-ROLE admin client, NOT authSb: a closer's RLS
+  // scope on rentals is own-rows-only (assigned_to/created_by — migration 38),
+  // so an authSb MAX would see only the closer's own contracts, land far below
+  // the showroom's true max, and collide with another user's number on every
+  // retry. The admin read is strictly scoped to this showroom + this year's
+  // LOC- numbers (one column). We deliberately do NOT filter deleted_at:
+  // soft-deleted (corbeille) contracts keep their number, so MAX never
+  // re-mints a trashed one. NNNN is zero-padded to 4 digits, so lexical DESC
+  // order == numeric DESC and the first row holds the max. The INSERT below
+  // stays on authSb (RLS) and the 12-attempt 23505 retry remains the backstop.
   const prefix = `LOC-${year}-`
-  const { data: lastRow } = await authSb
+  const { data: lastRow } = await adminClient()
     .from('rentals')
     .select('contract_number')
     .eq('showroom_id', core.showroom_id)
