@@ -14,8 +14,9 @@
 // `rental-documents` bucket via the signed-URL flow; path stored on the
 // payment as receipt_url). Cash → no photo, receipt_url = NULL.
 //
-// Mounted only for financial users (owner/manager/super_admin); server
-// re-validates everything in POST /api/rental/rentals/[id]/reserve.
+// Mounted for users who can reserve (owner/manager/closer/super_admin); the
+// server re-validates everything in POST /api/rental/rentals/[id]/reserve and
+// RLS scopes a closer to their OWN contracts.
 // ─────────────────────────────────────────────────────────────────────
 
 import { useState } from 'react'

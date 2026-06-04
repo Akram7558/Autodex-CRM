@@ -3,7 +3,8 @@
 // ContractExpandPanel — the body revealed when a contract row is expanded
 // (Chantier 2 step 2). Shows client + vehicle + period always; the finance
 // summary + payment history (with 📎 receipt links) + a "Changer véhicule"
-// shortcut only for financial viewers. All money math goes through the
+// shortcut for viewers allowed to see per-contract financials (owner/
+// manager/closer/super_admin; RLS scopes a closer to own). All money math goes through the
 // shared computeRentalFinance helper.
 // ─────────────────────────────────────────────────────────────────────
 

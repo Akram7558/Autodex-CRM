@@ -7,8 +7,9 @@
 //            | late_fee | damage_fee | fuel_charge   (migration_37 CHECK)
 //   method ∈ cash | ccp | baridimob | bank_transfer  (migration_37 CHECK)
 //
-// Financial action → restricted to owner/manager/super_admin (closers
-// don't see/record money, mirroring the contract financials guard). The
+// Add-payment → owner/manager/closer/super_admin. A closer may record a
+// payment on their OWN contract (RLS rental_payments_insert is closer-on-own;
+// mirrors the reserve + per-contract financials decision). The
 // parent rental must be in the caller's showroom. created_at is the
 // payment date (no separate paid_at column).
 // ─────────────────────────────────────────────────────────────────────
@@ -24,7 +25,7 @@ import { logRentalActivity } from '@/lib/rental/activity'
 
 export const runtime = 'nodejs'
 
-const FIN_ROLES = new Set(['owner', 'manager', 'super_admin'])
+const PAYMENT_ROLES = new Set(['owner', 'manager', 'closer', 'super_admin'])
 
 export async function POST(req: NextRequest) {
   try {
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
     if (!ctx.showroomId && !ctx.isSuperAdmin) {
       throw new ApiError(403, 'Aucun showroom associé à votre compte.')
     }
-    if (!FIN_ROLES.has(ctx.role)) throw new ApiError(403, 'Accès refusé.')
+    if (!PAYMENT_ROLES.has(ctx.role)) throw new ApiError(403, 'Accès refusé.')
 
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>
     const rentalId  = String(body.rental_id ?? '')

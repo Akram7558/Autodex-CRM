@@ -4,14 +4,17 @@
 // Server component: resolves role + showroom, fetches one rental with its
 // vehicle + customer + payments, signs the private signature/vehicle photos,
 // and renders the client detail (view + edit + payments). A closer may only
-// open contracts assigned to self (mirrors the list rule). Financials
-// (money figures + payments) are gated to owner/manager/super_admin.
+// open contracts assigned to self (mirrors the list rule). Per-contract
+// financials (figures + payments + reserve + add-payment) are visible to
+// owner/manager/closer/super_admin (RLS scopes a closer to own contracts);
+// EDITING price/total/caution stays owner/manager/super_admin.
 // ─────────────────────────────────────────────────────────────────────
 
 import { cookies } from 'next/headers'
 import { redirect, notFound } from 'next/navigation'
 import { createServerClient } from '@supabase/ssr'
 import { getServerAuth } from '@/lib/server-auth'
+import { canSeeContractFinancials, canEditContractFinancials } from '@/lib/auth'
 import ContractDetail, {
   type ContractDetailData, type ContractPayment,
 } from '@/components/rental/ContractDetail'
@@ -68,7 +71,10 @@ export default async function Page({ params }: RouteCtx) {
   if (role !== 'owner' && role !== 'manager' && role !== 'closer' && role !== 'super_admin') {
     redirect('/dashboard/location')
   }
-  const canFin = role === 'owner' || role === 'manager' || isSuperAdmin
+  // DISPLAY (figures + payments + reserve + add-payment) → closer included.
+  // EDIT (price/total/caution) → owner/manager/super_admin only.
+  const canSeeFin = canSeeContractFinancials(role)
+  const canEditFin = canEditContractFinancials(role)
 
   // Fetch the rental (RLS-scoped) with vehicle + customer joins.
   const { data: rentalRaw } = await supabase
@@ -107,9 +113,10 @@ export default async function Page({ params }: RouteCtx) {
     photos = (signed ?? []).map((x) => x.signedUrl).filter((u): u is string => !!u)
   }
 
-  // Payments — only for users allowed to see financials.
+  // Payments — visible to anyone allowed to see per-contract financials
+  // (owner/manager/closer/super_admin); RLS scopes a closer to own contracts.
   let payments: ContractPayment[] = []
-  if (canFin) {
+  if (canSeeFin) {
     const { data: pays } = await supabase
       .from('rental_payments')
       .select('id, type, amount, method, reference, notes, receipt_url, created_at')
@@ -170,5 +177,5 @@ export default async function Page({ params }: RouteCtx) {
     .maybeSingle()
   const depositMinPercent = Math.min(100, Math.max(5, Number(settingsRow?.deposit_min_percent ?? 5) || 5))
 
-  return <ContractDetail data={data} canFin={canFin} depositMinPercent={depositMinPercent} />
+  return <ContractDetail data={data} canSeeFin={canSeeFin} canEditFin={canEditFin} depositMinPercent={depositMinPercent} />
 }

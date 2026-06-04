@@ -12,6 +12,7 @@ import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import { getServerAuth } from '@/lib/server-auth'
+import { canSeeAggregateRevenue } from '@/lib/auth'
 import { Calendar, FileText, KeyRound, Car, BadgeDollarSign, ArrowRight } from 'lucide-react'
 import RentalAgendaWidget from '@/components/rental/RentalAgendaWidget'
 import {
@@ -64,7 +65,8 @@ async function loadHub(): Promise<HubData> {
   const { userId, role, showroomId } = await getServerAuth()
   console.log(`[perf] rental:hub:auth ${(performance.now() - tAuth).toFixed(0)}ms`)
   const isCloser = role === 'closer'
-  const canFin = role === 'owner' || role === 'manager' || role === 'super_admin'
+  // Aggregate revenue/CA only — closer EXCLUDED (they don't see the showroom take).
+  const canFin = canSeeAggregateRevenue(role)
 
   const agenda = await computeRentalAgenda(supabase, { showroomId, role: role ?? '', userId })
 

@@ -79,7 +79,7 @@ function fmtDate(d: string): string {
   return Number.isNaN(dt.getTime()) ? d : new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }).format(dt)
 }
 
-export default function ContractDetail({ data, canFin, depositMinPercent = 5 }: { data: ContractDetailData; canFin: boolean; depositMinPercent?: number }) {
+export default function ContractDetail({ data, canSeeFin, canEditFin, depositMinPercent = 5 }: { data: ContractDetailData; canSeeFin: boolean; canEditFin: boolean; depositMinPercent?: number }) {
   const router = useRouter()
   const [d, setD] = useState<ContractDetailData>(data)
   const [busy, setBusy] = useState(false)
@@ -95,7 +95,7 @@ export default function ContractDetail({ data, canFin, depositMinPercent = 5 }: 
   // Chantier 1: any "À-confirmer" sub-state (draft/tentative_X/reporter) can
   // be reserved (deposit) or reported (new dates). Reprogrammer removed.
   const isPending    = isContractPendingStatus(d.status)
-  const canReserve   = isPending && canFin              // Réserver records the deposit → financial only
+  const canReserve   = isPending && canSeeFin           // Réserver → owner/manager/closer/super_admin (RLS: own)
   const canPickup    = d.status === 'confirmed'         // "Voiture récupérée" → active
   const canComplete  = d.status === 'active' || d.status === 'overdue'
   const canReporter  = isPending                        // → reporter via /report (new dates)
@@ -194,7 +194,7 @@ export default function ContractDetail({ data, canFin, depositMinPercent = 5 }: 
 
       {/* Edit panel */}
       {editing && (
-        <EditPanel data={d} canFin={canFin} onClose={() => setEditing(false)}
+        <EditPanel data={d} canFin={canEditFin} onClose={() => setEditing(false)}
           onSaved={(patch) => { setD((cur) => ({ ...cur, ...patch })); setEditing(false); router.refresh() }} />
       )}
 
@@ -240,7 +240,7 @@ export default function ContractDetail({ data, canFin, depositMinPercent = 5 }: 
                 {d.vehicle ? <bdi>{d.vehicle.marque} {d.vehicle.modele}{d.vehicle.annee ? ` · ${d.vehicle.annee}` : ''}</bdi> : '—'}
               </div>
               <div className="text-xs tabular-nums" style={{ color: 'var(--text-secondary)' }}>{d.vehicle?.immatriculation}</div>
-              {canFin && d.vehicle && <div className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{formatDZD(d.vehicle.daily_rate)} / jour</div>}
+              {canSeeFin && d.vehicle && <div className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{formatDZD(d.vehicle.daily_rate)} / jour</div>}
             </div>
           </div>
         </Card>
@@ -255,8 +255,8 @@ export default function ContractDetail({ data, canFin, depositMinPercent = 5 }: 
           <div className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>{d.duration_days} jour{d.duration_days > 1 ? 's' : ''}</div>
         </Card>
 
-        {/* Financier (canFin only) */}
-        {canFin && (
+        {/* Financier — per-contract figures (owner/manager/closer/super_admin) */}
+        {canSeeFin && (
           <Card title="Financier" icon={<Banknote className="w-4 h-4" />}>
             <Line label="Tarif/jour (snapshot)">{formatDZD(d.daily_rate_snapshot)}</Line>
             <Line label="Total location" strong>{formatDZD(d.total_rental_amount)}</Line>
@@ -288,8 +288,8 @@ export default function ContractDetail({ data, canFin, depositMinPercent = 5 }: 
         )}
       </div>
 
-      {/* Payments (canFin only) */}
-      {canFin && (
+      {/* Payments — list + "+ Ajouter un paiement" (owner/manager/closer/super_admin) */}
+      {canSeeFin && (
         <PaymentsSection
           rentalId={d.id}
           payments={d.payments}

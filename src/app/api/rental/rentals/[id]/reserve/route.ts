@@ -23,8 +23,9 @@
 //     storage RLS already seals the showroom prefix).
 //   • method === 'cash' → receipt_path ignored, receipt_url stored as NULL.
 //
-// FINANCIAL action → owner/manager/super_admin only (mirrors the payments
-// guard; closers don't take money in this system).
+// RESERVE → owner/manager/closer/super_admin (mirrors /pickup). Every write
+// below goes through ctx.authSb, so RLS scopes a closer to their OWN rentals
+// (rentals_update + rental_payments_insert closer-on-own policies).
 //
 // SAFE ORDER (no DB transaction available):
 //   1. overlap re-check (exclude self) → 409 BEFORE any money is taken,
@@ -45,7 +46,7 @@ export const runtime = 'nodejs'
 
 type RouteCtx = { params: Promise<{ id: string }> }
 
-const FIN_ROLES = new Set(['owner', 'manager', 'super_admin'])
+const RESERVE_ROLES = new Set(['owner', 'manager', 'closer', 'super_admin'])
 const MODES     = new Set(['acompte', 'caution'])
 
 export async function POST(req: NextRequest, { params }: RouteCtx) {
@@ -54,8 +55,8 @@ export async function POST(req: NextRequest, { params }: RouteCtx) {
     if (!ctx.showroomId && !ctx.isSuperAdmin) {
       throw new ApiError(403, 'Aucun showroom associé à votre compte.')
     }
-    if (!FIN_ROLES.has(ctx.role)) {
-      throw new ApiError(403, 'Seul un responsable peut réserver (enregistrer la caution).')
+    if (!RESERVE_ROLES.has(ctx.role)) {
+      throw new ApiError(403, 'Rôle non autorisé pour la réservation.')
     }
 
     const { id } = await params

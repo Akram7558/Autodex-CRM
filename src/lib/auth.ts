@@ -93,6 +93,35 @@ export function canSeeFinancials(role: AppRole | null): boolean {
   return role === 'super_admin'
 }
 
+/**
+ * LOCATION — per-contract financials of the caller's OWN contracts: the
+ * Financier figures, payment history, the "+ Ajouter un paiement" form, and
+ * the Réserver action. Closers are INCLUDED — RLS scopes a closer to their
+ * own rentals (assigned_to/created_by), so this can only ever reveal the
+ * closer's OWN contracts' numbers, never another user's.
+ */
+export function canSeeContractFinancials(role: AppRole | null): boolean {
+  return role === 'owner' || role === 'manager' || role === 'closer' || role === 'super_admin'
+}
+
+/**
+ * LOCATION — showroom-wide revenue/CA aggregates (the hub "Revenus du mois"
+ * KPI). Closer EXCLUDED: a closer never sees the showroom's aggregate take,
+ * only their own per-contract figures. Also reused to gate the corbeille.
+ */
+export function canSeeAggregateRevenue(role: AppRole | null): boolean {
+  return role === 'owner' || role === 'manager' || role === 'super_admin'
+}
+
+/**
+ * LOCATION — editing a contract's money fields (tarif/jour, total, caution).
+ * Closer EXCLUDED: closers may quote + collect but not rewrite the agreed
+ * price/caution (the PATCH route already ignores closer-sent money fields).
+ */
+export function canEditContractFinancials(role: AppRole | null): boolean {
+  return role === 'owner' || role === 'manager' || role === 'super_admin'
+}
+
 /** Allowed to view the showrooms list / open showroom details. */
 export function canManageShowrooms(role: AppRole | null): boolean {
   return role === 'super_admin' || role === 'commercial'

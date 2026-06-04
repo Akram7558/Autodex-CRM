@@ -30,7 +30,7 @@ import {
   isContractPendingStatus,
 } from '@/components/rental/booking/types'
 import { supabase } from '@/lib/supabase'
-import { getCurrentUserRole } from '@/lib/auth'
+import { getCurrentUserRole, canSeeContractFinancials, canSeeAggregateRevenue } from '@/lib/auth'
 import ContactButtons from '@/components/rental/ContactButtons'
 import ReserveDialog from '@/components/rental/ReserveDialog'
 import PickupDialog from '@/components/rental/PickupDialog'
@@ -147,6 +147,10 @@ export default function RentalContractsList() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [canFin, setCanFin] = useState(false)
+  // Corbeille (trash) is an admin gate (owner/manager/super_admin), DECOUPLED
+  // from canFin so closers — who now see per-contract financials — never get
+  // the bulk-trash checkboxes.
+  const [canManageTrash, setCanManageTrash] = useState(false)
   const [depositMinPercent, setDepositMinPercent] = useState(5)
   const [reloadKey, setReloadKey] = useState(0)
   const [activeKey, setActiveKey] = useState<string>(RENTAL_TAB_GROUPS[0].key) // default = first tab
@@ -199,13 +203,16 @@ export default function RentalContractsList() {
       if (!me || (me.role !== 'owner' && me.role !== 'manager' && me.role !== 'closer' && me.role !== 'super_admin')) {
         // Middleware already gates this route; treat an unexpected/absent role
         // as an empty (non-financial) view rather than crashing.
-        setRows([]); setCanFin(false); setLoading(false)
+        setRows([]); setCanFin(false); setCanManageTrash(false); setLoading(false)
         return
       }
       const { userId, role, showroomId } = me
-      // Financial roles may record deposits + see payments/activities. Closers
-      // don't take money, so they neither see nor fetch financial data.
-      const fin = role === 'owner' || role === 'manager' || role === 'super_admin'
+      // Per-contract financials (payments/activities/expand-panel/réserver) now
+      // INCLUDE closers — RLS scopes a closer to their OWN rentals, so they only
+      // ever fetch their own contracts' money. The corbeille stays an
+      // owner/manager/super_admin admin gate (canManageTrash), decoupled below.
+      const fin = canSeeContractFinancials(role)
+      const canTrash = canSeeAggregateRevenue(role)
 
       // Main list — EXACT old server filters: not trashed (deleted_at IS NULL),
       // newest first, cap 100, + showroom scope, + closer-on-own. NO status
@@ -341,6 +348,7 @@ export default function RentalContractsList() {
 
       setRows(mapped)
       setCanFin(fin)
+      setCanManageTrash(canTrash)
       setDepositMinPercent(depositMin)
       setLoading(false)
     })().catch(() => {
@@ -376,8 +384,9 @@ export default function RentalContractsList() {
   )
 
   // Multi-select is offered ONLY in the cancelled ("Annulés") tab, and only to
-  // roles allowed to trash (canFin === owner/manager/super_admin).
-  const showTrash = canFin && activeKey === 'cancelled'
+  // roles allowed to trash (owner/manager/super_admin) — NOT closers, even
+  // though closers now see per-contract financials.
+  const showTrash = canManageTrash && activeKey === 'cancelled'
   const allSelected = showTrash && visibleRows.length > 0 && visibleRows.every((r) => selected.has(r.id))
   const selectedCount = visibleRows.filter((r) => selected.has(r.id)).length
 
@@ -983,7 +992,7 @@ function RowActions({
   // reported (new dates). Reprogrammer is gone — reporter→confirmed goes
   // through /reserve like any other À-confirmer.
   const isPending    = isContractPendingStatus(s)                                 // draft / tentative_X / reporter
-  const canReserve   = isPending && canFin                                        // → confirmed via /reserve (financial)
+  const canReserve   = isPending && canFin                                        // → confirmed via /reserve (owner/manager/closer/super_admin)
   const canPickup    = s === 'confirmed'                                          // → active   via /pickup
   const canComplete  = s === 'active' || s === 'overdue'                          // → completed (PATCH)
   const canReporter  = isPending                                                  // → reporter via /report (new dates)
