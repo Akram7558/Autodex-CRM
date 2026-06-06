@@ -16,9 +16,9 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
+import { getCurrentUserRole, canSeeAllNotifications } from '@/lib/auth'
 import type { Notification, NotificationType } from '@/lib/types'
-import { formatDistanceToNow } from 'date-fns'
-import { fr } from 'date-fns/locale'
+import { type ComputedAlert, formatAgo } from '@/lib/notifications'
 
 // ── Map a real Notification → display config used by the design ──
 type DisplayLevel = 'critical' | 'warning' | 'info'
@@ -36,6 +36,7 @@ type DisplayAlert = {
   actions: string[]
   read: boolean
   href: string | null
+  dismissible: boolean
 }
 
 function configFor(type: NotificationType): {
@@ -90,11 +91,7 @@ function configFor(type: NotificationType): {
 }
 
 function relativeDate(d: string): string {
-  try {
-    return formatDistanceToNow(new Date(d), { addSuffix: true, locale: fr })
-  } catch {
-    return ''
-  }
+  return formatAgo(d)
 }
 
 function hrefFor(n: Notification): string | null {
@@ -116,18 +113,67 @@ function primaryActionLabel(type: NotificationType): string {
 export function AlertesView() {
   const router = useRouter()
   const [notifications, setNotifications] = useState<Notification[]>([])
+  const [computed, setComputed] = useState<ComputedAlert[]>([])
+  const [canSeeAll, setCanSeeAll] = useState(false)
+  const [myId, setMyId] = useState<string | null>(null)
 
   useEffect(() => {
-    supabase
-      .from('notifications')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(50)
-      .then(({ data }) => setNotifications((data ?? []) as Notification[]))
+    let cancelled = false
+    ;(async () => {
+      // Per-user scoping: owner/manager/super_admin see the whole showroom;
+      // everyone else only their own (leads assigned to them).
+      const me = await getCurrentUserRole()
+      const seeAll = canSeeAllNotifications(me?.role ?? null)
+      if (!cancelled) { setCanSeeAll(seeAll); setMyId(me?.userId ?? null) }
+
+      // Derived alerts — COMPUTED on the fly (scoped server-side, no rows).
+      try {
+        const res = await fetch('/api/check-alerts')
+        if (res.ok && !cancelled) setComputed(((await res.json()).alerts ?? []) as ComputedAlert[])
+      } catch {
+        /* ignore */
+      }
+
+      // Stored EVENT notifs (reminder / escalation / temp_cold), scoped.
+      let q = supabase
+        .from('notifications')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50)
+      if (!seeAll && me?.userId) q = q.eq('user_id', me.userId)
+      const { data } = await q
+      if (!cancelled) setNotifications((data ?? []) as Notification[])
+    })()
+    return () => { cancelled = true }
   }, [])
 
   const alertsData = useMemo<DisplayAlert[]>(() => {
-    return notifications.map((n) => {
+    // A lead can have a stored temp_cold event AND a live lead_stagnant
+    // compute — keep the stored one, drop the duplicate computed alert.
+    const storedLeadIds = new Set(notifications.map((n) => n.lead_id).filter(Boolean) as string[])
+
+    const computedAlerts: DisplayAlert[] = computed
+      .filter((a) => !(a.lead_id && storedLeadIds.has(a.lead_id)))
+      .map((a) => {
+        const cfg = configFor(a.type)
+        return {
+          id: `computed:${a.key}`,
+          level: cfg.level,
+          title: a.title,
+          description: a.message,
+          date: a.since ? relativeDate(a.since) : '',
+          icon: cfg.icon,
+          bgColor: cfg.bgColor,
+          borderColor: cfg.borderColor,
+          iconColor: cfg.iconColor,
+          actions: a.href ? [primaryActionLabel(a.type)] : [],
+          read: true,
+          href: a.href,
+          dismissible: false,
+        }
+      })
+
+    const storedAlerts: DisplayAlert[] = notifications.map((n) => {
       const cfg = configFor(n.type)
       const actions: string[] = []
       if (hrefFor(n)) actions.push(primaryActionLabel(n.type))
@@ -145,21 +191,28 @@ export function AlertesView() {
         actions: actions.length > 0 ? actions : ['Marquer lu'],
         read: n.read,
         href: hrefFor(n),
+        dismissible: true,
       }
     })
-  }, [notifications])
+
+    return [...computedAlerts, ...storedAlerts]
+  }, [computed, notifications])
 
   async function markAllRead() {
-    await supabase.from('notifications').update({ read: true }).eq('read', false)
+    let q = supabase.from('notifications').update({ read: true }).eq('read', false)
+    if (!canSeeAll && myId) q = q.eq('user_id', myId)
+    await q
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
   }
 
   async function markRead(id: string) {
+    if (id.startsWith('computed:')) return
     await supabase.from('notifications').update({ read: true }).eq('id', id)
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)))
   }
 
   async function deleteAlert(id: string) {
+    if (id.startsWith('computed:')) return
     setNotifications((prev) => prev.filter((n) => n.id !== id))
     await supabase.from('notifications').delete().eq('id', id)
   }
@@ -264,13 +317,15 @@ export function AlertesView() {
               </div>
             </div>
 
-            <button
-              onClick={() => deleteAlert(alert.id)}
-              className="absolute top-5 right-5 p-2 text-slate-400 hover:text-rose-500 dark:hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity bg-white/50 dark:bg-slate-900/50 backdrop-blur border border-slate-200/50 dark:border-slate-700/50 rounded-xl z-20"
-              aria-label="Supprimer l'alerte"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
+            {alert.dismissible && (
+              <button
+                onClick={() => deleteAlert(alert.id)}
+                className="absolute top-5 right-5 p-2 text-slate-400 hover:text-rose-500 dark:hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity bg-white/50 dark:bg-slate-900/50 backdrop-blur border border-slate-200/50 dark:border-slate-700/50 rounded-xl z-20"
+                aria-label="Supprimer l'alerte"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
           </motion.div>
         ))}
         {alertsData.length === 0 && (

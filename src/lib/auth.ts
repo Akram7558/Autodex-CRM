@@ -122,6 +122,16 @@ export function canEditContractFinancials(role: AppRole | null): boolean {
   return role === 'owner' || role === 'manager' || role === 'super_admin'
 }
 
+/**
+ * NOTIFICATIONS — who sees the WHOLE showroom's alerts/notifications vs only
+ * their own (leads assigned to them). Owners/managers/super_admin see all;
+ * vendors/closers/prospecteurs see only their own. Used to scope both the
+ * computed derived alerts and the stored event notifications.
+ */
+export function canSeeAllNotifications(role: AppRole | null): boolean {
+  return role === 'owner' || role === 'manager' || role === 'super_admin'
+}
+
 /** Allowed to view the showrooms list / open showroom details. */
 export function canManageShowrooms(role: AppRole | null): boolean {
   return role === 'super_admin' || role === 'commercial'
