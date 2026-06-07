@@ -63,6 +63,9 @@ begin
     from public.calculate_lead_temperature(p_lead_id);
   if v_calc is null then return; end if;
 
+  -- best_call_hour: most common hour of all activities for this lead,
+  -- falling back to the lead creation hour. NULL only if both are
+  -- somehow unset, which shouldn't happen since created_at is non-null.
   select hour_of_day into v_best_hour
     from (
       select extract(hour from a.created_at)::int as hour_of_day,
@@ -92,9 +95,11 @@ begin
          best_call_hour         = v_best_hour
    where id = p_lead_id;
 
+  -- History append.
   insert into public.lead_temperature_history (lead_id, score, temperature)
     values (p_lead_id, v_calc.score, v_calc.temp);
 
+  -- Trim history beyond the most recent 30 entries.
   delete from public.lead_temperature_history
    where id in (
      select id from public.lead_temperature_history
@@ -136,6 +141,9 @@ begin
   if new.manual_temperature_override is true then return new; end if;
   if new.suivi in ('vendu','perdu','annule') then return new; end if;
 
+  -- Previous temperature: OLD on UPDATE, the column's pre-UPDATE value
+  -- (which equals NEW.temperature since we're updating OF suivi, not
+  -- temperature) on INSERT we have no OLD, treat as NULL.
   if tg_op = 'UPDATE' then
     v_prev_temp := old.temperature;
   else
@@ -151,6 +159,8 @@ begin
     else new.froid_since
   end;
 
+  -- Note: this UPDATE does not modify `suivi`, so the AFTER UPDATE OF
+  -- suivi trigger does not re-fire (no recursion).
   update public.leads
      set temperature_score      = v_calc.score,
          temperature            = v_calc.temp,
@@ -158,7 +168,6 @@ begin
          froid_since            = v_new_froid_since
    where id = new.id;
 
-  -- Cold-transition notification (deduped by lead).
   -- migration_56: user_id := the lead's owner (was NULL).
   if v_calc.temp = 'froid' and (v_prev_temp is distinct from 'froid') then
     insert into public.notifications (showroom_id, user_id, type, title, message, lead_id, dedupe_key)
