@@ -2,11 +2,12 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { Bell, AlertTriangle, Clock, PackageX, UserX, AlertOctagon, KeyRound, CornerDownLeft } from 'lucide-react'
+import { Bell, AlertTriangle, KeyRound, CornerDownLeft } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { getCurrentUserRole, canSeeAllNotifications } from '@/lib/auth'
-import type { Notification, NotificationType } from '@/lib/types'
+import type { Notification } from '@/lib/types'
 import { type ComputedAlert, formatAgo } from '@/lib/notifications'
+import { notifMeta, toneClasses } from '@/lib/notif-style'
 import { relativeDayLabel, type AgendaItem } from '@/lib/rental/agenda'
 
 const POLL_MS = 5 * 60 * 1000 // 5 minutes
@@ -14,28 +15,6 @@ const POLL_MS = 5 * 60 * 1000 // 5 minutes
 // Live rental reminder line (no stored rows).
 function agendaVerb(kind: AgendaItem['kind']): string {
   return kind === 'pickup' ? 'récupère' : kind === 'return' ? 'retour de' : 'retour en retard'
-}
-
-function iconFor(type: NotificationType) {
-  switch (type) {
-    case 'lead_ignored':    return AlertTriangle
-    case 'lead_stagnant':   return Clock
-    case 'stock_rupture':   return PackageX
-    case 'vendor_inactive': return UserX
-    case 'reminder':        return Clock
-    case 'escalation':      return AlertOctagon
-  }
-}
-
-function colorFor(type: NotificationType) {
-  switch (type) {
-    case 'lead_ignored':    return 'text-red-500 bg-red-500/10'
-    case 'lead_stagnant':   return 'text-amber-500 bg-amber-500/10'
-    case 'stock_rupture':   return 'text-orange-500 bg-orange-500/10'
-    case 'vendor_inactive': return 'text-indigo-500 bg-indigo-500/10'
-    case 'reminder':        return 'text-orange-500 bg-orange-500/10'
-    case 'escalation':      return 'text-red-600 bg-red-500/10'
-  }
 }
 
 function hrefFor(n: Pick<Notification, 'type' | 'lead_id' | 'vehicle_id'>) {
@@ -155,7 +134,7 @@ export function NotificationBell({ userId }: { userId: string | null }) {
       >
         <Bell className="w-4.5 h-4.5" />
         {totalCount > 0 && (
-          <span className="absolute top-1 right-1 min-w-[16px] h-4 px-1 rounded-full bg-indigo-600 text-white text-[10px] font-bold flex items-center justify-center border-2 border-white dark:border-zinc-950">
+          <span className="absolute top-1 right-1 min-w-[16px] h-4 px-1 rounded-full bg-[var(--accent)] text-white text-[10px] font-bold flex items-center justify-center border-2 border-white dark:border-zinc-950">
             {totalCount > 99 ? '99+' : totalCount}
           </span>
         )}
@@ -172,7 +151,7 @@ export function NotificationBell({ userId }: { userId: string | null }) {
             {unread > 0 && (
               <button
                 onClick={markAllRead}
-                className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+                className="text-xs text-[var(--accent)] hover:text-[var(--accent-hover)] font-medium"
               >
                 Tout marquer lu
               </button>
@@ -225,15 +204,15 @@ export function NotificationBell({ userId }: { userId: string | null }) {
 
             {/* Derived alerts — computed live, deep-linked, not dismissible */}
             {computedToShow.map((a) => {
-              const Icon = iconFor(a.type)
+              const { Icon, severity } = notifMeta(a.type)
               return (
                 <Link
                   key={a.key}
                   href={a.href ?? '/dashboard/alerts'}
                   onClick={() => setOpen(false)}
-                  className="flex items-start gap-3 px-4 py-3 hover:bg-muted transition-colors border-b border-border bg-indigo-50/30 dark:bg-indigo-500/10"
+                  className="flex items-start gap-3 px-4 py-3 hover:bg-muted transition-colors border-b border-border bg-[var(--accent-subtle)]"
                 >
-                  <div className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${colorFor(a.type)}`}>
+                  <div className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${toneClasses(severity).tile}`}>
                     <Icon className="w-4 h-4" />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -243,23 +222,23 @@ export function NotificationBell({ userId }: { userId: string | null }) {
                       <p className="text-[11px] text-muted-foreground mt-1">{formatAgo(a.since)}</p>
                     )}
                   </div>
-                  <span className="w-2 h-2 rounded-full bg-indigo-500 mt-2" />
+                  <span className="w-2 h-2 rounded-full bg-[var(--accent)] mt-2" />
                 </Link>
               )
             })}
 
             {items.map((n) => {
-              const Icon = iconFor(n.type)
+              const { Icon, severity } = notifMeta(n.type)
               return (
                 <Link
                   key={n.id}
                   href={hrefFor(n)}
                   onClick={() => setOpen(false)}
                   className={`flex items-start gap-3 px-4 py-3 hover:bg-muted transition-colors border-b border-border last:border-0 ${
-                    n.read ? '' : 'bg-indigo-50/30 dark:bg-indigo-500/10'
+                    n.read ? '' : 'bg-[var(--accent-subtle)]'
                   }`}
                 >
-                  <div className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${colorFor(n.type)}`}>
+                  <div className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${toneClasses(severity).tile}`}>
                     <Icon className="w-4 h-4" />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -269,7 +248,7 @@ export function NotificationBell({ userId }: { userId: string | null }) {
                       {formatAgo(n.created_at)}
                     </p>
                   </div>
-                  {!n.read && <span className="w-2 h-2 rounded-full bg-indigo-500 mt-2" />}
+                  {!n.read && <span className="w-2 h-2 rounded-full bg-[var(--accent)] mt-2" />}
                 </Link>
               )
             })}
@@ -279,7 +258,7 @@ export function NotificationBell({ userId }: { userId: string | null }) {
           <Link
             href="/dashboard/alerts"
             onClick={() => setOpen(false)}
-            className="block text-center text-xs font-medium text-indigo-600 hover:text-indigo-700 py-3 border-t border-border"
+            className="block text-center text-xs font-medium text-[var(--accent)] hover:text-[var(--accent-hover)] py-3 border-t border-border"
           >
             Voir toutes les alertes →
           </Link>
