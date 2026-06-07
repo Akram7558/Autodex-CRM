@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { motion } from 'motion/react'
 import {
   DndContext,
@@ -244,6 +245,7 @@ function LeadCard({ lead, onClick }: { lead: Lead; onClick: () => void }) {
 
   return (
     <motion.div
+      id={`lead-card-${lead.id}`}
       ref={setNodeRef}
       initial={{ opacity: 0, scale: 0.96, y: 8 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -729,7 +731,7 @@ function LeadSidePanel({ lead, onClose, onLeadUpdated }: {
 // MAIN PAGE
 // ─────────────────────────────────────────────────────────────────
 
-export default function ProspectsPage() {
+function ProspectsBoard() {
   const [leads,        setLeads]        = useState<Lead[]>([])
   const [loading,      setLoading]      = useState(true)
   const [activeLead,   setActiveLead]   = useState<Lead | null>(null)   // drag ghost source
@@ -742,6 +744,11 @@ export default function ProspectsPage() {
   const [lastRefresh,  setLastRefresh]  = useState<Date | null>(null)
   const [dndError,     setDndError]     = useState<string | null>(null)
   const intervalRef = useRef<ReturnType<typeof setInterval>>(null)
+
+  // Deep-link focus: ?lead=<id> arrives from a notification click. handledRef
+  // guards against re-triggering while the same id lingers in the URL.
+  const searchParams = useSearchParams()
+  const handledRef = useRef<string | null>(null)
 
   // Require ≥8px mouse move before drag fires — keeps click-to-open working
   const sensors = useSensors(
@@ -782,6 +789,28 @@ export default function ProspectsPage() {
     const refreshed = leads.find(l => l.id === selectedLead.id)
     if (refreshed && refreshed !== selectedLead) setSelectedLead(refreshed)
   }, [leads]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Deep-link focus (?lead=<id>) ───────────────────────────────
+  // A notification click lands here with ?lead=<id>. Once leads are loaded,
+  // open that lead's side panel (= the focus) and scroll/highlight its board
+  // card. handledRef keeps it idempotent: re-clicking the same notif won't
+  // re-fire, and the user stays free to open a different lead afterwards.
+  useEffect(() => {
+    const id = searchParams.get('lead')
+    if (!id || handledRef.current === id) return
+    const lead = leads.find(l => l.id === id)
+    if (!lead) return
+    handledRef.current = id
+    setSelectedLead(lead)
+    const el = document.getElementById(`lead-card-${id}`)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el.classList.add('ring-2', 'ring-[var(--accent)]', 'rounded-2xl')
+      window.setTimeout(() => {
+        el.classList.remove('ring-2', 'ring-[var(--accent)]', 'rounded-2xl')
+      }, 2000)
+    }
+  }, [leads, searchParams])
 
   // ── DnD ───────────────────────────────────────────────────────
   function handleDragStart({ active }: DragStartEvent) {
@@ -959,5 +988,16 @@ export default function ProspectsPage() {
         />
       )}
     </div>
+  )
+}
+
+// useSearchParams() must sit under a Suspense boundary, otherwise the App
+// Router bails out of static prerendering for this page (build error). Wrap
+// the board so the ?lead= reader is suspense-safe.
+export default function ProspectsPage() {
+  return (
+    <Suspense fallback={null}>
+      <ProspectsBoard />
+    </Suspense>
   )
 }
