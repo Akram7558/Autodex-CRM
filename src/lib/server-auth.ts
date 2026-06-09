@@ -49,6 +49,10 @@ export type ServerAuth = {
   /** user_roles.showroom_id — null for super_admin (global) or unprovisioned. */
   showroomId:   string | null
   isSuperAdmin: boolean
+  /** showrooms.module_vente — true when no showroom (super_admin / SaaS). */
+  moduleVente:     boolean
+  /** showrooms.module_location — true when no showroom (super_admin / SaaS). */
+  moduleLocation:  boolean
 }
 
 /**
@@ -106,10 +110,55 @@ export const getServerAuth = cache(async (): Promise<ServerAuth> => {
     .maybeSingle()
 
   const role = (roleRow?.role as AppRole | undefined) ?? null
+  const showroomId = (roleRow?.showroom_id as string | null) ?? null
+
+  // Module flags. No showroom (super_admin / SaaS-internal / unprovisioned)
+  // → BOTH modules ON (no gating). Otherwise read the showroom's flags;
+  // fail-open (both ON) if the row can't be read, so we never lock a user out
+  // of the whole app on a transient read miss.
+  let moduleVente = true
+  let moduleLocation = true
+  if (showroomId) {
+    const { data: sr } = await supabase
+      .from('showrooms')
+      .select('module_vente, module_location')
+      .eq('id', showroomId)
+      .maybeSingle()
+    if (sr) {
+      moduleVente = (sr as { module_vente?: boolean }).module_vente !== false
+      moduleLocation = (sr as { module_location?: boolean }).module_location !== false
+    }
+  }
+
   return {
     userId,
     role,
-    showroomId:   (roleRow?.showroom_id as string | null) ?? null,
+    showroomId,
     isSuperAdmin: role === 'super_admin',
+    moduleVente,
+    moduleLocation,
   }
 })
+
+/**
+ * Module-aware default landing for a showroom user. Location-only → the
+ * location hub; otherwise the sales dashboard. (Both-off falls through to
+ * /dashboard, which renders normally — the home page has a loop guard.)
+ */
+export function moduleLanding(auth: Pick<ServerAuth, 'moduleVente' | 'moduleLocation'>): string {
+  if (!auth.moduleVente && auth.moduleLocation) return '/dashboard/location'
+  return '/dashboard'
+}
+
+/**
+ * Hard server-side module guard. Redirects to the showroom's default landing
+ * when the showroom lacks `mod`. super_admin / SaaS-internal / no-showroom
+ * users BYPASS (never redirected). Returns the resolved auth for convenience.
+ */
+export async function requireModule(mod: 'vente' | 'location'): Promise<ServerAuth> {
+  const auth = await getServerAuth()
+  if (auth.isSuperAdmin || !auth.showroomId) return auth
+  const enabled = mod === 'vente' ? auth.moduleVente : auth.moduleLocation
+  if (!enabled) redirect(moduleLanding(auth))
+  return auth
+}

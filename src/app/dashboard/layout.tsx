@@ -40,21 +40,21 @@ import type { AppRole } from '@/lib/types'
 //   prospecteur      → dashboard / prospects
 // Restricted users also lose the Paramètres / Intégrations footer
 // links — that gating lives further down where the footer renders.
-const navItems: Array<{ href: string; label: string; icon: typeof LayoutDashboard; roles: AppRole[] }> = [
+const navItems: Array<{ href: string; label: string; icon: typeof LayoutDashboard; roles: AppRole[]; module?: 'vente' | 'location' }> = [
   { href: '/dashboard',              label: 'Tableau de bord', icon: LayoutDashboard, roles: ['owner','manager','closer','prospecteur'] },
   { href: '/dashboard/prospects',    label: 'Pipeline',        icon: Kanban,          roles: ['owner','manager'] },
   { href: '/dashboard/leads',        label: 'Prospects',       icon: Users,           roles: ['owner','manager','closer','prospecteur'] },
   { href: '/dashboard/rendez-vous',  label: 'Rendez-vous',     icon: CalendarClock,   roles: ['owner','manager','closer'] },
-  { href: '/dashboard/ventes',       label: 'Ventes',          icon: BadgeDollarSign, roles: ['owner','manager'] },
-  { href: '/dashboard/vehicules',    label: 'Véhicules',       icon: Car,             roles: ['owner','manager'] },
-  { href: '/dashboard/precommandes', label: 'Pré-commandes',   icon: Package,         roles: ['owner','manager'] },
+  { href: '/dashboard/ventes',       label: 'Ventes',          icon: BadgeDollarSign, roles: ['owner','manager'], module: 'vente' },
+  { href: '/dashboard/vehicules',    label: 'Véhicules',       icon: Car,             roles: ['owner','manager'], module: 'vente' },
+  { href: '/dashboard/precommandes', label: 'Pré-commandes',   icon: Package,         roles: ['owner','manager'], module: 'vente' },
   // Module Location (Phase 1) — separate fleet from sales vehicles.
-  { href: '/dashboard/location',           label: 'Location',         icon: KeyRound,    roles: ['owner','manager','closer'] },
-  { href: '/dashboard/location/prospects', label: 'Prospects location', icon: Inbox,    roles: ['owner','manager','closer'] },
-  { href: '/dashboard/location/contrats',  label: 'Contrats location', icon: ScrollText, roles: ['owner','manager','closer'] },
-  { href: '/dashboard/location/vehicules', label: 'Flotte location',  icon: CarFront,  roles: ['owner','manager'] },
-  { href: '/dashboard/location/clients',   label: 'Clients location', icon: Users,     roles: ['owner','manager'] },
-  { href: '/dashboard/location/tarifs',    label: 'Tarifs location',  icon: Tag,       roles: ['owner'] },
+  { href: '/dashboard/location',           label: 'Location',         icon: KeyRound,    roles: ['owner','manager','closer'], module: 'location' },
+  { href: '/dashboard/location/prospects', label: 'Prospects location', icon: Inbox,    roles: ['owner','manager','closer'], module: 'location' },
+  { href: '/dashboard/location/contrats',  label: 'Contrats location', icon: ScrollText, roles: ['owner','manager','closer'], module: 'location' },
+  { href: '/dashboard/location/vehicules', label: 'Flotte location',  icon: CarFront,  roles: ['owner','manager'], module: 'location' },
+  { href: '/dashboard/location/clients',   label: 'Clients location', icon: Users,     roles: ['owner','manager'], module: 'location' },
+  { href: '/dashboard/location/tarifs',    label: 'Tarifs location',  icon: Tag,       roles: ['owner'], module: 'location' },
   { href: '/dashboard/activites',    label: 'Activités',       icon: Activity,        roles: ['owner','manager'] },
   { href: '/dashboard/alerts',       label: 'Alertes',         icon: BellRing,        roles: ['owner','manager'] },
   // `Paramètres` is rendered in the sidebar footer (`!isInternalTeam`
@@ -117,6 +117,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // highlight visibly trails the click. We snap it to the clicked href
   // immediately and let the real pathname take over once it catches up.
   const [optimisticHref, setOptimisticHref] = useState<string | null>(null)
+  // Module flags (nav gating). Default both-ON until resolved + for
+  // super_admin / SaaS roles (no showroom). Server guards (requireModule) do
+  // the real block; this just hides nav the showroom's plan doesn't include.
+  const [modules, setModules] = useState<{ vente: boolean; location: boolean }>({ vente: true, location: true })
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data }) => {
@@ -135,14 +139,35 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       // gracefully if user_roles isn't migrated yet.
       const { data: roleRow } = await supabase
         .from('user_roles')
-        .select('role')
+        .select('role, showroom_id')
         .eq('user_id', data.user.id)
         .maybeSingle()
       setUserRole((roleRow?.role as AppRole | undefined) ?? null)
+
+      // Module flags for nav gating. No showroom (super_admin / SaaS) → both
+      // ON (defaults). Fail-open if the showroom row can't be read.
+      const sid = (roleRow?.showroom_id as string | null) ?? null
+      if (sid) {
+        const { data: sr } = await supabase
+          .from('showrooms')
+          .select('module_vente, module_location')
+          .eq('id', sid)
+          .maybeSingle()
+        if (sr) setModules({
+          vente: (sr as { module_vente?: boolean }).module_vente !== false,
+          location: (sr as { module_location?: boolean }).module_location !== false,
+        })
+      }
     })
   }, [router])
 
-  const activeNavItems = navItemsForRole(userRole)
+  // Filter by ROLE (existing) then by MODULE: keep items with no module tag,
+  // or whose module is enabled for this showroom. super_admin / SaaS keep
+  // both modules ON, so their sidebars are unaffected.
+  const activeNavItems = navItemsForRole(userRole).filter((it) => {
+    const mod = (it as { module?: 'vente' | 'location' }).module
+    return !mod || (mod === 'vente' ? modules.vente : modules.location)
+  })
 
   // Effective path used for active-state computation: the optimistic
   // override while a navigation is in flight, otherwise the real path.
