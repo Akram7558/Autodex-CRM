@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { Bell, AlertTriangle, KeyRound, CornerDownLeft } from 'lucide-react'
+import { Bell, AlertTriangle, KeyRound, CornerDownLeft, Check, Trash2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { getCurrentUserRole, canSeeAllNotifications } from '@/lib/auth'
 import type { Notification } from '@/lib/types'
@@ -115,6 +115,21 @@ export function NotificationBell({ userId }: { userId: string | null }) {
     await q
     setUnread(0)
     setItems((prev) => prev.map((n) => ({ ...n, read: true })))
+  }
+
+  // Per-item controls (STORED notifs only). Same supabase ops the alerts page
+  // uses; optimistic UI first, then persist. Computed alerts have no controls.
+  async function markOneRead(id: string) {
+    setItems((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)))
+    setUnread((u) => Math.max(0, u - 1))
+    await supabase.from('notifications').update({ read: true }).eq('id', id)
+  }
+
+  async function dismissOne(id: string) {
+    const wasUnread = items.some((n) => n.id === id && !n.read)
+    setItems((prev) => prev.filter((n) => n.id !== id))
+    if (wasUnread) setUnread((u) => Math.max(0, u - 1))
+    await supabase.from('notifications').delete().eq('id', id)
   }
 
   // A lead can have BOTH a stored temp_cold event and a live lead_stagnant
@@ -255,7 +270,7 @@ export function NotificationBell({ userId }: { userId: string | null }) {
                       key={n.id}
                       href={hrefFor(n)}
                       onClick={() => setOpen(false)}
-                      className={`flex items-start gap-3 px-4 py-3 hover:bg-muted transition-colors border-b border-border last:border-0 ${
+                      className={`group flex items-start gap-3 px-4 py-3 hover:bg-muted transition-colors border-b border-border last:border-0 ${
                         n.read ? '' : 'bg-[var(--accent-subtle)]'
                       }`}
                     >
@@ -269,7 +284,31 @@ export function NotificationBell({ userId }: { userId: string | null }) {
                           {formatAgo(n.created_at)}
                         </p>
                       </div>
-                      {!n.read && <span className="w-2 h-2 rounded-full bg-[var(--accent)] mt-2" />}
+                      <div className="flex-shrink-0 self-center flex items-center gap-1">
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {!n.read && (
+                            <button
+                              type="button"
+                              title="Marquer lu"
+                              aria-label="Marquer lu"
+                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); markOneRead(n.id) }}
+                              className="p-1 rounded-md text-muted-foreground hover:text-[var(--accent)] hover:bg-muted transition-colors"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            title="Supprimer"
+                            aria-label="Supprimer"
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); dismissOne(n.id) }}
+                            className="p-1 rounded-md text-muted-foreground hover:text-rose-500 hover:bg-muted transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        {!n.read && <span className="w-2 h-2 rounded-full bg-[var(--accent)] group-hover:hidden" />}
+                      </div>
                     </Link>
                   )
                 })}
