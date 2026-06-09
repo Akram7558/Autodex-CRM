@@ -73,3 +73,49 @@ export function formatAgo(fromISO: string | null | undefined, nowMs: number = Da
   if (d === "à l'instant") return d
   return `il y a ${d}`
 }
+
+export type RecencyGroup<T> = { label: string; items: T[] }
+
+/**
+ * Bucket items into recency groups, newest-first within each, empty groups
+ * dropped. Boundaries (local time):
+ *   Aujourd'hui   = today (>= local midnight)
+ *   Cette semaine = the 7 days before today
+ *   Plus ancien   = older
+ * `getTs` returns the item's source timestamp (stored → created_at, computed
+ * → since). A missing/invalid timestamp is treated as "now" (a live alert),
+ * so it sorts into Aujourd'hui at the top.
+ */
+export function bucketByRecency<T>(
+  items: T[],
+  getTs: (item: T) => string | null | undefined,
+  nowMs: number = Date.now(),
+): RecencyGroup<T>[] {
+  const todayStart = new Date(nowMs)
+  todayStart.setHours(0, 0, 0, 0)
+  const today0 = todayStart.getTime()
+  const week0 = today0 - 7 * DAY
+
+  const tsOf = (it: T): number => {
+    const s = getTs(it)
+    if (!s) return nowMs
+    const t = new Date(s).getTime()
+    return Number.isFinite(t) ? t : nowMs
+  }
+
+  const today: T[] = [], week: T[] = [], older: T[] = []
+  for (const it of items) {
+    const t = tsOf(it)
+    if (t >= today0) today.push(it)
+    else if (t >= week0) week.push(it)
+    else older.push(it)
+  }
+  const byNewest = (a: T, b: T) => tsOf(b) - tsOf(a)
+  today.sort(byNewest); week.sort(byNewest); older.sort(byNewest)
+
+  return [
+    { label: "Aujourd'hui", items: today },
+    { label: 'Cette semaine', items: week },
+    { label: 'Plus ancien', items: older },
+  ].filter((g) => g.items.length > 0)
+}

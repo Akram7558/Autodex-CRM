@@ -6,7 +6,7 @@ import { Bell, AlertTriangle, KeyRound, CornerDownLeft } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { getCurrentUserRole, canSeeAllNotifications } from '@/lib/auth'
 import type { Notification } from '@/lib/types'
-import { type ComputedAlert, formatAgo } from '@/lib/notifications'
+import { type ComputedAlert, formatAgo, bucketByRecency } from '@/lib/notifications'
 import { notifMeta, toneClasses } from '@/lib/notif-style'
 import { relativeDayLabel, type AgendaItem } from '@/lib/rental/agenda'
 
@@ -122,6 +122,20 @@ export function NotificationBell({ userId }: { userId: string | null }) {
   const storedLeadIds = new Set(items.map((n) => n.lead_id).filter(Boolean) as string[])
   const computedToShow = computed.filter((a) => !(a.lead_id && storedLeadIds.has(a.lead_id)))
 
+  // Merge computed + stored into ONE recency-bucketed list (the rental agenda
+  // keeps its own future-facing section above). Timestamp: computed → since,
+  // stored → created_at. Empty groups dropped, newest-first within each.
+  type BellRow =
+    | { kind: 'computed'; alert: ComputedAlert }
+    | { kind: 'stored'; notif: Notification }
+  const merged: BellRow[] = [
+    ...computedToShow.map((a) => ({ kind: 'computed' as const, alert: a })),
+    ...items.map((n) => ({ kind: 'stored' as const, notif: n })),
+  ]
+  const alertGroups = bucketByRecency(merged, (e) =>
+    e.kind === 'computed' ? e.alert.since : e.notif.created_at,
+  )
+
   // Badge: computed alerts + unread stored notifs + live agenda items.
   const totalCount = computedToShow.length + unread + agenda.length
 
@@ -202,56 +216,65 @@ export function NotificationBell({ userId }: { userId: string | null }) {
               </div>
             )}
 
-            {/* Derived alerts — computed live, deep-linked, not dismissible */}
-            {computedToShow.map((a) => {
-              const { Icon, severity } = notifMeta(a.type)
-              return (
-                <Link
-                  key={a.key}
-                  href={a.href ?? '/dashboard/alerts'}
-                  onClick={() => setOpen(false)}
-                  className="flex items-start gap-3 px-4 py-3 hover:bg-muted transition-colors border-b border-border bg-[var(--accent-subtle)]"
-                >
-                  <div className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${toneClasses(severity).tile}`}>
-                    <Icon className="w-4 h-4" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{a.title}</p>
-                    <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{a.message}</p>
-                    {a.since && (
-                      <p className="text-[11px] text-muted-foreground mt-1">{formatAgo(a.since)}</p>
-                    )}
-                  </div>
-                  <span className="w-2 h-2 rounded-full bg-[var(--accent)] mt-2" />
-                </Link>
-              )
-            })}
-
-            {items.map((n) => {
-              const { Icon, severity } = notifMeta(n.type)
-              return (
-                <Link
-                  key={n.id}
-                  href={hrefFor(n)}
-                  onClick={() => setOpen(false)}
-                  className={`flex items-start gap-3 px-4 py-3 hover:bg-muted transition-colors border-b border-border last:border-0 ${
-                    n.read ? '' : 'bg-[var(--accent-subtle)]'
-                  }`}
-                >
-                  <div className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${toneClasses(severity).tile}`}>
-                    <Icon className="w-4 h-4" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{n.title}</p>
-                    <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{n.message}</p>
-                    <p className="text-[11px] text-muted-foreground mt-1">
-                      {formatAgo(n.created_at)}
-                    </p>
-                  </div>
-                  {!n.read && <span className="w-2 h-2 rounded-full bg-[var(--accent)] mt-2" />}
-                </Link>
-              )
-            })}
+            {/* Computed + stored alerts, grouped by recency. Computed are
+                deep-linked + non-dismissible; stored carry the read state. */}
+            {alertGroups.map((group) => (
+              <div key={group.label}>
+                <p className="px-4 pt-3 pb-1 text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                  {group.label}
+                </p>
+                {group.items.map((entry) => {
+                  if (entry.kind === 'computed') {
+                    const a = entry.alert
+                    const { Icon, severity } = notifMeta(a.type)
+                    return (
+                      <Link
+                        key={a.key}
+                        href={a.href ?? '/dashboard/alerts'}
+                        onClick={() => setOpen(false)}
+                        className="flex items-start gap-3 px-4 py-3 hover:bg-muted transition-colors border-b border-border bg-[var(--accent-subtle)]"
+                      >
+                        <div className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${toneClasses(severity).tile}`}>
+                          <Icon className="w-4 h-4" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-foreground truncate">{a.title}</p>
+                          <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{a.message}</p>
+                          {a.since && (
+                            <p className="text-[11px] text-muted-foreground mt-1">{formatAgo(a.since)}</p>
+                          )}
+                        </div>
+                        <span className="w-2 h-2 rounded-full bg-[var(--accent)] mt-2" />
+                      </Link>
+                    )
+                  }
+                  const n = entry.notif
+                  const { Icon, severity } = notifMeta(n.type)
+                  return (
+                    <Link
+                      key={n.id}
+                      href={hrefFor(n)}
+                      onClick={() => setOpen(false)}
+                      className={`flex items-start gap-3 px-4 py-3 hover:bg-muted transition-colors border-b border-border last:border-0 ${
+                        n.read ? '' : 'bg-[var(--accent-subtle)]'
+                      }`}
+                    >
+                      <div className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${toneClasses(severity).tile}`}>
+                        <Icon className="w-4 h-4" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">{n.title}</p>
+                        <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{n.message}</p>
+                        <p className="text-[11px] text-muted-foreground mt-1">
+                          {formatAgo(n.created_at)}
+                        </p>
+                      </div>
+                      {!n.read && <span className="w-2 h-2 rounded-full bg-[var(--accent)] mt-2" />}
+                    </Link>
+                  )
+                })}
+              </div>
+            ))}
           </div>
 
           {/* footer */}

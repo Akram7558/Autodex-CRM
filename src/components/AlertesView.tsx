@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
 import { getCurrentUserRole, canSeeAllNotifications } from '@/lib/auth'
 import type { Notification, NotificationType } from '@/lib/types'
-import { type ComputedAlert, formatAgo } from '@/lib/notifications'
+import { type ComputedAlert, formatAgo, bucketByRecency } from '@/lib/notifications'
 import { notifMeta, toneClasses } from '@/lib/notif-style'
 
 // ── Map a real Notification → display config used by the design ──
@@ -26,6 +26,7 @@ type DisplayAlert = {
   title: string
   description: string
   date: string
+  ts: string | null
   icon: LucideIcon
   iconColor: string
   primaryBtn: string
@@ -120,6 +121,7 @@ export function AlertesView() {
           title: a.title,
           description: a.message,
           date: a.since ? relativeDate(a.since) : '',
+          ts: a.since,
           icon: cfg.icon,
           iconColor: cfg.iconColor,
           primaryBtn: cfg.primaryBtn,
@@ -141,6 +143,7 @@ export function AlertesView() {
         title: n.title,
         description: n.message,
         date: relativeDate(n.created_at),
+        ts: n.created_at,
         icon: cfg.icon,
         iconColor: cfg.iconColor,
         primaryBtn: cfg.primaryBtn,
@@ -220,13 +223,18 @@ export function AlertesView() {
       </div>
 
       {/* Main Content Area */}
-      <div className="space-y-4 pt-4">
-        {alertsData.map((alert, idx) => (
+      <div className="space-y-6 pt-4">
+        {bucketByRecency(alertsData, (a) => a.ts).map((group) => (
+          <div key={group.label} className="space-y-4">
+            <p className="px-1 text-[11px] font-black uppercase tracking-widest text-[var(--text-muted)]">
+              {group.label}
+            </p>
+            {group.items.map((alert, idx) => (
           <motion.div
             key={alert.id}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 + (idx * 0.1) }}
+            transition={{ delay: idx * 0.05 }}
             className={cn(
               "p-5 rounded-[2rem] border border-[var(--border)] bg-[var(--bg-surface)] shadow-sm flex flex-col sm:flex-row gap-5 items-start transition-all relative overflow-hidden group",
             )}
@@ -280,6 +288,8 @@ export function AlertesView() {
               </button>
             )}
           </motion.div>
+            ))}
+          </div>
         ))}
         {alertsData.length === 0 && (
           <div className="rounded-[2rem] border border-[var(--border)] bg-[var(--bg-surface)] px-6 py-12 text-center">
