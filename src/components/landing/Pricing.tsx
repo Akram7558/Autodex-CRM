@@ -12,7 +12,7 @@ import Link from 'next/link'
 import { ArrowRight, Check, Sparkles } from 'lucide-react'
 import { useTranslations } from '@/hooks/useTranslations'
 
-type PlanType = 'classique' | 'totale'
+type PlanType = 'classique' | 'totale' | 'location'
 type Plan = {
   id:              string
   name:            string
@@ -86,6 +86,9 @@ export default function Pricing() {
         >
           <TypePill active={type === 'classique'} onClick={() => setType('classique')}>
             {t('pricing.type.classique')}
+          </TypePill>
+          <TypePill active={type === 'location'} onClick={() => setType('location')}>
+            {t('pricing.type.location')}
           </TypePill>
           <TypePill active={type === 'totale'} onClick={() => setType('totale')}>
             <span className="inline-flex items-center gap-2">
@@ -176,7 +179,8 @@ function TypePill({
 
 function PlanCard({ plan, popular }: { plan: Plan; popular: boolean }) {
   const { t } = useTranslations()
-  const isTotale  = plan.plan_type === 'totale'
+  const isTotale   = plan.plan_type === 'totale'
+  const isLocation = plan.plan_type === 'location'
   const packLabel = t(`pricing.pack.${plan.duration_months}`)
   const saveLabel =
     plan.duration_months === 6  ? t('pricing.save_10')
@@ -186,10 +190,17 @@ function PlanCard({ plan, popular }: { plan: Plan; popular: boolean }) {
     () => [1, 2, 3, 4, 5, 6, 7, 8].map((i) => t(`pricing.feat.c.${i}`)),
     [t],
   )
+  const locationFeatures = useMemo(
+    () => [1, 2, 3, 4, 5, 6, 7, 8].map((i) => t(`pricing.feat.l.${i}`)),
+    [t],
+  )
   const totaleExtras = useMemo(
     () => [1, 2, 3, 4, 5, 6, 7, 8].map((i) => t(`pricing.feat.t.${i}`)),
     [t],
   )
+  // Location-only plans show their own feature list; classique + totale
+  // keep the classique base (totale appends its premium extras below).
+  const baseFeatures = isLocation ? locationFeatures : classiqueFeatures
 
   return (
     <div className="relative">
@@ -253,6 +264,14 @@ function PlanCard({ plan, popular }: { plan: Plan; popular: boolean }) {
               · {t('pricing.totale_suffix')}
             </span>
           )}
+          {isLocation && (
+            <span
+              className="text-sm font-semibold"
+              style={{ color: 'var(--accent)' }}
+            >
+              · {t('pricing.location_suffix')}
+            </span>
+          )}
         </div>
 
         {/* Save badge */}
@@ -293,7 +312,7 @@ function PlanCard({ plan, popular }: { plan: Plan; popular: boolean }) {
 
         {/* Features */}
         <ul className="mt-8 flex-1 flex flex-col gap-3">
-          {classiqueFeatures.map((label, i) => (
+          {baseFeatures.map((label, i) => (
             <li key={`c-${i}`} className="flex items-start gap-3">
               <FeatureCheck size={isTotale ? 'sm' : 'md'} />
               <span
@@ -350,7 +369,11 @@ function PlanCard({ plan, popular }: { plan: Plan; popular: boolean }) {
               : '0 8px 22px -10px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,0.12)',
           }}
         >
-          {isTotale ? t('pricing.cta_totale') : t('pricing.cta_classique')}
+          {isTotale
+            ? t('pricing.cta_totale')
+            : isLocation
+              ? t('pricing.cta_location')
+              : t('pricing.cta_classique')}
           <ArrowRight className="w-4 h-4 rtl:rotate-180" />
         </Link>
       </div>

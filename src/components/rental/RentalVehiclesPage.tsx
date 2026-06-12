@@ -17,7 +17,7 @@ import UpgradeModal from '@/components/rental/UpgradeModal'
 
 const CLASSIQUE_LIMIT = 5
 
-export type PlanType = 'classique' | 'totale'
+export type PlanType = 'classique' | 'totale' | 'location'
 
 type Vehicle = {
   id:                   string
@@ -159,7 +159,9 @@ export default function RentalVehiclesPage({
           >
             {planType === 'classique'
               ? <>Classique · <bdi className="tabular-nums">{activeCount}/{CLASSIQUE_LIMIT}</bdi></>
-              : <>La Totale · <bdi>∞</bdi></>}
+              : planType === 'totale'
+                ? <>La Totale · <bdi>∞</bdi></>
+                : <>Location · <bdi>∞</bdi></>}
           </span>
           {canEdit && (
             <button

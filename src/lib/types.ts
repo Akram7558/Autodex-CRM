@@ -82,12 +82,14 @@ export type CatalogOrderInput = {
   type: CatalogOrderType
 }
 
-// ── SaaS subscription plans (migration_23_plans.sql, plan_type added in 24) ──
-export type SaasPlanType = 'classique' | 'totale'
-export const SAAS_PLAN_TYPE_VALUES: SaasPlanType[] = ['classique', 'totale']
+// ── SaaS subscription plans (migration_23_plans.sql; plan_type added in
+// migration 36, 'location' tier + per-plan modules in migration 57) ──
+export type SaasPlanType = 'classique' | 'totale' | 'location'
+export const SAAS_PLAN_TYPE_VALUES: SaasPlanType[] = ['classique', 'totale', 'location']
 export const SAAS_PLAN_TYPE_LABELS: Record<SaasPlanType, string> = {
   classique: 'Plan Classique',
   totale:    'Plan La Totale',
+  location:  'Plan Location',
 }
 
 export type SaasPlan = {

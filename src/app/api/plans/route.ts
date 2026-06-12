@@ -1,9 +1,10 @@
 // ─────────────────────────────────────────────────────────────────────
-// GET /api/plans?type=classique|totale
+// GET /api/plans?type=classique|totale|location
 // ─────────────────────────────────────────────────────────────────────
 // Public endpoint used by the landing page to populate the Pricing
-// section. Filters `saas_plans` by `plan_type` (migration 36) and
-// returns active rows ordered by duration_months ASC.
+// section. Filters `saas_plans` by `plan_type` (migration 36; the
+// 'location' tier landed in migration 57) and returns active rows
+// ordered by duration_months ASC.
 //
 // Caching: `Cache-Control: public, max-age=300, s-maxage=300` (5min).
 // ─────────────────────────────────────────────────────────────────────
@@ -13,7 +14,7 @@ import { createClient } from '@supabase/supabase-js'
 
 export const runtime = 'nodejs'
 
-const VALID_TYPES = new Set(['classique', 'totale'])
+const VALID_TYPES = new Set(['classique', 'totale', 'location'])
 
 function adminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -28,7 +29,7 @@ export async function GET(req: NextRequest) {
   const type = req.nextUrl.searchParams.get('type')
   if (!type || !VALID_TYPES.has(type)) {
     return NextResponse.json(
-      { error: 'Query param `type` must be `classique` or `totale`.' },
+      { error: 'Query param `type` must be `classique`, `totale` or `location`.' },
       { status: 400 },
     )
   }

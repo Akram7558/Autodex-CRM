@@ -46,7 +46,7 @@ export async function GET() {
 
     // Build the grouped view (active only, ordered by duration). Each
     // group is empty if there's no active plan of that type.
-    const grouped: Record<SaasPlanType, SaasPlan[]> = { classique: [], totale: [] }
+    const grouped: Record<SaasPlanType, SaasPlan[]> = { classique: [], totale: [], location: [] }
     for (const p of plans) {
       if (!p.active) continue
       const t = (p.plan_type ?? 'classique') as SaasPlanType
@@ -152,7 +152,7 @@ export async function PUT(req: NextRequest) {
     if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 })
 
     const plans = (data ?? []) as SaasPlan[]
-    const grouped: Record<SaasPlanType, SaasPlan[]> = { classique: [], totale: [] }
+    const grouped: Record<SaasPlanType, SaasPlan[]> = { classique: [], totale: [], location: [] }
     for (const p of plans) {
       if (!p.active) continue
       const t = (p.plan_type ?? 'classique') as SaasPlanType

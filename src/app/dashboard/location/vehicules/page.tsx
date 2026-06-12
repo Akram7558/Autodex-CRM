@@ -73,11 +73,16 @@ export default async function Page() {
   }
 
   // Resolve plan_type from the nested embed, defaulting to Classique.
+  // 'location' passes through (unlimited fleet, like totale — migration 57);
+  // anything else/null collapses to Classique (the capped tier).
   const showroom = firstOf(
     (roleRow as { showrooms?: ShowroomEmbed | ShowroomEmbed[] | null } | null)?.showrooms,
   )
   const saasPlan = firstOf(showroom?.saas_plans)
-  const planType: PlanType = saasPlan?.plan_type === 'totale' ? 'totale' : 'classique'
+  const planType: PlanType =
+    saasPlan?.plan_type === 'totale'   ? 'totale'
+    : saasPlan?.plan_type === 'location' ? 'location'
+    : 'classique'
 
   // Owner + Manager edit; super_admin treated as owner here for parity.
   const canEdit = role === 'owner' || role === 'manager' || role === 'super_admin'
