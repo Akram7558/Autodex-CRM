@@ -95,6 +95,10 @@ export async function POST(req: NextRequest) {
     const phoneRaw      = String(body.phone         ?? '').trim()
     const wilaya        = String(body.wilaya        ?? '').trim()
     const showroom_size = mapShowroomSize(body.showroom_size)
+    // Optional plan choice carried over from the landing Pricing CTA
+    // (/register?plan=<id>). Validated below against ACTIVE saas_plans;
+    // invalid/missing falls back to the default vente-only trial.
+    const planIdRaw     = body.plan_id ? String(body.plan_id).trim() : ''
 
     if (!showroom_name) return NextResponse.json({ error: 'Nom du showroom requis.' }, { status: 400 })
     if (!full_name)     return NextResponse.json({ error: 'Nom complet requis.' },     { status: 400 })
@@ -122,6 +126,30 @@ export async function POST(req: NextRequest) {
     const admin = createClient(url, serviceKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     })
+
+    // ── 0. Resolve the chosen plan's modules (best-effort) ─────────
+    // The trial stays a trial: is_trial=true and plan_id is NOT stamped
+    // on the showroom (plan_id marks PAYING customers — see direct-
+    // convert). The chosen plan only shapes module_vente/module_location
+    // and is recorded on the SaaS prospect row (notes) for the sales
+    // team. Any lookup failure → historical default (vente-only).
+    let moduleVente = true
+    let moduleLocation = false
+    let chosenPlanName: string | null = null
+    if (planIdRaw) {
+      const { data: plan } = await admin
+        .from('saas_plans')
+        .select('id, name, module_vente, module_location')
+        .eq('id', planIdRaw)
+        .eq('active', true)
+        .maybeSingle()
+      if (plan) {
+        const pm = plan as { module_vente?: boolean | null; module_location?: boolean | null }
+        moduleVente    = pm.module_vente !== false
+        moduleLocation = pm.module_location === true
+        chosenPlanName = String(plan.name)
+      }
+    }
 
     // ── 1a. Email-already-used check ───────────────────────────────
     // Walk admin.auth.admin.listUsers up to 5 pages of 200 (1 000 users).
@@ -188,8 +216,8 @@ export async function POST(req: NextRequest) {
       name:          showroom_name,
       city:          wilaya,
       owner_email:   emailRaw,
-      module_vente:  true,
-      module_location: false,
+      module_vente:  moduleVente,
+      module_location: moduleLocation,
       active:        true,
       is_trial:      true,
       trial_ends_at: trialEndsAt.toISOString(),
@@ -249,6 +277,9 @@ export async function POST(req: NextRequest) {
         // landing_page; the originating page name is in the email body.
         source:        'landing_page',
         assigned_to:   assignedTo,
+        // Lightweight record of the plan picked on the pricing page —
+        // the trial itself carries no plan_id (it shapes modules only).
+        ...(chosenPlanName ? { notes: `Plan choisi : ${chosenPlanName}` } : {}),
       }]).then(() => {}, () => {})
     } catch { /* ignore */ }
 

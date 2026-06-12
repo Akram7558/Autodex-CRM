@@ -520,7 +520,10 @@ export function ShowroomsManager() {
                     allowNone
                     onChange={(next: PlanPickerValue, plan: SaasPlan | null) => {
                       // When a plan card is picked, pre-fill price + expiry
-                      // (today + duration_months). User can override either.
+                      // (today + duration_months) AND the module checkboxes
+                      // from the plan's declared modules (migration 57).
+                      // User can still override any of them before saving —
+                      // the explicit flags in the body stay the final word.
                       if (plan) {
                         const ends = new Date()
                         ends.setMonth(ends.getMonth() + plan.duration_months)
@@ -532,6 +535,8 @@ export function ShowroomsManager() {
                           plan_pick:       next,
                           contract_amount: String(plan.price),
                           expires_at:      dateStr,
+                          module_vente:    plan.module_vente !== false,
+                          module_location: plan.module_location === true,
                         })
                       } else {
                         // 'none' or 'custom' — clear the derived fields.

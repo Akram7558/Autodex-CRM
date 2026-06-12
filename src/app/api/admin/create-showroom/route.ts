@@ -87,8 +87,15 @@ export async function POST(req: NextRequest) {
     const city        = String(body.city        ?? '').trim()
     const owner_email = String(body.owner_email ?? '').trim().toLowerCase()
     const password    = String(body.password    ?? '')
-    const module_vente    = body.module_vente    !== false   // default true
-    const module_location = body.module_location === true    // default false
+    // Explicit module flags from the form are the FINAL word (the UI
+    // auto-fills them from the picked plan but the super_admin can
+    // override). When ABSENT, the chosen plan's modules apply (resolved
+    // below); with no plan either, fall back to the historical default
+    // (vente-only).
+    const moduleVenteRaw: boolean | undefined =
+      typeof body.module_vente === 'boolean' ? body.module_vente : undefined
+    const moduleLocationRaw: boolean | undefined =
+      typeof body.module_location === 'boolean' ? body.module_location : undefined
     const active          = body.active          !== false   // default true
 
     // ── Optional paid-from-day-1 fields ─────────────────────────────
@@ -153,10 +160,12 @@ export async function POST(req: NextRequest) {
     // override either via contract_amount / expires_at.
     let resolvedAmount: number | null = null
     let resolvedExpires: Date | null = null
+    let planModuleVente: boolean | undefined
+    let planModuleLocation: boolean | undefined
     if (plan_id) {
       const { data: plan, error: planErr } = await admin
         .from('saas_plans')
-        .select('id, price, duration_months')
+        .select('id, price, duration_months, module_vente, module_location')
         .eq('id', plan_id)
         .maybeSingle()
       if (planErr) return NextResponse.json({ error: planErr.message }, { status: 500 })
@@ -165,7 +174,16 @@ export async function POST(req: NextRequest) {
       const ends = new Date()
       ends.setMonth(ends.getMonth() + Number(plan.duration_months))
       resolvedExpires = ends
+      // Plan modules (migration 57) — used only when the body didn't
+      // carry explicit flags. Null columns → classique semantics.
+      const pm = plan as { module_vente?: boolean | null; module_location?: boolean | null }
+      planModuleVente    = pm.module_vente !== false
+      planModuleLocation = pm.module_location === true
     }
+
+    // Final module flags: explicit body > plan-derived > historical default.
+    const module_vente    = moduleVenteRaw    ?? planModuleVente    ?? true
+    const module_location = moduleLocationRaw ?? planModuleLocation ?? false
 
     const bodyAmount = Number(contractRaw)
     const contract_amount: number | null =

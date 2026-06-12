@@ -97,6 +97,10 @@ export type SaasPlan = {
   price: number
   active: boolean
   plan_type: SaasPlanType
+  // Plans declare their modules (migration 57). Optional so older cached
+  // payloads stay assignable; absent → classique semantics (vente-only).
+  module_vente?: boolean
+  module_location?: boolean
   created_at: string
   updated_at: string
 }

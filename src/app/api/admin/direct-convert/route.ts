@@ -73,14 +73,21 @@ export async function POST(req: NextRequest) {
       auth: { autoRefreshToken: false, persistSession: false },
     })
 
-    // ── 1. Resolve plan (price + duration as defaults) ───────────────
+    // ── 1. Resolve plan (price + duration as defaults, modules) ──────
     const { data: plan, error: planErr } = await admin
       .from('saas_plans')
-      .select('id, name, price, duration_months')
+      .select('id, name, price, duration_months, module_vente, module_location')
       .eq('id', plan_id)
       .maybeSingle()
     if (planErr) return NextResponse.json({ error: planErr.message }, { status: 500 })
     if (!plan)   return NextResponse.json({ error: 'Plan introuvable.' }, { status: 404 })
+
+    // Modules come from the chosen plan (migration 57): classique →
+    // vente-only, location → location-only, totale → both. Null/absent
+    // columns fall back to the historical default (vente-only).
+    const planModules = plan as { module_vente?: boolean | null; module_location?: boolean | null }
+    const module_vente    = planModules.module_vente !== false
+    const module_location = planModules.module_location === true
 
     const bodyAmount = Number(contractRaw)
     const contract_amount = Number.isFinite(bodyAmount) ? bodyAmount : Number(plan.price)
@@ -123,8 +130,8 @@ export async function POST(req: NextRequest) {
         city,
         owner_email,
         active:                true,
-        module_vente:          true,
-        module_location:       false,
+        module_vente,
+        module_location,
         is_trial:              false,
         plan_id:               plan.id,
         trial_ends_at:         expires.toISOString(),
