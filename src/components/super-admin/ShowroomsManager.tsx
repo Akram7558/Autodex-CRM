@@ -371,8 +371,8 @@ export function ShowroomsManager() {
       {/* Modal */}
       {form && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm p-4">
-          <div className="rounded-2xl bg-card border border-border shadow-2xl w-full max-w-md flex flex-col">
-            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-border">
+          <div className="rounded-2xl bg-card border border-border shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-border shrink-0">
               <h3 className="text-base font-semibold text-foreground">
                 {form.id ? 'Modifier le showroom' : 'Nouveau showroom'}
               </h3>
@@ -380,7 +380,9 @@ export function ShowroomsManager() {
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <form onSubmit={submit} className="px-6 py-5 space-y-4">
+            {/* Header + footer stay fixed; only this body scrolls (mobile-safe). */}
+            <form onSubmit={submit} className="flex flex-col min-h-0">
+              <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
               <div>
                 <label className="block text-xs font-medium text-foreground mb-1">Nom *</label>
                 <input
@@ -586,23 +588,27 @@ export function ShowroomsManager() {
                 </div>
               )}
 
-              {error && <p className="text-xs text-rose-600 bg-rose-50 dark:bg-rose-500/10 rounded-lg px-3 py-2">{error}</p>}
+              </div>{/* /scrollable body */}
 
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setForm(null)}
-                  className="px-4 py-2 rounded-lg text-sm text-foreground hover:bg-muted"
-                >
-                  Annuler
-                </button>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="px-5 py-2 rounded-lg text-sm bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60 font-medium"
-                >
-                  {saving ? 'Enregistrement…' : form.id ? 'Enregistrer' : 'Créer'}
-                </button>
+              {/* Fixed footer — error + actions always visible. */}
+              <div className="shrink-0 border-t border-border px-6 py-4 space-y-3">
+                {error && <p className="text-xs text-rose-600 bg-rose-50 dark:bg-rose-500/10 rounded-lg px-3 py-2">{error}</p>}
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setForm(null)}
+                    className="px-4 py-2 rounded-lg text-sm text-foreground hover:bg-muted"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="px-5 py-2 rounded-lg text-sm bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60 font-medium"
+                  >
+                    {saving ? 'Enregistrement…' : form.id ? 'Enregistrer' : 'Créer'}
+                  </button>
+                </div>
               </div>
             </form>
           </div>

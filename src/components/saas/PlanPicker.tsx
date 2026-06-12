@@ -4,7 +4,16 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { CheckCircle2, Calendar, AlertTriangle, Crown } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { SaasPlan } from '@/lib/types'
+import type { SaasPlan, SaasPlanType } from '@/lib/types'
+
+// The 9 plans (3 tiers × 3 durations) are grouped into labeled tier rows so
+// the picker stays compact vertically. Order + short labels for the headers.
+const TIER_ORDER: SaasPlanType[] = ['classique', 'location', 'totale']
+const TIER_LABEL: Record<SaasPlanType, string> = {
+  classique: 'Classique',
+  location:  'Location',
+  totale:    'La Totale',
+}
 
 // ─────────────────────────────────────────────────────────────────────
 // PlanPicker — shared radio-card UI used by
@@ -96,32 +105,42 @@ export function PlanPicker({
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-          {plans.map((p) => {
-            const selected = value === p.id
+        <div className="space-y-2.5">
+          {TIER_ORDER.map((tier) => {
+            const group = plans.filter((p) => (p.plan_type ?? 'classique') === tier)
+            if (group.length === 0) return null
             return (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => pick(p.id)}
-                className={cn(
-                  'rounded-xl border p-3 text-left transition-all',
-                  selected
-                    ? 'border-violet-500 bg-violet-50/60 dark:bg-violet-500/10 ring-2 ring-violet-500/30'
-                    : 'border-border bg-background hover:border-violet-300 dark:hover:border-violet-500/40',
-                )}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="text-sm font-bold text-foreground">{p.name}</p>
-                    <p className="text-[11px] text-muted-foreground">{p.duration_months} mois</p>
-                  </div>
-                  {selected && <CheckCircle2 className="w-4 h-4 text-violet-600 shrink-0" />}
-                </div>
-                <p className="mt-2 text-sm font-black text-violet-700 dark:text-violet-300">
-                  {formatDzd(p.price)} <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">DZD</span>
+              <div key={tier}>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">
+                  {TIER_LABEL[tier]}
                 </p>
-              </button>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+                  {group.map((p) => {
+                    const selected = value === p.id
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => pick(p.id)}
+                        className={cn(
+                          'rounded-lg border p-2 text-left transition-all',
+                          selected
+                            ? 'border-violet-500 bg-violet-50/60 dark:bg-violet-500/10 ring-2 ring-violet-500/30'
+                            : 'border-border bg-background hover:border-violet-300 dark:hover:border-violet-500/40',
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-1.5">
+                          <p className="text-[12px] font-bold text-foreground leading-tight">{p.name}</p>
+                          {selected && <CheckCircle2 className="w-3.5 h-3.5 text-violet-600 shrink-0" />}
+                        </div>
+                        <p className="mt-1 text-[13px] font-black text-violet-700 dark:text-violet-300">
+                          {formatDzd(p.price)} <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">DZD</span>
+                        </p>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
             )
           })}
         </div>
