@@ -22,12 +22,14 @@
 // button). All labels/colors come from src/lib/rental/prospects.ts.
 // ─────────────────────────────────────────────────────────────────────
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   Car as CarIcon, CalendarRange, CalendarCheck, Loader2, Inbox, Trash2,
 } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
+import { getCurrentUserRole } from '@/lib/auth'
 import ContactButtons from '@/components/rental/ContactButtons'
 import ChangeVehicleDialog from '@/components/rental/ChangeVehicleDialog'
 import { cn } from '@/lib/utils'
@@ -54,6 +56,33 @@ export type ProspectRow = {
   created_at:          string
   vehicle:  { marque: string; modele: string; annee: number | null } | null
   contract_number: string | null
+}
+
+// ── Client fetch shapes (moved verbatim from the old server page) ────────
+// Supabase embeds (rental_vehicle / converted) arrive as object OR 1-element
+// array depending on inference — normalize either shape.
+function firstOf<T>(v: T | T[] | null | undefined): T | null {
+  if (Array.isArray(v)) return v[0] ?? null
+  return v ?? null
+}
+
+type VehicleEmbed = { marque: string; modele: string; annee: number | null }
+type ConvertedEmbed = { contract_number: string | null }
+type RawRow = {
+  id: string
+  full_name: string
+  phone: string
+  desired_start_date: string | null
+  desired_end_date: string | null
+  reason: string
+  reason_other: string | null
+  message: string | null
+  status: string
+  converted_rental_id: string | null
+  rental_vehicle_id: string | null
+  created_at: string
+  rental_vehicle: VehicleEmbed | VehicleEmbed[] | null
+  converted: ConvertedEmbed | ConvertedEmbed[] | null
 }
 
 const REASON_COLORS: Record<string, { bg: string; fg: string; ring: string }> = {
@@ -110,15 +139,16 @@ function matchesStatusFilter(status: string, filter: string): boolean {
   return status === filter
 }
 
-export default function RentalProspectsList({
-  initialRows,
-  canTrash = false,
-}: {
-  initialRows: ProspectRow[]
-  // Only owner/manager/super_admin may bulk-trash cancelled (perdue) demandes.
-  canTrash?: boolean
-}) {
-  const [rows, setRows] = useState<ProspectRow[]>(initialRows)
+export default function RentalProspectsList() {
+  // Self-fetching (sales client-fetch pattern, mirroring RentalContractsList):
+  // the route shell renders instantly and this component loads its own data
+  // behind an internal skeleton. canTrash is derived from the client-side
+  // role lookup (owner/manager/super_admin only — same rule as before).
+  const [rows, setRows] = useState<ProspectRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [canTrash, setCanTrash] = useState(false)
+  const [reloadKey, setReloadKey] = useState(0)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [rdvTarget, setRdvTarget] = useState<ProspectRow | null>(null)
@@ -132,6 +162,89 @@ export default function RentalProspectsList({
   const [trashOpen, setTrashOpen] = useState(false)
   const [trashBusy, setTrashBusy] = useState(false)
   const router = useRouter()
+
+  // ── Mount fetch (replaces the old server component) ────────────────────
+  // Replicates the previous server query EXACTLY, just from the browser
+  // client. RLS is the row-scoping boundary: the authed cookie session only
+  // sees its own showroom — the explicit .eq() below mirrors the old server
+  // query for parity + defense-in-depth, NOT as the security boundary.
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setLoadError(null)
+    ;(async () => {
+      // Resolve identity/role/showroom client-side — the same mechanism the
+      // sales Views use (supabase.auth.getUser() + user_roles via getCurrentUserRole).
+      const me = await getCurrentUserRole()
+      if (cancelled) return
+      if (!me || (me.role !== 'owner' && me.role !== 'manager' && me.role !== 'closer' && me.role !== 'super_admin')) {
+        // Middleware already gates this route; treat an unexpected/absent role
+        // as an empty (non-trash) view rather than crashing.
+        setRows([]); setCanTrash(false); setLoading(false)
+        return
+      }
+      const { role, showroomId } = me
+      // Only owner/manager/super_admin may bulk-trash cancelled (perdue)
+      // demandes (closer is excluded, mirroring the trash endpoint's guard).
+      const trash = role === 'owner' || role === 'manager' || role === 'super_admin'
+
+      let q = supabase
+        .from('rental_prospects')
+        .select(
+          'id, full_name, phone, desired_start_date, desired_end_date, reason, reason_other, ' +
+          'message, status, converted_rental_id, rental_vehicle_id, created_at, ' +
+          'rental_vehicle:rental_vehicles(marque, modele, annee), ' +
+          'converted:rentals(contract_number)',
+        )
+        // Chantier 4: a prospect linked to a contract (converted_rental_id set)
+        // has MOVED to the Contrats section — hide it from the pipeline (and from
+        // the filter counts, which are derived client-side from these rows).
+        .is('converted_rental_id', null)
+        // rdv_planifie prospects have moved into Contrats (or await the booking
+        // wizard) — hide them from the pipeline entirely, like convertie. Net set
+        // here: nouvelle / tentative_1-3 / reporter / perdue.
+        .neq('status', 'rdv_planifie')
+        // Soft-delete (corbeille, migration 51): trashed prospects carry a
+        // deleted_at timestamp and must never appear in the list or its derived
+        // counts. NULL = not trashed.
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+        .limit(100)
+      if (showroomId) q = q.eq('showroom_id', showroomId)
+
+      const { data, error: listErr } = await q
+      if (cancelled) return
+      if (listErr) {
+        setLoadError('Impossible de charger les demandes.')
+        setLoading(false)
+        return
+      }
+      const raw = (data ?? []) as unknown as RawRow[]
+      setRows(raw.map((r) => ({
+        id:                  r.id,
+        full_name:           r.full_name,
+        phone:               r.phone,
+        desired_start_date:  r.desired_start_date ?? null,
+        desired_end_date:    r.desired_end_date ?? null,
+        reason:              r.reason,
+        reason_other:        r.reason_other ?? null,
+        message:             r.message ?? null,
+        status:              r.status,
+        converted_rental_id: r.converted_rental_id ?? null,
+        rental_vehicle_id:   r.rental_vehicle_id ?? null,
+        created_at:          r.created_at,
+        vehicle:             firstOf(r.rental_vehicle),
+        contract_number:     firstOf(r.converted)?.contract_number ?? null,
+      })))
+      setCanTrash(trash)
+      setLoading(false)
+    })().catch(() => {
+      if (cancelled) return
+      setLoadError('Impossible de charger les demandes.')
+      setLoading(false)
+    })
+    return () => { cancelled = true }
+  }, [reloadKey])
 
   // Per-option counts over the full row set, shown inline in the dropdown.
   const countByFilter = useMemo(() => {
@@ -346,7 +459,40 @@ export default function RentalProspectsList({
         </div>
       )}
 
-      {visibleRows.length === 0 ? (
+      {loading ? (
+        /* Internal skeleton — reuses the prospects/loading.tsx list shape.
+           Header + filter pills above stay live (instant) so only the data
+           region shows a skeleton, mirroring RentalContractsList. */
+        <div className="rounded-2xl overflow-hidden"
+          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
+          <div className="px-4 py-2.5 flex items-center gap-3">
+            <div className="h-3 flex-1 min-w-0 rounded bg-[var(--bg-elevated)] animate-pulse opacity-70" />
+            <div className="hidden sm:block h-3 w-24 rounded bg-[var(--bg-elevated)] animate-pulse opacity-70 shrink-0" />
+            <div className="h-3 w-16 rounded bg-[var(--bg-elevated)] animate-pulse opacity-70 shrink-0" />
+          </div>
+          {Array.from({ length: 5 }, (_, i) => (
+            <div key={i} className="px-4 py-4 flex items-center gap-3 border-t" style={{ borderColor: 'var(--border)' }}>
+              <div className="h-4 flex-1 min-w-0 rounded bg-[var(--bg-elevated)] animate-pulse" />
+              <div className="hidden sm:block h-4 w-28 rounded bg-[var(--bg-elevated)] animate-pulse shrink-0" />
+              <div className="h-6 w-20 rounded-full bg-[var(--bg-elevated)] animate-pulse shrink-0" />
+            </div>
+          ))}
+        </div>
+      ) : loadError ? (
+        /* Graceful fetch-failure state with retry (re-runs the mount effect). */
+        <div className="rounded-2xl py-16 text-center"
+          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
+          <p className="text-sm font-medium text-[var(--text-primary)]">{loadError}</p>
+          <button
+            type="button"
+            onClick={() => setReloadKey((k) => k + 1)}
+            className="mt-4 inline-flex items-center gap-2 h-10 px-4 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
+            style={{ background: 'var(--accent)' }}
+          >
+            Réessayer
+          </button>
+        </div>
+      ) : visibleRows.length === 0 ? (
         <div className="rounded-2xl py-16 text-center"
           style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
           <div className="mx-auto w-14 h-14 rounded-2xl flex items-center justify-center mb-3"
