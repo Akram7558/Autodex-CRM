@@ -41,10 +41,10 @@ import type { AppRole } from '@/lib/types'
 // Restricted users also lose the Paramètres / Intégrations footer
 // links — that gating lives further down where the footer renders.
 const navItems: Array<{ href: string; label: string; icon: typeof LayoutDashboard; roles: AppRole[]; module?: 'vente' | 'location' }> = [
-  { href: '/dashboard',              label: 'Tableau de bord', icon: LayoutDashboard, roles: ['owner','manager','closer','prospecteur'] },
-  { href: '/dashboard/prospects',    label: 'Pipeline',        icon: Kanban,          roles: ['owner','manager'] },
-  { href: '/dashboard/leads',        label: 'Prospects',       icon: Users,           roles: ['owner','manager','closer','prospecteur'] },
-  { href: '/dashboard/rendez-vous',  label: 'Rendez-vous',     icon: CalendarClock,   roles: ['owner','manager','closer'] },
+  { href: '/dashboard',              label: 'Tableau de bord', icon: LayoutDashboard, roles: ['owner','manager','closer','prospecteur'], module: 'vente' },
+  { href: '/dashboard/prospects',    label: 'Pipeline',        icon: Kanban,          roles: ['owner','manager'], module: 'vente' },
+  { href: '/dashboard/leads',        label: 'Prospects',       icon: Users,           roles: ['owner','manager','closer','prospecteur'], module: 'vente' },
+  { href: '/dashboard/rendez-vous',  label: 'Rendez-vous',     icon: CalendarClock,   roles: ['owner','manager','closer'], module: 'vente' },
   { href: '/dashboard/ventes',       label: 'Ventes',          icon: BadgeDollarSign, roles: ['owner','manager'], module: 'vente' },
   { href: '/dashboard/vehicules',    label: 'Véhicules',       icon: Car,             roles: ['owner','manager'], module: 'vente' },
   { href: '/dashboard/precommandes', label: 'Pré-commandes',   icon: Package,         roles: ['owner','manager'], module: 'vente' },
@@ -164,10 +164,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // Filter by ROLE (existing) then by MODULE: keep items with no module tag,
   // or whose module is enabled for this showroom. super_admin / SaaS keep
   // both modules ON, so their sidebars are unaffected.
-  const activeNavItems = navItemsForRole(userRole).filter((it) => {
-    const mod = (it as { module?: 'vente' | 'location' }).module
-    return !mod || (mod === 'vente' ? modules.vente : modules.location)
-  })
+  const isLocationOnly = !modules.vente && modules.location
+  const activeNavItems = navItemsForRole(userRole)
+    .filter((it) => {
+      const mod = (it as { module?: 'vente' | 'location' }).module
+      return !mod || (mod === 'vente' ? modules.vente : modules.location)
+    })
+    // Location-only plan: the "Location" hub is the showroom's whole product,
+    // so relabel it "Statistique location". Complet / vente-only keep "Location".
+    .map((it) =>
+      isLocationOnly && it.href === '/dashboard/location'
+        ? { ...it, label: 'Statistique location' }
+        : it,
+    )
 
   // Effective path used for active-state computation: the optimistic
   // override while a navigation is in flight, otherwise the real path.
