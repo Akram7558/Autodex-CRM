@@ -27,6 +27,9 @@ import {
 import { cn } from '@/lib/utils'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
+import { supabase } from '@/lib/supabase'
+import { getCurrentShowroomId } from '@/lib/auth'
+import { roleLabel, offeredCreatableRoles, type ShowroomModules } from '@/lib/employee-helpers'
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -61,11 +64,6 @@ type Available = {
   role_label: string
 }
 
-const ROLE_LABEL: Record<ShowroomRole, string> = {
-  manager:     'Manager',
-  closer:      'Closer',
-  prospecteur: 'Prospecteur',
-}
 const ROLE_BADGE: Record<ShowroomRole, string> = {
   manager:     'bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300 border-violet-200/60 dark:border-violet-500/30',
   closer:      'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300 border-blue-200/60 dark:border-blue-500/30',
@@ -96,6 +94,10 @@ export default function ShowroomTeamSection({
   const [toast, setToast] = useState<string | null>(null)
   function flash(m: string) { setToast(m); setTimeout(() => setToast(null), 2500) }
 
+  // Showroom modules — FR labels + offered roles adapt for a location-only
+  // plan. super_admin / no showroom → both ON (standard labels, full set).
+  const [modules, setModules] = useState<ShowroomModules>({ vente: true, location: true })
+
   async function loadTeam() {
     setTeamLoading(true); setTeamError('')
     const res = await fetch('/api/employees')
@@ -117,10 +119,28 @@ export default function ShowroomTeamSection({
 
   useEffect(() => { loadTeam(); loadDist() }, [])
 
+  // Resolve the showroom's module flags client-side (mirrors the layout).
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const sid = await getCurrentShowroomId()
+      if (!sid || cancelled) return
+      const { data: sr } = await supabase
+        .from('showrooms')
+        .select('module_vente, module_location')
+        .eq('id', sid)
+        .maybeSingle()
+      if (sr && !cancelled) setModules({
+        vente: (sr as { module_vente?: boolean }).module_vente !== false,
+        location: (sr as { module_location?: boolean }).module_location !== false,
+      })
+    })()
+    return () => { cancelled = true }
+  }, [])
+
   const canEdit = callerRole === 'owner' || callerRole === 'super_admin'
-  const allowedCreatableRoles: ShowroomRole[] = canEdit
-    ? ['manager', 'closer', 'prospecteur']
-    : ['closer', 'prospecteur']
+  // Caller-allowed ∩ module-appropriate (location-only drops prospecteur).
+  const allowedCreatableRoles: ShowroomRole[] = offeredCreatableRoles(callerRole, modules)
 
   function canDelete(emp: Employee): boolean {
     if (emp.user_id === callerUserId) return false
@@ -246,7 +266,7 @@ export default function ShowroomTeamSection({
                       'inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border',
                       ROLE_BADGE[e.role],
                     )}>
-                      {ROLE_LABEL[e.role]}
+                      {roleLabel(e.role, modules)}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-xs text-zinc-500">
@@ -335,7 +355,7 @@ export default function ShowroomTeamSection({
                         'inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border',
                         ROLE_BADGE[d.role],
                       )}>
-                        {ROLE_LABEL[d.role]}
+                        {roleLabel(d.role, modules)}
                       </span>
                     ) : <span className="text-xs text-muted-foreground">—</span>}
                   </td>
@@ -379,7 +399,7 @@ export default function ShowroomTeamSection({
 
         {/* Add picker + Save row */}
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <AddToDistribution available={available} onAdd={addToDist} />
+          <AddToDistribution available={available} onAdd={addToDist} modules={modules} />
           <button
             type="button"
             onClick={saveDist}
@@ -402,6 +422,7 @@ export default function ShowroomTeamSection({
       {createOpen && (
         <CreateEmployeeModal
           allowedRoles={allowedCreatableRoles}
+          modules={modules}
           onClose={() => setCreateOpen(false)}
           onCreated={() => {
             setCreateOpen(false)
@@ -415,6 +436,7 @@ export default function ShowroomTeamSection({
         <EditEmployeeModal
           employee={editing}
           allowedRoles={allowedCreatableRoles}
+          modules={modules}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null)
@@ -460,10 +482,11 @@ export default function ShowroomTeamSection({
 // ── Add picker (dropdown of teammates not yet in rotation) ────────
 
 function AddToDistribution({
-  available, onAdd,
+  available, onAdd, modules,
 }: {
   available: Available[]
   onAdd: (a: Available) => void
+  modules: ShowroomModules
 }) {
   const [picked, setPicked] = useState<string>('')
   const map = useMemo(() => new Map(available.map((a) => [a.user_id, a])), [available])
@@ -486,7 +509,7 @@ function AddToDistribution({
         <option value="">— Ajouter un membre —</option>
         {available.map((a) => (
           <option key={a.user_id} value={a.user_id}>
-            {a.full_name ?? a.email ?? a.user_id} · {a.role_label}
+            {a.full_name ?? a.email ?? a.user_id} · {roleLabel(a.role, modules)}
           </option>
         ))}
       </select>
@@ -509,9 +532,10 @@ function AddToDistribution({
 // ── Create modal ──────────────────────────────────────────────────
 
 function CreateEmployeeModal({
-  allowedRoles, onClose, onCreated,
+  allowedRoles, modules, onClose, onCreated,
 }: {
   allowedRoles: ShowroomRole[]
+  modules: ShowroomModules
   onClose: () => void
   onCreated: () => void
 }) {
@@ -623,7 +647,7 @@ function CreateEmployeeModal({
               onChange={(e) => setRole(e.target.value as ShowroomRole)}
               className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-500/20"
             >
-              {allowedRoles.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+              {allowedRoles.map((r) => <option key={r} value={r}>{roleLabel(r, modules)}</option>)}
             </select>
           </Field>
 
@@ -650,10 +674,11 @@ function CreateEmployeeModal({
 // ── Edit modal (owner only) ───────────────────────────────────────
 
 function EditEmployeeModal({
-  employee, allowedRoles, onClose, onSaved,
+  employee, allowedRoles, modules, onClose, onSaved,
 }: {
   employee: Employee
   allowedRoles: ShowroomRole[]
+  modules: ShowroomModules
   onClose: () => void
   onSaved: () => void
 }) {
@@ -729,7 +754,7 @@ function EditEmployeeModal({
               onChange={(e) => setRole(e.target.value as ShowroomRole)}
               className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-500/20"
             >
-              {allowedRoles.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+              {allowedRoles.map((r) => <option key={r} value={r}>{roleLabel(r, modules)}</option>)}
             </select>
           </Field>
 
