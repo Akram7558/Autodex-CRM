@@ -2,10 +2,11 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import {
-  CheckCircle2, AlertTriangle, Sun, Moon, Sparkles,
+  CheckCircle2, AlertTriangle, Sun, Moon, Sparkles, BadgeCheck,
 } from 'lucide-react'
-import { WILAYAS_58 } from '@/lib/types'
+import { WILAYAS_58, type SaasPlan } from '@/lib/types'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 
@@ -84,6 +85,27 @@ export default function Register() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError]       = useState('')
 
+  // ?plan=<id> carried over from the landing Pricing CTA. The raw id is
+  // sent to the register API (which re-validates it against ACTIVE
+  // saas_plans and derives the trial's modules); the lookup below is
+  // display-only — a failed fetch never blocks signup.
+  const searchParams = useSearchParams()
+  const planParam = searchParams?.get('plan') ?? null
+  const [chosenPlan, setChosenPlan] = useState<SaasPlan | null>(null)
+  useEffect(() => {
+    if (!planParam) { setChosenPlan(null); return }
+    let cancelled = false
+    fetch('/api/saas-plans')
+      .then((r) => r.json())
+      .then((j) => {
+        if (cancelled) return
+        const all = (j.plans ?? []) as SaasPlan[]
+        setChosenPlan(all.find((p) => p.id === planParam && p.active) ?? null)
+      })
+      .catch(() => { if (!cancelled) setChosenPlan(null) })
+    return () => { cancelled = true }
+  }, [planParam])
+
   const strength = useMemo(() => passwordStrength(form.password), [form.password])
   const meta     = STRENGTH_META[strength]
   const mismatch = form.password_confirm.length > 0 && form.password !== form.password_confirm
@@ -115,6 +137,9 @@ export default function Register() {
           phone:         form.phone.trim(),
           wilaya:        form.wilaya,
           showroom_size: form.showroom_size || null,
+          // Raw ?plan= id — the server validates it; invalid/missing
+          // silently falls back to the default vente-only trial.
+          plan_id:       planParam,
         }),
       })
       const json = await res.json().catch(() => ({}))
@@ -225,6 +250,16 @@ export default function Register() {
             <p dir="rtl" lang="ar" className={`mt-1 text-xs ${t.textSubtle}`}>
               ابدأ تجربتك المجانية — 20 يوم مجاناً
             </p>
+            {chosenPlan && (
+              <p className={`mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border ${
+                isDark
+                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                  : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+              }`}>
+                <BadgeCheck className="w-3.5 h-3.5" />
+                Formule choisie : {chosenPlan.name}
+              </p>
+            )}
           </div>
 
           <form onSubmit={submit} className="mt-6 space-y-4">

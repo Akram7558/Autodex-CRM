@@ -8,6 +8,7 @@
 // ─────────────────────────────────────────────────────────────────────
 
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@supabase/ssr'
@@ -64,5 +65,11 @@ export default async function RegisterPage() {
     }
   }
 
-  return <Register />
+  // Register reads ?plan= via useSearchParams — keep it under a Suspense
+  // boundary so the App Router never bails out of rendering this page.
+  return (
+    <Suspense fallback={null}>
+      <Register />
+    </Suspense>
+  )
 }
