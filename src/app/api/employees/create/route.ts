@@ -21,6 +21,7 @@ import { tryNormalizePhone } from '@/lib/phone'
 import {
   allowedCreatableRolesForCaller,
   isShowroomEmployeeRole,
+  moduleEmployeeRoles,
   ROLE_LABEL_FR,
 } from '@/lib/employee-helpers'
 
@@ -125,6 +126,25 @@ export async function POST(req: NextRequest) {
     if (!isShowroomEmployeeRole(role) || !allowed.includes(role)) {
       throw new ApiError(403, "Rôle non autorisé pour votre niveau d'accès.")
     }
+
+    // Module gate (étape B): the requested role must be appropriate for the
+    // showroom's plan — a LOCATION-ONLY showroom can't take a prospecteur (no
+    // rental RLS access). super_admin / no-showroom → no restriction.
+    if (!ctx.isSuperAdmin && ctx.showroomId) {
+      const { data: sr } = await ctx.authSb
+        .from('showrooms')
+        .select('module_vente, module_location')
+        .eq('id', ctx.showroomId)
+        .maybeSingle()
+      const modules = {
+        vente:    (sr as { module_vente?: boolean } | null)?.module_vente !== false,
+        location: (sr as { module_location?: boolean } | null)?.module_location !== false,
+      }
+      if (!moduleEmployeeRoles(modules).includes(role)) {
+        throw new ApiError(400, "Ce rôle n'est pas disponible pour le plan de ce showroom.")
+      }
+    }
+
     const phone = phoneRaw ? (tryNormalizePhone(phoneRaw) ?? phoneRaw) : null
 
     const admin = adminClient()
