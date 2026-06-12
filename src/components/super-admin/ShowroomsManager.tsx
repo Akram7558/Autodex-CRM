@@ -539,12 +539,16 @@ export function ShowroomsManager() {
                           module_location: plan.module_location === true,
                         })
                       } else {
-                        // 'none' or 'custom' — clear the derived fields.
+                        // 'none' or 'custom' — clear the derived fields AND
+                        // restore the module checkboxes to the plan-less
+                        // default (vente-only), undoing any plan autofill.
                         setForm({
                           ...form,
                           plan_pick:       next,
                           contract_amount: '',
                           expires_at:      '',
+                          module_vente:    true,
+                          module_location: false,
                         })
                       }
                     }}

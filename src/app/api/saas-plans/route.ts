@@ -123,6 +123,17 @@ export async function PUT(req: NextRequest) {
     const inserts = cleaned.filter(p => !p.id)
     const updates = cleaned.filter((p): p is Entry & { id: string } => !!p.id)
 
+    // The plan's module columns are DERIVED from its tier (same mapping as
+    // the migration-57 backfill): classique → vente-only, location →
+    // location-only, totale → both. Written on every insert AND update so
+    // retyping a plan (e.g. classique → location) reconciles the columns —
+    // provisioning (direct-convert / create-showroom / register) derives
+    // showroom modules from these, so they must never go stale.
+    const modulesFor = (t: SaasPlanType) => ({
+      module_vente:    t !== 'location',
+      module_location: t !== 'classique',
+    })
+
     if (inserts.length > 0) {
       const { error } = await admin.from('saas_plans').insert(inserts.map(p => ({
         name:            p.name,
@@ -130,6 +141,7 @@ export async function PUT(req: NextRequest) {
         price:           p.price,
         active:          p.active,
         plan_type:       p.plan_type,
+        ...modulesFor(p.plan_type),
       })))
       if (error) return NextResponse.json({ error: error.message }, { status: 400 })
     }
@@ -140,6 +152,7 @@ export async function PUT(req: NextRequest) {
         price:           u.price,
         active:          u.active,
         plan_type:       u.plan_type,
+        ...modulesFor(u.plan_type),
       }).eq('id', u.id)
       if (error) return NextResponse.json({ error: error.message }, { status: 400 })
     }
