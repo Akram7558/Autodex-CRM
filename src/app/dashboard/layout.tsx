@@ -55,7 +55,7 @@ const navItems: Array<{ href: string; label: string; icon: typeof LayoutDashboar
   { href: '/dashboard/location/vehicules', label: 'Flotte location',  icon: CarFront,  roles: ['owner','manager'], module: 'location' },
   { href: '/dashboard/location/clients',   label: 'Clients location', icon: Users,     roles: ['owner','manager'], module: 'location' },
   { href: '/dashboard/location/tarifs',    label: 'Tarifs location',  icon: Tag,       roles: ['owner'], module: 'location' },
-  { href: '/dashboard/activites',    label: 'Activités',       icon: Activity,        roles: ['owner','manager'] },
+  { href: '/dashboard/activites',    label: 'Activités',       icon: Activity,        roles: ['owner','manager'], module: 'vente' },
   { href: '/dashboard/alerts',       label: 'Alertes',         icon: BellRing,        roles: ['owner','manager'] },
   // `Paramètres` is rendered in the sidebar footer (`!isInternalTeam`
   // block) so we don't duplicate it in the main nav.
