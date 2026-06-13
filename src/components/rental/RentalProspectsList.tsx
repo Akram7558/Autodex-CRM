@@ -459,26 +459,7 @@ export default function RentalProspectsList() {
         </div>
       )}
 
-      {loading ? (
-        /* Internal skeleton — reuses the prospects/loading.tsx list shape.
-           Header + filter pills above stay live (instant) so only the data
-           region shows a skeleton, mirroring RentalContractsList. */
-        <div className="rounded-2xl overflow-hidden"
-          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
-          <div className="px-4 py-2.5 flex items-center gap-3">
-            <div className="h-3 flex-1 min-w-0 rounded bg-[var(--bg-elevated)] animate-pulse opacity-70" />
-            <div className="hidden sm:block h-3 w-24 rounded bg-[var(--bg-elevated)] animate-pulse opacity-70 shrink-0" />
-            <div className="h-3 w-16 rounded bg-[var(--bg-elevated)] animate-pulse opacity-70 shrink-0" />
-          </div>
-          {Array.from({ length: 5 }, (_, i) => (
-            <div key={i} className="px-4 py-4 flex items-center gap-3 border-t" style={{ borderColor: 'var(--border)' }}>
-              <div className="h-4 flex-1 min-w-0 rounded bg-[var(--bg-elevated)] animate-pulse" />
-              <div className="hidden sm:block h-4 w-28 rounded bg-[var(--bg-elevated)] animate-pulse shrink-0" />
-              <div className="h-6 w-20 rounded-full bg-[var(--bg-elevated)] animate-pulse shrink-0" />
-            </div>
-          ))}
-        </div>
-      ) : loadError ? (
+      {loadError ? (
         /* Graceful fetch-failure state with retry (re-runs the mount effect). */
         <div className="rounded-2xl py-16 text-center"
           style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
@@ -492,7 +473,8 @@ export default function RentalProspectsList() {
             Réessayer
           </button>
         </div>
-      ) : visibleRows.length === 0 ? (
+      ) : (!loading && visibleRows.length === 0) ? (
+        /* Genuine empty (loaded, no rows) — distinct from the loading shell. */
         <div className="rounded-2xl py-16 text-center"
           style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
           <div className="mx-auto w-14 h-14 rounded-2xl flex items-center justify-center mb-3"
@@ -504,6 +486,11 @@ export default function RentalProspectsList() {
           </p>
         </div>
       ) : (
+        /* Persistent list shell (VentesView pattern): the REAL table/thead and
+           mobile card container are mounted whether loading or not. During
+           loading the tbody / mobile list hold pulse rows of the SAME markup
+           and height as the real ones; loaded just swaps them for data — no
+           structural div→table swap, no row-height jump. */
         <>
           {/* Desktop table */}
           <div className="hidden md:block rounded-2xl overflow-visible"
@@ -526,7 +513,33 @@ export default function RentalProspectsList() {
                 </tr>
               </thead>
               <tbody>
-                {visibleRows.map((r) => (
+                {loading ? (
+                  /* Pulse rows — SAME <tr>/<td px-4 py-3> structure + column set
+                     as a real row (incl. select + action-button space), so the
+                     row height matches and the swap doesn't jump. */
+                  Array.from({ length: 6 }, (_, i) => (
+                    <tr key={`sk-${i}`} className="border-t align-top" style={{ borderColor: 'var(--border)' }}>
+                      {showTrash && (
+                        <td className="px-4 py-3"><div className="h-4 w-4 rounded bg-[var(--bg-elevated)] animate-pulse" /></td>
+                      )}
+                      <td className="px-4 py-3">
+                        <div className="h-4 w-28 rounded bg-[var(--bg-elevated)] animate-pulse" />
+                        <div className="mt-1.5 h-3 w-20 rounded bg-[var(--bg-elevated)] animate-pulse" />
+                      </td>
+                      <td className="px-4 py-3"><div className="h-4 w-32 rounded bg-[var(--bg-elevated)] animate-pulse" /></td>
+                      <td className="px-4 py-3"><div className="h-6 w-20 rounded-full bg-[var(--bg-elevated)] animate-pulse" /></td>
+                      <td className="px-4 py-3"><div className="h-4 w-24 rounded bg-[var(--bg-elevated)] animate-pulse" /></td>
+                      <td className="px-4 py-3"><div className="h-7 w-24 rounded-lg bg-[var(--bg-elevated)] animate-pulse" /></td>
+                      <td className="px-4 py-3"><div className="h-4 w-12 rounded bg-[var(--bg-elevated)] animate-pulse" /></td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-2">
+                          <div className="h-8 w-8 rounded-lg bg-[var(--bg-elevated)] animate-pulse" />
+                          <div className="h-8 w-8 rounded-lg bg-[var(--bg-elevated)] animate-pulse" />
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                ) : visibleRows.map((r) => (
                   <tr key={r.id} className="border-t align-top" style={{ borderColor: 'var(--border)' }}>
                     {showTrash && (
                       <td className="px-4 py-3">
@@ -574,7 +587,33 @@ export default function RentalProspectsList() {
 
           {/* Mobile cards */}
           <div className="md:hidden space-y-3">
-            {visibleRows.map((r) => (
+            {loading ? (
+              /* Pulse cards — SAME rounded-2xl p-4 space-y-3 container + section
+                 blocks (header/chip/vehicle/dates/footer) as a real card, so the
+                 card height matches and the swap doesn't jump. */
+              Array.from({ length: 6 }, (_, i) => (
+                <div key={`sk-${i}`} className="rounded-2xl p-4 space-y-3"
+                  style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 space-y-1.5">
+                      <div className="h-4 w-32 rounded bg-[var(--bg-elevated)] animate-pulse" />
+                      <div className="h-3 w-24 rounded bg-[var(--bg-elevated)] animate-pulse" />
+                    </div>
+                    <div className="h-7 w-24 rounded-lg bg-[var(--bg-elevated)] animate-pulse shrink-0" />
+                  </div>
+                  <div className="h-6 w-24 rounded-full bg-[var(--bg-elevated)] animate-pulse" />
+                  <div className="h-4 w-40 max-w-full rounded bg-[var(--bg-elevated)] animate-pulse" />
+                  <div className="h-4 w-32 rounded bg-[var(--bg-elevated)] animate-pulse" />
+                  <div className="flex items-center justify-between pt-1">
+                    <div className="h-3 w-12 rounded bg-[var(--bg-elevated)] animate-pulse" />
+                    <div className="flex items-center gap-2">
+                      <div className="h-8 w-8 rounded-lg bg-[var(--bg-elevated)] animate-pulse" />
+                      <div className="h-8 w-8 rounded-lg bg-[var(--bg-elevated)] animate-pulse" />
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : visibleRows.map((r) => (
               <div key={r.id} className="rounded-2xl p-4 space-y-3"
                 style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
                 <div className="flex items-start justify-between gap-2">
