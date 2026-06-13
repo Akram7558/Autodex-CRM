@@ -159,14 +159,24 @@ export default function RentalHubView() {
     return () => { cancelled = true }
   }, [reloadKey])
 
-  const cards: { label: string; value: string; sub: string; icon: typeof Calendar }[] = [
-    { label: 'Contrats actifs',     value: String(kpis.activeContracts),                     sub: 'en cours + réservés', icon: FileText },
-    { label: 'Véhicules disponibles', value: `${kpis.fleetAvailable} / ${kpis.fleetTotal}`,  sub: 'disponibles / flotte', icon: Car },
-    ...(canFin && kpis.monthRevenue != null
-      ? [{ label: 'Revenus du mois', value: formatDZD(kpis.monthRevenue), sub: 'encaissé ce mois', icon: BadgeDollarSign }]
-      : []),
-    { label: "Remises / retours aujourd'hui", value: String(kpis.todayCount), sub: 'remises + retours', icon: Calendar },
+  // Base KPI cards — ALWAYS rendered (3 of them) so the grid geometry never
+  // changes between loading and loaded. The value swaps pulse↔number inside a
+  // fixed kpi-card frame (persistent-shell pattern, mirroring VentesView).
+  // Labels/icons/sub are static + known, so they show immediately while only
+  // the number loads.
+  const baseCards: { label: string; value: string; sub: string; icon: typeof Calendar }[] = [
+    { label: 'Contrats actifs',       value: String(kpis.activeContracts),                  sub: 'en cours + réservés', icon: FileText },
+    { label: 'Véhicules disponibles', value: `${kpis.fleetAvailable} / ${kpis.fleetTotal}`, sub: 'disponibles / flotte', icon: Car },
+    { label: "Remises / retours aujourd'hui", value: String(kpis.todayCount),               sub: 'remises + retours',   icon: Calendar },
   ]
+  // Financial card — appended ONLY for owner/manager once canFin is known true
+  // (after the fetch). It appears ADDITIVELY into the empty 4th grid cell and
+  // is never removed: a closer stays 3→3 (zero reflow), owner/manager goes
+  // 3→4 (additive into empty space, like sales rows filling a table).
+  const financialCard = canFin && kpis.monthRevenue != null
+    ? { label: 'Revenus du mois', value: formatDZD(kpis.monthRevenue), sub: 'encaissé ce mois', icon: BadgeDollarSign }
+    : null
+  const cards = financialCard ? [...baseCards, financialCard] : baseCards
 
   return (
     <div className="p-6 md:p-10 max-w-7xl mx-auto space-y-8">
@@ -198,32 +208,18 @@ export default function RentalHubView() {
             Réessayer
           </button>
         </div>
-      ) : loading ? (
-        /* Internal KPI skeleton — reuses the loading.tsx kpi-card shape. */
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
-          {Array.from({ length: 4 }, (_, i) => (
-            <div key={i} className="kpi-card p-5 flex flex-col gap-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="h-3 w-20 rounded bg-[var(--bg-elevated)] animate-pulse" />
-                <div className="w-9 h-9 rounded-xl bg-[var(--bg-elevated)] animate-pulse" />
-              </div>
-              <div className="space-y-2">
-                <div className="h-8 w-24 rounded bg-[var(--bg-elevated)] animate-pulse" />
-                <div className="h-3 w-28 rounded bg-[var(--bg-elevated)] animate-pulse" />
-              </div>
-            </div>
-          ))}
-        </div>
       ) : (
-        /* KPI cards (markup unchanged — animations untouched in this pass). */
+        /* Persistent KPI shell: the card frames are ALWAYS mounted; only the
+           VALUE swaps pulse↔number inside each fixed kpi-card. No separate
+           skeleton subtree, no animate-fade-in → no blink, no layout shift
+           (VentesView pattern — the shell IS the final layout). */
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
-          {cards.map((s, i) => {
+          {cards.map((s) => {
             const Icon = s.icon
             return (
               <div
                 key={s.label}
-                className="kpi-card lift-on-hover p-5 flex flex-col gap-4 animate-fade-in"
-                style={{ animationDelay: `${i * 80}ms` }}
+                className="kpi-card lift-on-hover p-5 flex flex-col gap-4"
               >
                 <div className="flex items-start justify-between gap-3">
                   <p className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-500 dark:text-zinc-400">
@@ -234,8 +230,12 @@ export default function RentalHubView() {
                   </div>
                 </div>
                 <div>
+                  {/* text-3xl line-height fixes the row height in BOTH states,
+                      so the pulse→number swap never shifts the card. */}
                   <p className="text-3xl font-bold tabular-nums text-zinc-900 dark:text-white break-all">
-                    {s.value}
+                    {loading
+                      ? <span className="inline-block align-middle h-7 w-24 rounded bg-[var(--bg-elevated)] animate-pulse" />
+                      : s.value}
                   </p>
                   <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">{s.sub}</p>
                 </div>
@@ -281,20 +281,22 @@ export default function RentalHubView() {
         </Link>
       </div>
 
-      {/* Agenda — live pickups / returns / overdue */}
-      {loading && !loadError ? (
-        /* Internal agenda skeleton — reuses the loading.tsx agenda shape. */
-        <div className="glass-card p-6 rounded-2xl">
+      {/* Agenda — live pickups / returns / overdue. The loading skeleton is a
+          COMPACT glass-card (heading + 2 short lines, min-h floor) sized to the
+          empty-widget baseline — it under-reserves rather than over-reserving,
+          so the swap doesn't collapse upward and the "Disponible" block below
+          stays put. Real content (when present) just grows downward, additive. */}
+      {loadError ? null : loading ? (
+        <div className="glass-card p-6 rounded-2xl min-h-[7rem]">
           <div className="h-5 w-44 rounded bg-[var(--bg-elevated)] animate-pulse" />
           <div className="mt-4 space-y-2">
-            {Array.from({ length: 4 }, (_, i) => (
-              <div key={i} className="h-12 rounded-lg bg-[var(--bg-elevated)] animate-pulse" />
-            ))}
+            <div className="h-4 rounded-lg bg-[var(--bg-elevated)] animate-pulse" />
+            <div className="h-4 w-2/3 rounded-lg bg-[var(--bg-elevated)] animate-pulse" />
           </div>
         </div>
-      ) : !loadError ? (
+      ) : (
         <RentalAgendaWidget agenda={agenda} today={days.today} tomorrow={days.tomorrow} />
-      ) : null}
+      )}
 
       {/* What's live */}
       <div
