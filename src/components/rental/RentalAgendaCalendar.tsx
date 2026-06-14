@@ -1,33 +1,44 @@
 'use client'
 // ─────────────────────────────────────────────────────────────────────
-// RentalAgendaCalendar — monthly rental calendar (Agenda location).
+// RentalAgendaCalendar — Location "cockpit" (monthly calendar + stats).
 // ─────────────────────────────────────────────────────────────────────
 // Self-fetching, persistent-shell pattern (mirrors RentalHubView /
-// RentalProspectsList): the header, month controls and the 6×7 grid are
-// ALWAYS mounted; only the per-cell events swap pulse↔chips, so navigating
-// months never blinks or shifts. Identity/role/showroom resolve client-side
-// (getCurrentUserRole); the query is RLS-scoped (showroom isolation; closer
-// → own rentals). Each rental drops a "Remise" chip on its start day and a
-// "Retour" chip on its end day (Option A). Click a day → side panel with the
-// day's movements grouped Remises / Retours / En cours.
+// RentalProspectsList): the header, month controls, stat tiles, filter bar,
+// grid and panel are ALWAYS mounted; only the data zones swap pulse↔content,
+// so navigating months / loading never blinks or shifts. Identity/role/
+// showroom resolve client-side (getCurrentUserRole); queries are RLS-scoped
+// (showroom isolation; closer → own rentals via assigned_to).
+//
+// Role gating (CRITICAL): owner/manager see the whole showroom + the
+// "véhicules libres" panel + the agent filter; closer sees only their own
+// rentals and the manager-only widgets are HIDDEN (never computed wrong).
+//
+// Placement: a rental drops a Remise chip on start_date and a Retour chip on
+// end_date (Option A). Click a day → side panel (Remises / Retours / En cours
+// + véhicules libres). Mobile swaps the grid for a chronological list.
 // ─────────────────────────────────────────────────────────────────────
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import {
-  CalendarClock, ChevronLeft, ChevronRight, ArrowUpRight, ArrowDownLeft, Repeat,
+  CalendarClock, ChevronLeft, ChevronRight, ChevronDown, ArrowUpRight, ArrowDownLeft,
+  Repeat, AlertTriangle, Car,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { getCurrentUserRole } from '@/lib/auth'
 import {
   algiersToday, addDaysISO, monthFirstOf, addMonthsISO, monthGridRange,
-  fetchRentalsForRange, bucketByDay,
-  type CalendarRental, type DayBucket,
+  fetchRentalsForRange, fetchFleet, fetchOverdue, bucketByDay, monthStats, freeVehiclesForDay,
+  type CalendarRental, type DayBucket, type FleetVehicle,
 } from '@/lib/rental/agenda'
 import { rentalStatusColor, rentalStatusLabel, formatDZD } from '@/components/rental/booking/types'
+import { toneClasses } from '@/lib/notif-style'
 
 const WEEKDAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
 const EMPTY_BUCKET: DayBucket = { remises: [], retours: [], enCours: [] }
+const STATUS_FILTERS = ['confirmed', 'active', 'completed', 'overdue'] as const
+
+type Agent = { userId: string; name: string }
 
 // Calendar event coloring reuses the shared status palette, EXCEPT overdue,
 // which the product wants in rose here (not the contracts list's amber).
@@ -41,44 +52,84 @@ function monthLabelFr(monthISO: string): string {
     .format(new Date(monthISO + 'T00:00:00Z'))
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
+function dayHeading(dayISO: string, today: string): string {
+  if (dayISO === today) return "Aujourd'hui"
+  const s = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
+    .format(new Date(dayISO + 'T00:00:00Z'))
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
 
 export default function RentalAgendaCalendar() {
   const today = useMemo(() => algiersToday(), [])
   const [monthISO, setMonthISO] = useState(() => monthFirstOf(today))
   const [selectedDay, setSelectedDay] = useState<string>(today)
-  const [buckets, setBuckets] = useState<Record<string, DayBucket>>({})
+
+  const [rentals, setRentals] = useState<CalendarRental[]>([])   // raw month rentals (unfiltered)
+  const [fleet, setFleet] = useState<FleetVehicle[]>([])
+  const [overdue, setOverdue] = useState<CalendarRental[]>([])
+  const [agents, setAgents] = useState<Agent[]>([])
+  const [canManage, setCanManage] = useState(false)             // owner/manager only
+
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
 
-  const { gridStart } = monthGridRange(monthISO)
-  // The 42 grid days (derived from monthISO — stable during loading, so the
-  // grid geometry never changes when the data swaps in).
+  // Filters — persist across month changes (state lives here, untouched by nav).
+  const [filterVehicle, setFilterVehicle] = useState('')
+  const [filterAgent, setFilterAgent] = useState('')
+  const [filterStatuses, setFilterStatuses] = useState<Set<string>>(new Set())
+  const [overdueOpen, setOverdueOpen] = useState(false)
+
+  const { gridStart, gridEnd } = monthGridRange(monthISO)
+  const monthKey = monthISO.slice(0, 7)
   const days = useMemo(() => {
     const out: string[] = []
     let d = gridStart
     for (let i = 0; i < 42; i++) { out.push(d); d = addDaysISO(d, 1) }
     return out
   }, [gridStart])
-  const monthKey = monthISO.slice(0, 7)
 
-  // ── Mount/month fetch ──────────────────────────────────────────────────
-  // loading is reset by the month-nav / retry handlers (NOT synchronously in
-  // the effect) so the persistent shell stays mounted across month changes.
+  // ── Mount / month fetch ────────────────────────────────────────────────
+  // loading is reset by the nav / retry HANDLERS (never synchronously in the
+  // effect) so the persistent shell stays mounted across month changes.
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       const me = await getCurrentUserRole()
       if (cancelled) return
-      if (!me) { setBuckets({}); setLoading(false); return }
+      if (!me) {
+        setRentals([]); setFleet([]); setOverdue([]); setAgents([]); setCanManage(false)
+        setLoading(false); return
+      }
+      const manage = me.role === 'owner' || me.role === 'manager'
       const { gridStart: gs, gridEnd: ge } = monthGridRange(monthISO)
       try {
-        const rentals = await fetchRentalsForRange(supabase, {
-          showroomId: me.showroomId, role: me.role, userId: me.userId, gridStart: gs, gridEnd: ge,
-        })
+        const [monthRows, fleetRows, overdueRows] = await Promise.all([
+          fetchRentalsForRange(supabase, { showroomId: me.showroomId, role: me.role, userId: me.userId, gridStart: gs, gridEnd: ge }),
+          fetchFleet(supabase, me.showroomId),
+          fetchOverdue(supabase, { showroomId: me.showroomId, role: me.role, userId: me.userId }),
+        ])
         if (cancelled) return
-        setBuckets(bucketByDay(rentals, gs, ge))
-        setLoading(false)
+        // Clear any stale error from a prior failed attempt (e.g. nav after a
+        // failed initial load) — without this the error screen would stick.
+        setLoadError(null)
+        setRentals(monthRows); setFleet(fleetRows); setOverdue(overdueRows); setCanManage(manage)
+
+        // Agent filter source — owner/manager only (GET /api/employees is
+        // requireShowroomAdmin). Failure never blocks the calendar.
+        if (manage) {
+          try {
+            const res = await fetch('/api/employees')
+            const json = await res.json()
+            if (!cancelled && Array.isArray(json.employees)) {
+              setAgents((json.employees as Array<{ user_id: string; full_name: string | null; email: string | null }>)
+                .map((e) => ({ userId: e.user_id, name: e.full_name || e.email || 'Agent' })))
+            }
+          } catch { /* keep agents empty — filter just won't list anyone */ }
+        } else {
+          setAgents([])
+        }
+        if (!cancelled) setLoading(false)
       } catch {
         if (cancelled) return
         setLoadError("Impossible de charger l'agenda.")
@@ -90,36 +141,51 @@ export default function RentalAgendaCalendar() {
 
   function goMonth(delta: number) {
     setLoading(true)
-    setMonthISO((m) => addMonthsISO(m, delta))
+    const m = addMonthsISO(monthISO, delta)
+    setMonthISO(m)
+    setSelectedDay(m) // keep the panel within the displayed month
   }
   function goToday() {
     setSelectedDay(today)
-    // Only trigger a (re)fetch when the month actually changes. If we're
-    // already on the current month, re-assigning the identical monthISO is a
-    // React no-op → the [monthISO, reloadKey] effect would NOT re-run, leaving
-    // loading stuck true forever. So just re-select today in that case.
+    // Only (re)fetch when the month actually changes — re-assigning the same
+    // monthISO is a React no-op, so the effect would not re-run and loading
+    // would stick true forever. (Guarded; verified bug from Step 1.)
     const m = monthFirstOf(today)
-    if (m !== monthISO) {
-      setLoading(true)
-      setMonthISO(m)
-    }
+    if (m !== monthISO) { setLoading(true); setMonthISO(m) }
   }
   function retry() {
-    setLoading(true)
-    setLoadError(null)
-    setReloadKey((k) => k + 1)
+    setLoading(true); setLoadError(null); setReloadKey((k) => k + 1)
+  }
+  function toggleStatus(s: string) {
+    setFilterStatuses((prev) => {
+      const next = new Set(prev)
+      if (next.has(s)) next.delete(s); else next.add(s)
+      return next
+    })
   }
 
-  const monthCount = useMemo(() => {
-    // total firm movements in the displayed month (for the subtitle)
-    let n = 0
-    for (const d of days) {
-      if (d.slice(0, 7) !== monthKey) continue
-      const b = buckets[d]
-      if (b) n += b.remises.length + b.retours.length
-    }
-    return n
-  }, [buckets, days, monthKey])
+  // Client-side filters on the month data (cheap). Empty status set = all.
+  const filtered = useMemo(() => rentals.filter((r) => {
+    if (filterVehicle && r.rental_vehicle_id !== filterVehicle) return false
+    if (filterAgent && r.assigned_to !== filterAgent) return false
+    if (filterStatuses.size > 0 && !filterStatuses.has(r.status)) return false
+    return true
+  }), [rentals, filterVehicle, filterAgent, filterStatuses])
+
+  const buckets = useMemo(() => bucketByDay(filtered, gridStart, gridEnd), [filtered, gridStart, gridEnd])
+  const stats = useMemo(() => monthStats(filtered, monthISO), [filtered, monthISO])
+  // Free vehicles use the RAW month rentals (occupancy is filter-independent).
+  const freeVehicles = useMemo(
+    () => (canManage ? freeVehiclesForDay(fleet, rentals, selectedDay) : []),
+    [canManage, fleet, rentals, selectedDay],
+  )
+  const listDays = useMemo(
+    () => days.filter((d) => d.slice(0, 7) === monthKey
+      && ((buckets[d]?.remises.length ?? 0) + (buckets[d]?.retours.length ?? 0)) > 0),
+    [days, monthKey, buckets],
+  )
+
+  const tone = toneClasses('critical') // overdue banner = rose
 
   return (
     <div className="p-6 md:p-10 max-w-7xl mx-auto space-y-6">
@@ -134,87 +200,199 @@ export default function RentalAgendaCalendar() {
         </p>
       </div>
 
-      {/* Month controls — pills (mirrors the prospects filter pills). */}
+      {/* Month controls */}
       <div className="flex items-center gap-2">
-        <button
-          type="button" onClick={() => goMonth(-1)} aria-label="Mois précédent"
+        <button type="button" onClick={() => goMonth(-1)} aria-label="Mois précédent"
           className="inline-flex items-center justify-center w-10 h-10 rounded-xl transition-colors duration-150 motion-reduce:transition-none"
-          style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
-        >
+          style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
           <ChevronLeft className="w-4 h-4" />
         </button>
         <span className="min-w-[10rem] text-center text-sm font-semibold text-[var(--text-primary)]">
           {monthLabelFr(monthISO)}
         </span>
-        <button
-          type="button" onClick={() => goMonth(1)} aria-label="Mois suivant"
+        <button type="button" onClick={() => goMonth(1)} aria-label="Mois suivant"
           className="inline-flex items-center justify-center w-10 h-10 rounded-xl transition-colors duration-150 motion-reduce:transition-none"
-          style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
-        >
+          style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
           <ChevronRight className="w-4 h-4" />
         </button>
-        <button
-          type="button" onClick={goToday}
+        <button type="button" onClick={goToday}
           className="inline-flex items-center gap-2 px-4 h-10 rounded-xl text-sm font-medium transition-colors duration-150 motion-reduce:transition-none"
-          style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
-        >
+          style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
           Aujourd&apos;hui
         </button>
-        {!loading && !loadError && (
-          <span className="ml-auto text-xs tabular-nums" style={{ color: 'var(--text-muted)' }}>
-            {monthCount} mouvement{monthCount > 1 ? 's' : ''}
-          </span>
-        )}
       </div>
 
       {loadError ? (
         <div className="rounded-2xl py-16 text-center"
           style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
           <p className="text-sm font-medium text-[var(--text-primary)]">{loadError}</p>
-          <button
-            type="button" onClick={retry}
+          <button type="button" onClick={retry}
             className="mt-4 inline-flex items-center gap-2 h-10 px-4 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
-            style={{ background: 'var(--accent)' }}
-          >
+            style={{ background: 'var(--accent)' }}>
             Réessayer
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-6 items-start">
-          {/* Calendar grid (persistent shell) */}
-          <div className="glass-card p-3 sm:p-4 rounded-2xl overflow-x-auto">
-            <div className="min-w-[34rem]">
-              {/* Weekday header */}
-              <div className="grid grid-cols-7 gap-1.5 mb-1.5">
-                {WEEKDAYS.map((w, i) => (
-                  <div key={i} className="text-center text-[11px] font-bold uppercase tracking-wider py-1"
-                    style={{ color: 'var(--text-muted)' }}>
-                    {w}
-                  </div>
-                ))}
-              </div>
-              {/* 6×7 cells */}
-              <div className="grid grid-cols-7 gap-1.5">
-                {days.map((day) => (
-                  <DayCell
-                    key={day}
-                    day={day}
-                    inMonth={day.slice(0, 7) === monthKey}
-                    isToday={day === today}
-                    isSelected={day === selectedDay}
-                    loading={loading}
-                    bucket={buckets[day] ?? EMPTY_BUCKET}
-                    onSelect={() => setSelectedDay(day)}
-                  />
-                ))}
-              </div>
+        <>
+          {/* Overdue banner (month-independent; only when > 0) */}
+          {!loading && overdue.length > 0 && (
+            <div className={`rounded-2xl ${tone.highlightBg}`} style={{ border: '1px solid var(--border)' }}>
+              <button type="button" onClick={() => setOverdueOpen((o) => !o)}
+                className="w-full flex items-center justify-between gap-3 px-4 py-3 transition-colors duration-150 motion-reduce:transition-none">
+                <span className="flex items-center gap-2 text-sm font-semibold text-[var(--text-primary)]">
+                  <span className={`w-7 h-7 rounded-lg flex items-center justify-center ${tone.tile}`}>
+                    <AlertTriangle className="w-4 h-4" />
+                  </span>
+                  {overdue.length} location{overdue.length > 1 ? 's' : ''} en retard
+                </span>
+                <ChevronDown className={`w-4 h-4 transition-transform motion-reduce:transition-none ${overdueOpen ? 'rotate-180' : ''}`}
+                  style={{ color: 'var(--text-muted)' }} />
+              </button>
+              {overdueOpen && (
+                <ul className="px-3 pb-3 space-y-1.5">
+                  {overdue.map((r) => <PanelRow key={r.id} r={r} time={r.end_time} />)}
+                </ul>
+              )}
+            </div>
+          )}
+
+          {/* Stat tiles */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <StatTile label="Remises" value={stats.remises} icon={ArrowUpRight} loading={loading} />
+            <StatTile label="Retours" value={stats.retours} icon={ArrowDownLeft} loading={loading} />
+            <StatTile label="En cours" value={stats.enCours} icon={Repeat} loading={loading} />
+            <StatTile label="En retard" value={stats.retard} icon={AlertTriangle} loading={loading} rose />
+          </div>
+
+          {/* Filter bar */}
+          <div className="flex flex-wrap items-center gap-2">
+            <select value={filterVehicle} onChange={(e) => setFilterVehicle(e.target.value)} aria-label="Filtrer par véhicule"
+              className="h-10 px-3 rounded-xl text-sm transition-colors duration-150 motion-reduce:transition-none outline-none"
+              style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
+              <option value="">Tous les véhicules</option>
+              {fleet.map((v) => (
+                <option key={v.id} value={v.id}>{v.marque} {v.modele} · {v.immatriculation}</option>
+              ))}
+            </select>
+
+            {canManage && agents.length > 0 && (
+              <select value={filterAgent} onChange={(e) => setFilterAgent(e.target.value)} aria-label="Filtrer par agent"
+                className="h-10 px-3 rounded-xl text-sm transition-colors duration-150 motion-reduce:transition-none outline-none"
+                style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
+                <option value="">Tous les agents</option>
+                {agents.map((a) => <option key={a.userId} value={a.userId}>{a.name}</option>)}
+              </select>
+            )}
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              {STATUS_FILTERS.map((s) => {
+                const active = filterStatuses.has(s)
+                const c = eventColor(s)
+                return (
+                  <button key={s} type="button" onClick={() => toggleStatus(s)} aria-pressed={active}
+                    className="px-3 h-8 rounded-full text-[11px] font-semibold transition-colors duration-150 motion-reduce:transition-none"
+                    style={active
+                      ? { background: c.bg, color: c.fg, boxShadow: `inset 0 0 0 1px ${c.ring}` }
+                      : { background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
+                    {rentalStatusLabel(s)}
+                  </button>
+                )
+              })}
             </div>
           </div>
 
-          {/* Day detail panel (right on desktop, below on mobile) */}
-          <DayPanel day={selectedDay} today={today} loading={loading} bucket={buckets[selectedDay] ?? EMPTY_BUCKET} />
-        </div>
+          {/* Main: grid (desktop) / list (mobile) + day panel */}
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-6 items-start">
+            <div className="space-y-3">
+              {/* Desktop grid */}
+              <div className="hidden lg:block glass-card p-4 rounded-2xl overflow-x-auto">
+                <div className="min-w-[34rem]">
+                  <div className="grid grid-cols-7 gap-1.5 mb-1.5">
+                    {WEEKDAYS.map((w, i) => (
+                      <div key={i} className="text-center text-[11px] font-bold uppercase tracking-wider py-1"
+                        style={{ color: 'var(--text-muted)' }}>{w}</div>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-7 gap-1.5">
+                    {days.map((day) => (
+                      <DayCell key={day} day={day}
+                        inMonth={day.slice(0, 7) === monthKey}
+                        isToday={day === today} isSelected={day === selectedDay}
+                        loading={loading} bucket={buckets[day] ?? EMPTY_BUCKET}
+                        onSelect={() => setSelectedDay(day)} />
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Mobile chronological list */}
+              <div className="lg:hidden glass-card p-4 rounded-2xl">
+                {loading ? (
+                  <div className="space-y-2">
+                    {Array.from({ length: 4 }, (_, i) => (
+                      <div key={i} className="h-14 rounded-lg bg-[var(--bg-elevated)] animate-pulse" />
+                    ))}
+                  </div>
+                ) : listDays.length === 0 ? (
+                  <p className="text-sm text-center py-8" style={{ color: 'var(--text-secondary)' }}>
+                    Aucune location ce mois.
+                  </p>
+                ) : (
+                  <div className="space-y-4">
+                    {listDays.map((d) => {
+                      const b = buckets[d] ?? EMPTY_BUCKET
+                      return (
+                        <div key={d}>
+                          <button type="button" onClick={() => setSelectedDay(d)}
+                            className="text-[11px] font-bold uppercase tracking-wider mb-2"
+                            style={{ color: d === selectedDay ? 'var(--accent)' : 'var(--text-muted)' }}>
+                            {dayHeading(d, today)}
+                          </button>
+                          <ul className="space-y-1.5">
+                            {b.remises.map((r) => <PanelRow key={`${r.id}-r`} r={r} time={r.start_time} kind="remise" />)}
+                            {b.retours.map((r) => <PanelRow key={`${r.id}-t`} r={r} time={r.end_time} kind="retour" />)}
+                          </ul>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Legend */}
+              <Legend />
+            </div>
+
+            <DayPanel day={selectedDay} today={today} loading={loading}
+              bucket={buckets[selectedDay] ?? EMPTY_BUCKET}
+              canManage={canManage} freeVehicles={freeVehicles} fleetTotal={fleet.length} />
+          </div>
+        </>
       )}
+    </div>
+  )
+}
+
+// ── Stat tile ────────────────────────────────────────────────────────────
+function StatTile({
+  label, value, icon: Icon, loading, rose,
+}: {
+  label: string; value: number; icon: typeof ArrowUpRight; loading: boolean; rose?: boolean
+}) {
+  return (
+    <div className="kpi-card p-4 flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] uppercase tracking-[0.18em] font-semibold" style={{ color: 'var(--text-muted)' }}>
+          {label}
+        </span>
+        <Icon className="w-4 h-4" style={{ color: rose ? '#fb7185' : 'var(--accent)' }} />
+      </div>
+      <p className="text-2xl font-bold tabular-nums"
+        style={{ color: rose && value > 0 ? '#fb7185' : 'var(--text-primary)' }}>
+        {loading
+          ? <span className="inline-block align-middle h-6 w-10 rounded bg-[var(--bg-elevated)] animate-pulse" />
+          : value}
+      </p>
     </div>
   )
 }
@@ -223,13 +401,8 @@ export default function RentalAgendaCalendar() {
 function DayCell({
   day, inMonth, isToday, isSelected, loading, bucket, onSelect,
 }: {
-  day: string
-  inMonth: boolean
-  isToday: boolean
-  isSelected: boolean
-  loading: boolean
-  bucket: DayBucket
-  onSelect: () => void
+  day: string; inMonth: boolean; isToday: boolean; isSelected: boolean
+  loading: boolean; bucket: DayBucket; onSelect: () => void
 }) {
   const dayNum = Number(day.slice(8, 10))
   const events = [
@@ -238,22 +411,23 @@ function DayCell({
   ]
   const shown = events.slice(0, 2)
   const extra = events.length - shown.length
+  const total = events.length
 
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      aria-label={`Jour ${dayNum}`}
+    <button type="button" onClick={onSelect} aria-label={`Jour ${dayNum}`}
       className="text-left rounded-lg p-1.5 min-h-[78px] flex flex-col gap-1 transition-colors duration-150 motion-reduce:transition-none hover:border-[var(--accent)]"
       style={{
         background: isSelected ? 'var(--accent-subtle)' : 'var(--bg-surface)',
         border: `1px solid ${isToday ? 'var(--accent)' : 'var(--border)'}`,
         opacity: inMonth ? 1 : 0.45,
-      }}
-    >
-      <span className="text-xs font-semibold tabular-nums"
-        style={{ color: isToday ? 'var(--accent)' : 'var(--text-secondary)' }}>
-        {dayNum}
+      }}>
+      <span className="flex items-center justify-between gap-1">
+        <span className="text-xs font-semibold tabular-nums"
+          style={{ color: isToday ? 'var(--accent)' : 'var(--text-secondary)' }}>{dayNum}</span>
+        {!loading && total > 0 && (
+          <span className="text-[9px] font-bold tabular-nums px-1 rounded-full"
+            style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>{total}</span>
+        )}
       </span>
 
       {loading ? (
@@ -273,9 +447,7 @@ function DayCell({
             )
           })}
           {extra > 0 && (
-            <span className="text-[10px] font-medium" style={{ color: 'var(--text-muted)' }}>
-              +{extra}
-            </span>
+            <span className="text-[10px] font-medium" style={{ color: 'var(--text-muted)' }}>+{extra}</span>
           )}
           {bucket.enCours.length > 0 && (
             <span className="text-[10px] flex items-center gap-1" style={{ color: 'var(--text-muted)' }}>
@@ -288,55 +460,100 @@ function DayCell({
   )
 }
 
+// ── Legend ───────────────────────────────────────────────────────────────
+function Legend() {
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] px-1" style={{ color: 'var(--text-muted)' }}>
+      <span className="flex items-center gap-1"><ArrowUpRight className="w-3 h-3" /> Remise</span>
+      <span className="flex items-center gap-1"><ArrowDownLeft className="w-3 h-3" /> Retour</span>
+      {[['confirmed', 'Réservé'], ['active', 'En cours'], ['completed', 'Terminé'], ['overdue', 'En retard']].map(([s, lbl]) => {
+        const c = eventColor(s)
+        return (
+          <span key={s} className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded-full" style={{ background: c.fg }} />{lbl}
+          </span>
+        )
+      })}
+    </div>
+  )
+}
+
 // ── Day detail panel ─────────────────────────────────────────────────────
 function DayPanel({
-  day, today, loading, bucket,
+  day, today, loading, bucket, canManage, freeVehicles, fleetTotal,
 }: {
-  day: string
-  today: string
-  loading: boolean
-  bucket: DayBucket
+  day: string; today: string; loading: boolean; bucket: DayBucket
+  canManage: boolean; freeVehicles: FleetVehicle[]; fleetTotal: number
 }) {
-  const heading = day === today
-    ? "Aujourd'hui"
-    : new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
-        .format(new Date(day + 'T00:00:00Z'))
-  const headingCap = heading.charAt(0).toUpperCase() + heading.slice(1)
   const empty = bucket.remises.length === 0 && bucket.retours.length === 0 && bucket.enCours.length === 0
 
   return (
-    <aside className="glass-card p-5 rounded-2xl" style={{ borderColor: 'var(--border)' }}>
-      <h2 className="text-base font-semibold text-[var(--text-primary)] flex items-center gap-2">
-        <CalendarClock className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-        {headingCap}
-      </h2>
+    <aside className="glass-card p-5 rounded-2xl space-y-5" style={{ borderColor: 'var(--border)' }}>
+      <div>
+        <h2 className="text-base font-semibold text-[var(--text-primary)] flex items-center gap-2">
+          <CalendarClock className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+          {dayHeading(day, today)}
+        </h2>
 
-      {loading ? (
-        <div className="mt-4 space-y-2">
-          {Array.from({ length: 3 }, (_, i) => (
-            <div key={i} className="h-14 rounded-lg bg-[var(--bg-elevated)] animate-pulse" />
-          ))}
-        </div>
-      ) : empty ? (
-        <p className="mt-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
-          Aucun mouvement ce jour.
-        </p>
-      ) : (
-        <div className="mt-4 space-y-5">
-          {bucket.remises.length > 0 && (
-            <PanelGroup title="Remises" icon={<ArrowUpRight className="w-3.5 h-3.5" />}>
-              {bucket.remises.map((r) => <PanelRow key={r.id} r={r} time={r.start_time} />)}
-            </PanelGroup>
-          )}
-          {bucket.retours.length > 0 && (
-            <PanelGroup title="Retours" icon={<ArrowDownLeft className="w-3.5 h-3.5" />}>
-              {bucket.retours.map((r) => <PanelRow key={r.id} r={r} time={r.end_time} />)}
-            </PanelGroup>
-          )}
-          {bucket.enCours.length > 0 && (
-            <PanelGroup title="En cours" icon={<Repeat className="w-3.5 h-3.5" />}>
-              {bucket.enCours.map((r) => <PanelRow key={r.id} r={r} />)}
-            </PanelGroup>
+        {loading ? (
+          <div className="mt-4 space-y-2">
+            {Array.from({ length: 3 }, (_, i) => (
+              <div key={i} className="h-14 rounded-lg bg-[var(--bg-elevated)] animate-pulse" />
+            ))}
+          </div>
+        ) : empty ? (
+          <p className="mt-3 text-sm" style={{ color: 'var(--text-secondary)' }}>Aucun mouvement ce jour.</p>
+        ) : (
+          <div className="mt-4 space-y-5">
+            {bucket.remises.length > 0 && (
+              <PanelGroup title="Remises" icon={<ArrowUpRight className="w-3.5 h-3.5" />}>
+                {bucket.remises.map((r) => <PanelRow key={r.id} r={r} time={r.start_time} />)}
+              </PanelGroup>
+            )}
+            {bucket.retours.length > 0 && (
+              <PanelGroup title="Retours" icon={<ArrowDownLeft className="w-3.5 h-3.5" />}>
+                {bucket.retours.map((r) => <PanelRow key={r.id} r={r} time={r.end_time} />)}
+              </PanelGroup>
+            )}
+            {bucket.enCours.length > 0 && (
+              <PanelGroup title="En cours" icon={<Repeat className="w-3.5 h-3.5" />}>
+                {bucket.enCours.map((r) => <PanelRow key={r.id} r={r} />)}
+              </PanelGroup>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Véhicules libres ce jour — owner/manager only */}
+      {canManage && (
+        <div className="pt-4 border-t" style={{ borderColor: 'var(--border)' }}>
+          <p className="text-[11px] font-bold uppercase tracking-wider mb-2 flex items-center gap-1.5"
+            style={{ color: 'var(--accent)' }}>
+            <Car className="w-3.5 h-3.5" /> Véhicules libres
+            {!loading && (
+              <span className="ml-auto tabular-nums font-semibold" style={{ color: 'var(--text-secondary)' }}>
+                {freeVehicles.length} / {fleetTotal}
+              </span>
+            )}
+          </p>
+          {loading ? (
+            <div className="space-y-1.5">
+              {Array.from({ length: 3 }, (_, i) => (
+                <div key={i} className="h-7 rounded-lg bg-[var(--bg-elevated)] animate-pulse" />
+              ))}
+            </div>
+          ) : freeVehicles.length === 0 ? (
+            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Aucun véhicule libre ce jour.</p>
+          ) : (
+            <ul className="space-y-1 max-h-56 overflow-y-auto">
+              {freeVehicles.map((v) => (
+                <li key={v.id} className="flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-xs"
+                  style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
+                  <bdi className="truncate" style={{ color: 'var(--text-primary)' }}>{v.marque} {v.modele}</bdi>
+                  <span className="font-mono shrink-0" style={{ color: 'var(--text-muted)' }}>{v.immatriculation}</span>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       )}
@@ -347,8 +564,7 @@ function DayPanel({
 function PanelGroup({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
   return (
     <div>
-      <p className="text-[11px] font-bold uppercase tracking-wider mb-2 flex items-center gap-1.5"
-        style={{ color: 'var(--accent)' }}>
+      <p className="text-[11px] font-bold uppercase tracking-wider mb-2 flex items-center gap-1.5" style={{ color: 'var(--accent)' }}>
         {icon}{title}
       </p>
       <ul className="space-y-1.5">{children}</ul>
@@ -356,18 +572,18 @@ function PanelGroup({ title, icon, children }: { title: string; icon: React.Reac
   )
 }
 
-function PanelRow({ r, time }: { r: CalendarRental; time?: string }) {
+function PanelRow({ r, time, kind }: { r: CalendarRental; time?: string; kind?: 'remise' | 'retour' }) {
   const c = eventColor(r.status)
+  const KindIcon = kind === 'remise' ? ArrowUpRight : kind === 'retour' ? ArrowDownLeft : null
   return (
     <li>
-      <Link
-        href={`/dashboard/location/contrats/${r.id}`}
+      <Link href={`/dashboard/location/contrats/${r.id}`}
         className="block rounded-lg px-3 py-2 transition-colors duration-150 motion-reduce:transition-none hover:bg-[var(--bg-elevated)]"
-        style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
-      >
+        style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
         <div className="flex items-center justify-between gap-2">
-          <span className="font-medium text-sm truncate" style={{ color: 'var(--text-primary)' }}>
-            {r.customer_name}
+          <span className="font-medium text-sm truncate flex items-center gap-1.5" style={{ color: 'var(--text-primary)' }}>
+            {KindIcon && <KindIcon className="w-3.5 h-3.5 shrink-0" style={{ color: c.fg }} />}
+            <span className="truncate">{r.customer_name}</span>
           </span>
           <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full shrink-0"
             style={{ background: c.bg, color: c.fg, boxShadow: `inset 0 0 0 1px ${c.ring}` }}>
@@ -375,9 +591,7 @@ function PanelRow({ r, time }: { r: CalendarRental; time?: string }) {
           </span>
         </div>
         <div className="mt-0.5 flex items-center justify-between gap-2 text-xs" style={{ color: 'var(--text-secondary)' }}>
-          <bdi className="truncate">
-            {r.vehicle_label}{r.immatriculation ? ` · ${r.immatriculation}` : ''}
-          </bdi>
+          <bdi className="truncate">{r.vehicle_label}{r.immatriculation ? ` · ${r.immatriculation}` : ''}</bdi>
           <span className="tabular-nums shrink-0">{formatDZD(r.total)}</span>
         </div>
         <div className="mt-0.5 flex items-center justify-between gap-2 text-[11px]" style={{ color: 'var(--text-muted)' }}>

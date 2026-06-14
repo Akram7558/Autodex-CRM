@@ -160,19 +160,22 @@ export function monthGridRange(monthISO: string): { gridStart: string; gridEnd: 
   return { gridStart, gridEnd: addDaysISO(gridStart, 41) }
 }
 
-// One rental as needed by the calendar (richer than AgendaItem: immat + total).
+// One rental as needed by the calendar (richer than AgendaItem: immat + total
+// + the raw ids the cockpit filters / free-vehicles need).
 export type CalendarRental = {
-  id:              string
-  contract_number: string | null
-  status:          string
-  start_date:      string
-  start_time:      string   // HH:mm ('' if none)
-  end_date:        string
-  end_time:        string   // HH:mm ('' if none)
-  customer_name:   string
-  vehicle_label:   string
-  immatriculation: string | null
-  total:           number | null
+  id:               string
+  contract_number:  string | null
+  status:           string
+  start_date:       string
+  start_time:       string   // HH:mm ('' if none)
+  end_date:         string
+  end_time:         string   // HH:mm ('' if none)
+  customer_name:    string
+  vehicle_label:    string
+  immatriculation:  string | null
+  rental_vehicle_id: string | null
+  assigned_to:      string | null
+  total:            number | null
 }
 
 export type DayBucket = {
@@ -187,6 +190,7 @@ const CALENDAR_STATUSES = ['confirmed', 'active', 'completed', 'overdue']
 
 const CALENDAR_SELECT =
   'id, contract_number, status, start_date, start_time, end_date, end_time, total_rental_amount, ' +
+  'rental_vehicle_id, assigned_to, ' +
   'rental_vehicle:rental_vehicles(marque, modele, immatriculation), customer:rental_customers(full_name)'
 
 type CalVehicleEmbed = { marque: string; modele: string; immatriculation: string | null }
@@ -194,6 +198,7 @@ type CalRawRow = {
   id: string; contract_number: string | null; status: string
   start_date: string; start_time: string | null; end_date: string; end_time: string | null
   total_rental_amount: string | number | null
+  rental_vehicle_id: string | null; assigned_to: string | null
   rental_vehicle: CalVehicleEmbed | CalVehicleEmbed[] | null
   customer: CustomerEmbed | CustomerEmbed[] | null
 }
@@ -211,6 +216,8 @@ function toCalendarRental(r: CalRawRow): CalendarRental {
     customer_name: c?.full_name ?? '—',
     vehicle_label: v ? `${v.marque} ${v.modele}` : '—',
     immatriculation: v?.immatriculation ?? null,
+    rental_vehicle_id: r.rental_vehicle_id ?? null,
+    assigned_to: r.assigned_to ?? null,
     total: r.total_rental_amount == null ? null : toNum(r.total_rental_amount),
   }
 }
@@ -263,4 +270,87 @@ export function bucketByDay(
     }
   }
   return map
+}
+
+// ── Cockpit extras (Step 2): fleet, month stats, free vehicles, overdue ──────
+
+export type FleetVehicle = { id: string; marque: string; modele: string; immatriculation: string }
+
+/** Active fleet of a showroom (for the vehicle filter + free-vehicles calc). */
+export async function fetchFleet(sb: SupabaseClient, showroomId: string | null): Promise<FleetVehicle[]> {
+  let q = sb.from('rental_vehicles')
+    .select('id, marque, modele, immatriculation')
+    .eq('is_active', true)
+    .order('marque', { ascending: true }).order('modele', { ascending: true })
+  if (showroomId) q = q.eq('showroom_id', showroomId)
+  const { data, error } = await q
+  if (error) throw new Error(error.message)
+  return (data ?? []) as FleetVehicle[]
+}
+
+export type MonthStats = { remises: number; retours: number; enCours: number; retard: number }
+
+/**
+ * Counts for the DISPLAYED month only (grid-overflow days excluded):
+ *  - remises  = rentals starting in the month
+ *  - retours  = rentals ending in the month
+ *  - enCours  = 'active'  rentals overlapping the month
+ *  - retard   = 'overdue' rentals overlapping the month
+ */
+export function monthStats(rentals: CalendarRental[], monthISO: string): MonthStats {
+  const m = monthISO.slice(0, 7)
+  const monthStart = monthFirstOf(monthISO)
+  const monthEnd = addDaysISO(addMonthsISO(monthISO, 1), -1)
+  let remises = 0, retours = 0, enCours = 0, retard = 0
+  for (const r of rentals) {
+    if (r.start_date.slice(0, 7) === m) remises++
+    if (r.end_date.slice(0, 7) === m) retours++
+    const overlaps = r.start_date <= monthEnd && r.end_date >= monthStart
+    if (overlaps) {
+      if (r.status === 'active') enCours++
+      else if (r.status === 'overdue') retard++
+    }
+  }
+  return { remises, retours, enCours, retard }
+}
+
+/**
+ * Vehicles with NO active/confirmed rental covering dayISO (start<=day<=end).
+ * Computed from the already-fetched month rentals — no per-day query.
+ */
+export function freeVehiclesForDay(
+  fleet: FleetVehicle[], rentals: CalendarRental[], dayISO: string,
+): FleetVehicle[] {
+  const busy = new Set<string>()
+  for (const r of rentals) {
+    if ((r.status === 'active' || r.status === 'confirmed')
+      && r.rental_vehicle_id
+      && r.start_date <= dayISO && dayISO <= r.end_date) {
+      busy.add(r.rental_vehicle_id)
+    }
+  }
+  return fleet.filter((v) => !busy.has(v.id))
+}
+
+/**
+ * Overdue rentals — status active/overdue past their end date (Algiers today),
+ * INDEPENDENT of the displayed month (an overdue from 2 months ago still counts).
+ * Scoped to the showroom + (closer) own rows; RLS double-enforces.
+ */
+export async function fetchOverdue(
+  sb: SupabaseClient,
+  opts: { showroomId: string | null; role: string; userId: string },
+): Promise<CalendarRental[]> {
+  if (!RENTAL_ROLES.has(opts.role)) return []
+  const today = algiersToday()
+  let q = sb.from('rentals').select(CALENDAR_SELECT)
+    .in('status', ['active', 'overdue'])
+    .lt('end_date', today)
+    .is('deleted_at', null)
+    .order('end_date', { ascending: true })
+  if (opts.showroomId) q = q.eq('showroom_id', opts.showroomId)
+  if (opts.role === 'closer') q = q.eq('assigned_to', opts.userId)
+  const { data, error } = await q
+  if (error) throw new Error(error.message)
+  return ((data ?? []) as unknown as CalRawRow[]).map(toCalendarRental)
 }
