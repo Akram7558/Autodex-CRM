@@ -52,6 +52,7 @@ const navItems: Array<{ href: string; label: string; icon: typeof LayoutDashboar
   { href: '/dashboard/location',           label: 'Location',         icon: KeyRound,    roles: ['owner','manager','closer'], module: 'location' },
   { href: '/dashboard/location/prospects', label: 'Prospects location', icon: Inbox,    roles: ['owner','manager','closer'], module: 'location' },
   { href: '/dashboard/location/contrats',  label: 'Contrats location', icon: ScrollText, roles: ['owner','manager','closer'], module: 'location' },
+  { href: '/dashboard/location/agenda',    label: 'Agenda location',  icon: CalendarClock, roles: ['owner','manager','closer'], module: 'location' },
   { href: '/dashboard/location/vehicules', label: 'Flotte location',  icon: CarFront,  roles: ['owner','manager'], module: 'location' },
   { href: '/dashboard/location/clients',   label: 'Clients location', icon: Users,     roles: ['owner','manager'], module: 'location' },
   { href: '/dashboard/location/tarifs',    label: 'Tarifs location',  icon: Tag,       roles: ['owner'], module: 'location' },
