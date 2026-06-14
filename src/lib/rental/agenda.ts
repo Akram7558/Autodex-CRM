@@ -188,6 +188,13 @@ export type DayBucket = {
 // reporter, cancelled are excluded; deleted_at IS NULL enforced in the query.
 const CALENDAR_STATUSES = ['confirmed', 'active', 'completed', 'overdue']
 
+// Statuses that physically HOLD a vehicle: confirmed (reserved), active (out),
+// overdue (out, past due). NOT completed (returned) and NOT cancelled (excluded
+// from the calendar entirely). SINGLE source shared by freeVehiclesForDay AND
+// the enCours bucket, so "en cours" is exactly the complement of "libre" — a
+// vehicle can never be both occupied and listed free.
+const OCCUPYING_STATUSES = new Set(['confirmed', 'active', 'overdue'])
+
 const CALENDAR_SELECT =
   'id, contract_number, status, start_date, start_time, end_date, end_time, total_rental_amount, ' +
   'rental_vehicle_id, assigned_to, ' +
@@ -266,7 +273,10 @@ export function bucketByDay(
     for (const d in map) {
       if (r.start_date === d) map[d].remises.push(r)
       if (r.end_date === d) map[d].retours.push(r)
-      if (r.start_date < d && d < r.end_date) map[d].enCours.push(r)
+      // enCours = strictly between, AND the status actually occupies the
+      // vehicle (excludes completed) — same set as freeVehiclesForDay, so a
+      // "Terminé — Rendu" never shows "en cours" while its car is listed free.
+      if (OCCUPYING_STATUSES.has(r.status) && r.start_date < d && d < r.end_date) map[d].enCours.push(r)
     }
   }
   return map
@@ -288,30 +298,28 @@ export async function fetchFleet(sb: SupabaseClient, showroomId: string | null):
   return (data ?? []) as FleetVehicle[]
 }
 
-export type MonthStats = { remises: number; retours: number; enCours: number; retard: number }
+export type MonthStats = { remises: number; retours: number; enCours: number }
 
 /**
  * Counts for the DISPLAYED month only (grid-overflow days excluded):
  *  - remises  = rentals starting in the month
  *  - retours  = rentals ending in the month
  *  - enCours  = 'active'  rentals overlapping the month
- *  - retard   = 'overdue' rentals overlapping the month
+ * (Overdue is NOT a month stat — the "En retard" tile uses the GLOBAL overdue
+ *  count from fetchOverdue, identical to the banner, so the two never disagree.)
  */
 export function monthStats(rentals: CalendarRental[], monthISO: string): MonthStats {
   const m = monthISO.slice(0, 7)
   const monthStart = monthFirstOf(monthISO)
   const monthEnd = addDaysISO(addMonthsISO(monthISO, 1), -1)
-  let remises = 0, retours = 0, enCours = 0, retard = 0
+  let remises = 0, retours = 0, enCours = 0
   for (const r of rentals) {
     if (r.start_date.slice(0, 7) === m) remises++
     if (r.end_date.slice(0, 7) === m) retours++
     const overlaps = r.start_date <= monthEnd && r.end_date >= monthStart
-    if (overlaps) {
-      if (r.status === 'active') enCours++
-      else if (r.status === 'overdue') retard++
-    }
+    if (overlaps && r.status === 'active') enCours++
   }
-  return { remises, retours, enCours, retard }
+  return { remises, retours, enCours }
 }
 
 /**
@@ -323,7 +331,7 @@ export function freeVehiclesForDay(
 ): FleetVehicle[] {
   const busy = new Set<string>()
   for (const r of rentals) {
-    if ((r.status === 'active' || r.status === 'confirmed')
+    if (OCCUPYING_STATUSES.has(r.status)
       && r.rental_vehicle_id
       && r.start_date <= dayISO && dayISO <= r.end_date) {
       busy.add(r.rental_vehicle_id)

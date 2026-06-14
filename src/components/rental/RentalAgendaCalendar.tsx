@@ -261,7 +261,9 @@ export default function RentalAgendaCalendar() {
             <StatTile label="Remises" value={stats.remises} icon={ArrowUpRight} loading={loading} />
             <StatTile label="Retours" value={stats.retours} icon={ArrowDownLeft} loading={loading} />
             <StatTile label="En cours" value={stats.enCours} icon={Repeat} loading={loading} />
-            <StatTile label="En retard" value={stats.retard} icon={AlertTriangle} loading={loading} rose />
+            {/* Global overdue count — SAME source as the banner (fetchOverdue),
+                month-independent, so the tile and banner never disagree. */}
+            <StatTile label="En retard" value={overdue.length} icon={AlertTriangle} loading={loading} rose />
           </div>
 
           {/* Filter bar */}
