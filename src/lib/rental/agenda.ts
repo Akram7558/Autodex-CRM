@@ -362,3 +362,83 @@ export async function fetchOverdue(
   if (error) throw new Error(error.message)
   return ((data ?? []) as unknown as CalRawRow[]).map(toCalendarRental)
 }
+
+// ── Gantt span bars (desktop grid) — week-split + lane packing ────────────────
+
+/** Whole-day count between two yyyy-mm-dd dates (b - a). */
+export function daysBetweenISO(a: string, b: string): number {
+  return Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / 86_400_000)
+}
+
+// Max lanes (stacked bars) rendered per day before collapsing into a per-day
+// "+N" overflow count. Kept small so a week row stays a stable height.
+export const AGENDA_MAX_LANES = 3
+
+export type WeekSegment = {
+  id:       string   // rental id → /dashboard/location/contrats/[id]
+  colStart: number   // 1..7 (Mon..Sun) within the week
+  colSpan:  number
+  isStart:  boolean  // the rental's real start_date falls in this week
+  isEnd:    boolean  // the rental's real end_date falls in this week
+  status:   string
+  label:    string   // "client · véhicule"
+  lane:     number   // 0-based packing lane
+}
+export type WeekRow = {
+  weekStart:     string
+  days:          string[]  // 7 yyyy-mm-dd
+  segments:      WeekSegment[]   // ALL segments incl. overflow (lane >= MAX visible filter at render)
+  overflowByCol: number[]        // length 7 — hidden-segment count per day column
+}
+
+/**
+ * Split each rental into ONE clipped segment per week it overlaps, then
+ * lane-pack each week greedily (sorted by colStart → smallest non-overlapping
+ * lane). Segments with lane >= AGENDA_MAX_LANES are counted as per-day overflow
+ * ("+N") rather than drawn. `days` is the 42-day Monday grid (6×7).
+ */
+export function buildWeekRows(rentals: CalendarRental[], days: string[]): WeekRow[] {
+  const rows: WeekRow[] = []
+  for (let w = 0; w * 7 < days.length; w++) {
+    const weekDays = days.slice(w * 7, w * 7 + 7)
+    const weekStart = weekDays[0]
+    const weekEnd = weekDays[6]
+
+    const segments: WeekSegment[] = []
+    for (const r of rentals) {
+      if (r.start_date > weekEnd || r.end_date < weekStart) continue   // no overlap
+      const segStart = r.start_date < weekStart ? weekStart : r.start_date
+      const segEnd = r.end_date > weekEnd ? weekEnd : r.end_date
+      segments.push({
+        id:       r.id,
+        colStart: daysBetweenISO(weekStart, segStart) + 1,
+        colSpan:  daysBetweenISO(segStart, segEnd) + 1,
+        isStart:  r.start_date >= weekStart,
+        isEnd:    r.end_date <= weekEnd,
+        status:   r.status,
+        label:    `${r.customer_name} · ${r.vehicle_label}`,
+        lane:     -1,
+      })
+    }
+
+    // Greedy interval partitioning: by colStart, smallest lane whose last
+    // occupied column is strictly before this segment's start.
+    segments.sort((a, b) => a.colStart - b.colStart || b.colSpan - a.colSpan)
+    const laneEnd: number[] = []  // rightmost occupied column per lane
+    for (const s of segments) {
+      let lane = 0
+      while (lane < laneEnd.length && laneEnd[lane] >= s.colStart) lane++
+      s.lane = lane
+      laneEnd[lane] = s.colStart + s.colSpan - 1
+    }
+
+    const overflowByCol = new Array<number>(7).fill(0)
+    for (const s of segments) {
+      if (s.lane < AGENDA_MAX_LANES) continue
+      for (let c = s.colStart; c < s.colStart + s.colSpan; c++) overflowByCol[c - 1]++
+    }
+
+    rows.push({ weekStart, days: weekDays, segments, overflowByCol })
+  }
+  return rows
+}

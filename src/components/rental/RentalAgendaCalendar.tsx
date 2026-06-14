@@ -29,7 +29,8 @@ import { getCurrentUserRole } from '@/lib/auth'
 import {
   algiersToday, addDaysISO, monthFirstOf, addMonthsISO, monthGridRange,
   fetchRentalsForRange, fetchFleet, fetchOverdue, bucketByDay, monthStats, freeVehiclesForDay,
-  type CalendarRental, type DayBucket, type FleetVehicle,
+  buildWeekRows, AGENDA_MAX_LANES,
+  type CalendarRental, type DayBucket, type FleetVehicle, type WeekRow,
 } from '@/lib/rental/agenda'
 import { rentalStatusColor, rentalStatusLabel, formatDZD } from '@/components/rental/booking/types'
 import { toneClasses } from '@/lib/notif-style'
@@ -173,6 +174,8 @@ export default function RentalAgendaCalendar() {
   }), [rentals, filterVehicle, filterAgent, filterStatuses])
 
   const buckets = useMemo(() => bucketByDay(filtered, gridStart, gridEnd), [filtered, gridStart, gridEnd])
+  // Desktop Gantt: span bars, lane-packed per week. Re-packs on filter change.
+  const weekRows = useMemo(() => buildWeekRows(filtered, days), [filtered, days])
   const stats = useMemo(() => monthStats(filtered, monthISO), [filtered, monthISO])
   // Free vehicles use the RAW month rentals (occupancy is filter-independent).
   const freeVehicles = useMemo(
@@ -306,22 +309,20 @@ export default function RentalAgendaCalendar() {
           {/* Main: grid (desktop) / list (mobile) + day panel */}
           <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-6 items-start">
             <div className="space-y-3">
-              {/* Desktop grid */}
+              {/* Desktop grid — Gantt span bars (week-split + lane packing) */}
               <div className="hidden lg:block glass-card p-4 rounded-2xl overflow-x-auto">
-                <div className="min-w-[34rem]">
+                <div className="min-w-[42rem]">
                   <div className="grid grid-cols-7 gap-1.5 mb-1.5">
                     {WEEKDAYS.map((w, i) => (
                       <div key={i} className="text-center text-[11px] font-bold uppercase tracking-wider py-1"
                         style={{ color: 'var(--text-muted)' }}>{w}</div>
                     ))}
                   </div>
-                  <div className="grid grid-cols-7 gap-1.5">
-                    {days.map((day) => (
-                      <DayCell key={day} day={day}
-                        inMonth={day.slice(0, 7) === monthKey}
-                        isToday={day === today} isSelected={day === selectedDay}
-                        loading={loading} bucket={buckets[day] ?? EMPTY_BUCKET}
-                        onSelect={() => setSelectedDay(day)} />
+                  <div className="space-y-1.5">
+                    {weekRows.map((row) => (
+                      <WeekRowView key={row.weekStart} row={row}
+                        today={today} selectedDay={selectedDay} monthKey={monthKey}
+                        loading={loading} onSelect={setSelectedDay} />
                     ))}
                   </div>
                 </div>
@@ -400,65 +401,89 @@ function StatTile({
 }
 
 // ── Calendar cell ────────────────────────────────────────────────────────
-function DayCell({
-  day, inMonth, isToday, isSelected, loading, bucket, onSelect,
+// ── Desktop Gantt week row ───────────────────────────────────────────────
+// One CSS grid per week: 7 day columns × (1 day-number row + AGENDA_MAX_LANES
+// lane rows). Per-column background buttons (full height) handle "click empty
+// → select day"; the day-number overlay is non-interactive (clicks fall through
+// to the bg button); span bars sit on top in their packed lane and link to the
+// contract. Grid geometry comes from `row.days` (stable), so the lane content
+// can swap skeleton↔bars without remount/blink.
+function WeekRowView({
+  row, today, selectedDay, monthKey, loading, onSelect,
 }: {
-  day: string; inMonth: boolean; isToday: boolean; isSelected: boolean
-  loading: boolean; bucket: DayBucket; onSelect: () => void
+  row: WeekRow
+  today: string
+  selectedDay: string
+  monthKey: string
+  loading: boolean
+  onSelect: (day: string) => void
 }) {
-  const dayNum = Number(day.slice(8, 10))
-  const events = [
-    ...bucket.remises.map((r) => ({ r, kind: 'remise' as const })),
-    ...bucket.retours.map((r) => ({ r, kind: 'retour' as const })),
-  ]
-  const shown = events.slice(0, 2)
-  const extra = events.length - shown.length
-  const total = events.length
-
+  const visible = row.segments.filter((s) => s.lane < AGENDA_MAX_LANES)
   return (
-    <button type="button" onClick={onSelect} aria-label={`Jour ${dayNum}`}
-      className="text-left rounded-lg p-1.5 min-h-[78px] flex flex-col gap-1 transition-colors duration-150 motion-reduce:transition-none hover:border-[var(--accent)]"
-      style={{
-        background: isSelected ? 'var(--accent-subtle)' : 'var(--bg-surface)',
-        border: `1px solid ${isToday ? 'var(--accent)' : 'var(--border)'}`,
-        opacity: inMonth ? 1 : 0.45,
-      }}>
-      <span className="flex items-center justify-between gap-1">
-        <span className="text-xs font-semibold tabular-nums"
-          style={{ color: isToday ? 'var(--accent)' : 'var(--text-secondary)' }}>{dayNum}</span>
-        {!loading && total > 0 && (
-          <span className="text-[9px] font-bold tabular-nums px-1 rounded-full"
-            style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>{total}</span>
-        )}
-      </span>
+    <div className="grid grid-cols-7 gap-1.5"
+      style={{ gridTemplateRows: `auto repeat(${AGENDA_MAX_LANES}, 1.375rem)` }}>
+      {/* Background cells — full-height click target + the day's visual frame. */}
+      {row.days.map((day, ci) => {
+        const inMonth = day.slice(0, 7) === monthKey
+        const isToday = day === today
+        const isSelected = day === selectedDay
+        return (
+          <button key={`bg-${day}`} type="button" onClick={() => onSelect(day)} aria-label={`Jour ${Number(day.slice(8, 10))}`}
+            className="rounded-lg transition-colors duration-150 motion-reduce:transition-none hover:border-[var(--accent)]"
+            style={{
+              gridColumn: ci + 1, gridRow: '1 / -1',
+              background: isSelected ? 'var(--accent-subtle)' : 'var(--bg-surface)',
+              border: `1px solid ${isToday ? 'var(--accent)' : 'var(--border)'}`,
+              opacity: inMonth ? 1 : 0.45,
+            }} />
+        )
+      })}
 
+      {/* Day numbers + per-day "+N" overflow (overlay, clicks pass through). */}
+      {row.days.map((day, ci) => {
+        const isToday = day === today
+        const ov = row.overflowByCol[ci]
+        return (
+          <div key={`num-${day}`} className="flex items-center justify-between px-1.5 pt-1"
+            style={{ gridColumn: ci + 1, gridRow: 1, zIndex: 10, pointerEvents: 'none' }}>
+            <span className="text-xs font-semibold tabular-nums"
+              style={{ color: isToday ? 'var(--accent)' : 'var(--text-secondary)' }}>{Number(day.slice(8, 10))}</span>
+            {!loading && ov > 0 && (
+              <span className="text-[9px] font-bold tabular-nums px-1 rounded-full"
+                style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>+{ov}</span>
+            )}
+          </div>
+        )
+      })}
+
+      {/* Lane content: skeleton bars while loading, span bars when loaded. */}
       {loading ? (
-        <span className="h-2.5 mt-0.5 rounded bg-[var(--bg-elevated)] animate-pulse" />
+        <>
+          <div style={{ gridColumn: '1 / span 3', gridRow: 2, zIndex: 10 }}
+            className="h-5 rounded-md bg-[var(--bg-elevated)] animate-pulse self-center" />
+          <div style={{ gridColumn: '4 / span 3', gridRow: 3, zIndex: 10 }}
+            className="h-5 rounded-md bg-[var(--bg-elevated)] animate-pulse self-center" />
+        </>
       ) : (
-        <span className="flex flex-col gap-1 min-w-0">
-          {shown.map(({ r, kind }, i) => {
-            const c = eventColor(r.status)
-            const Icon = kind === 'remise' ? ArrowUpRight : ArrowDownLeft
-            return (
-              <span key={`${r.id}-${kind}-${i}`}
-                className="flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-medium leading-none truncate"
-                style={{ background: c.bg, color: c.fg }}>
-                <Icon className="w-2.5 h-2.5 shrink-0" />
-                <span className="truncate">{r.customer_name}</span>
-              </span>
-            )
-          })}
-          {extra > 0 && (
-            <span className="text-[10px] font-medium" style={{ color: 'var(--text-muted)' }}>+{extra}</span>
-          )}
-          {bucket.enCours.length > 0 && (
-            <span className="text-[10px] flex items-center gap-1" style={{ color: 'var(--text-muted)' }}>
-              <Repeat className="w-2.5 h-2.5 shrink-0" />{bucket.enCours.length} en cours
-            </span>
-          )}
-        </span>
+        visible.map((s) => {
+          const c = eventColor(s.status)
+          return (
+            <Link key={s.id} href={`/dashboard/location/contrats/${s.id}`} title={s.label}
+              className="flex items-center gap-1 px-1.5 text-[10px] font-medium leading-none overflow-hidden self-center h-5 transition-opacity duration-150 motion-reduce:transition-none hover:opacity-90"
+              style={{
+                gridColumn: `${s.colStart} / span ${s.colSpan}`, gridRow: s.lane + 2, zIndex: 10,
+                background: c.bg, color: c.fg, boxShadow: `inset 0 0 0 1px ${c.ring}`,
+                borderTopLeftRadius: s.isStart ? '0.375rem' : 0, borderBottomLeftRadius: s.isStart ? '0.375rem' : 0,
+                borderTopRightRadius: s.isEnd ? '0.375rem' : 0, borderBottomRightRadius: s.isEnd ? '0.375rem' : 0,
+              }}>
+              {s.isStart && <ArrowUpRight className="w-2.5 h-2.5 shrink-0" />}
+              <span className="truncate flex-1">{s.label}</span>
+              {s.isEnd && <ArrowDownLeft className="w-2.5 h-2.5 shrink-0" />}
+            </Link>
+          )
+        })
       )}
-    </button>
+    </div>
   )
 }
 
@@ -466,8 +491,9 @@ function DayCell({
 function Legend() {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] px-1" style={{ color: 'var(--text-muted)' }}>
-      <span className="flex items-center gap-1"><ArrowUpRight className="w-3 h-3" /> Remise</span>
-      <span className="flex items-center gap-1"><ArrowDownLeft className="w-3 h-3" /> Retour</span>
+      <span>Barre = location (couleur = statut)</span>
+      <span className="flex items-center gap-1"><ArrowUpRight className="w-3 h-3" /> bord gauche = remise</span>
+      <span className="flex items-center gap-1"><ArrowDownLeft className="w-3 h-3" /> bord droit = retour</span>
       {[['confirmed', 'Réservé'], ['active', 'En cours'], ['completed', 'Terminé'], ['overdue', 'En retard']].map(([s, lbl]) => {
         const c = eventColor(s)
         return (
