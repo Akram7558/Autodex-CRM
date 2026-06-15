@@ -46,6 +46,13 @@ export async function POST(req: NextRequest) {
     const plan_id         = body.plan_id ? String(body.plan_id) : null
     const contractRaw     = body.contract_amount
     const expiresRaw      = body.expires_at ? String(body.expires_at).trim() : ''
+    // Explicit module flags from the body win over the plan (same rule as
+    // create-showroom). The current convert UI sends none — these stay
+    // undefined and the plan's modules are used.
+    const moduleVenteRaw: boolean | undefined =
+      typeof body.module_vente === 'boolean' ? body.module_vente : undefined
+    const moduleLocationRaw: boolean | undefined =
+      typeof body.module_location === 'boolean' ? body.module_location : undefined
 
     if (!showroom_id) {
       return NextResponse.json({ error: 'showroom_id requis.' }, { status: 400 })
@@ -65,10 +72,15 @@ export async function POST(req: NextRequest) {
     // override either via contract_amount or expires_at.
     let resolvedAmount: number | null = null
     let resolvedExpires: Date | null = null
+    // Modules derived from the chosen plan (migration-57 columns), same source
+    // of truth + coercion as the new provisioning (create-showroom): vente
+    // fail-open (absent → true), location opt-in (only true → true).
+    let planModuleVente: boolean | undefined
+    let planModuleLocation: boolean | undefined
     if (plan_id) {
       const { data: plan, error: planErr } = await admin
         .from('saas_plans')
-        .select('id, price, duration_months')
+        .select('id, price, duration_months, module_vente, module_location')
         .eq('id', plan_id)
         .maybeSingle()
       if (planErr) return NextResponse.json({ error: planErr.message }, { status: 500 })
@@ -77,6 +89,9 @@ export async function POST(req: NextRequest) {
       const ends = new Date()
       ends.setMonth(ends.getMonth() + Number(plan.duration_months))
       resolvedExpires = ends
+      const pm = plan as { module_vente?: boolean | null; module_location?: boolean | null }
+      planModuleVente    = pm.module_vente !== false
+      planModuleLocation = pm.module_location === true
     }
 
     // contract_amount: body wins, plan default fallback.
@@ -113,6 +128,14 @@ export async function POST(req: NextRequest) {
       trial_converted_by:    ctx.user.id,
     }
     if (plan_id) updatePayload.plan_id = plan_id
+
+    // Derive the showroom's modules from the chosen plan (explicit body flags
+    // win; else plan-derived). A custom conversion (no plan, no explicit flags)
+    // leaves the existing modules untouched — never forced to false.
+    const module_vente    = moduleVenteRaw    ?? planModuleVente
+    const module_location = moduleLocationRaw ?? planModuleLocation
+    if (module_vente    !== undefined) updatePayload.module_vente    = module_vente
+    if (module_location !== undefined) updatePayload.module_location = module_location
 
     const { data: updated, error: updErr } = await admin
       .from('showrooms')
