@@ -20,7 +20,10 @@ import {
 import {
   Users, Car, CalendarDays, Banknote,
   ArrowUpRight, ArrowDownRight, Sparkles, Activity,
+  UserPlus, FilePlus2, RefreshCw, CalendarCheck, KeyRound, CalendarClock, XCircle, Phone, Mail, StickyNote,
+  type LucideIcon,
 } from 'lucide-react'
+import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { getCurrentUserRole } from '@/lib/auth'
 import { AlertBanner } from '@/components/alerts/alert-banner'
@@ -103,6 +106,55 @@ function bucketsForRange(range: ChartRange): { label: string; start: Date; end: 
   return out
 }
 
+// ─── "Activité du jour" feed ───────────────────────────────────────
+// Today's showroom-wide events: rental_activities + sales activities +
+// synthetic "new lead" / "new vente" rows, merged + sorted desc.
+
+type FeedTone = 'accent' | 'rose' | 'neutral'
+type FeedItem = {
+  key: string
+  Icon: LucideIcon
+  label: string          // short FR type label
+  tone: FeedTone
+  text: string           // main descriptor (contract / customer / vehicle)
+  sub: string | null     // optional second line
+  timeISO: string
+  href?: string
+}
+
+// type → icon + short label + tone. Keys: `rental:<type>` / `sales:<type>` /
+// 'new_lead' / 'new_vente'. payment + vente = emerald accent, cancelled = rose.
+const FEED_META: Record<string, { Icon: LucideIcon; label: string; tone: FeedTone }> = {
+  'rental:created':         { Icon: FilePlus2,     label: 'Contrat créé',    tone: 'neutral' },
+  'rental:status_change':   { Icon: RefreshCw,     label: 'Statut contrat',  tone: 'neutral' },
+  'rental:reserved':        { Icon: CalendarCheck, label: 'Réservé',         tone: 'neutral' },
+  'rental:picked_up':       { Icon: KeyRound,      label: 'Remise',          tone: 'neutral' },
+  'rental:reported':        { Icon: CalendarClock, label: 'Reporté',         tone: 'neutral' },
+  'rental:vehicle_changed': { Icon: Car,           label: 'Véhicule changé', tone: 'neutral' },
+  'rental:dates_changed':   { Icon: CalendarDays,  label: 'Dates modifiées', tone: 'neutral' },
+  'rental:payment':         { Icon: Banknote,      label: 'Paiement',        tone: 'accent'  },
+  'rental:cancelled':       { Icon: XCircle,       label: 'Annulation',      tone: 'rose'    },
+  'sales:call':             { Icon: Phone,         label: 'Appel',           tone: 'neutral' },
+  'sales:email':            { Icon: Mail,          label: 'Email',           tone: 'neutral' },
+  'sales:meeting':          { Icon: Users,         label: 'RDV',             tone: 'neutral' },
+  'sales:note':             { Icon: StickyNote,    label: 'Note',            tone: 'neutral' },
+  'sales:status_change':    { Icon: RefreshCw,     label: 'Statut lead',     tone: 'neutral' },
+  'new_lead':               { Icon: UserPlus,      label: 'Nouveau lead',    tone: 'neutral' },
+  'new_vente':              { Icon: Banknote,      label: 'Vente',           tone: 'accent'  },
+}
+const FEED_FALLBACK = { Icon: Activity, label: 'Activité', tone: 'neutral' as FeedTone }
+
+/** [start, end) ISO bounds of "today" in Africa/Algiers (UTC+1, no DST). */
+function algiersDayBoundsISO(): { startISO: string; endISO: string } {
+  const a = new Date(Date.now() + 3_600_000) // shift to Algiers wall clock
+  const start = new Date(Date.UTC(a.getUTCFullYear(), a.getUTCMonth(), a.getUTCDate()) - 3_600_000)
+  return { startISO: start.toISOString(), endISO: new Date(start.getTime() + 86_400_000).toISOString() }
+}
+function feedTimeFr(iso: string): string {
+  return new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Algiers' })
+    .format(new Date(iso))
+}
+
 // ─── Component ─────────────────────────────────────────────────────
 
 export default function DashboardPage() {
@@ -112,6 +164,9 @@ export default function DashboardPage() {
   const [vehicles,      setVehicles] = useState<Vehicle[]>([])
   const [vehiclesCount, setVehiclesCount] = useState(0)
   const [loading,       setLoading]  = useState(true)
+  // "Activité du jour" raw rows (today, showroom-scoped via RLS).
+  const [rentalActs, setRentalActs] = useState<Array<{ id: string; type: string; title: string; body: string | null; rental_id: string | null; created_at: string }>>([])
+  const [salesActs,  setSalesActs]  = useState<Array<{ id: string; type: string; title: string; body: string | null; lead_id: string | null; created_at: string }>>([])
 
   // ── Role + identity (preserved from previous build) ─────────────
   const [role,   setRole]   = useState<AppRole | null>(null)
@@ -150,12 +205,29 @@ export default function DashboardPage() {
             .order('date_vente', { ascending: false })
             .limit(50)
 
-      const [{ data: l }, { data: v }, { data: s }] = await Promise.all([leadsP, vehiclesP, ventesP])
+      // Today's activity feed (same loading cycle — no second blink). RLS
+      // scopes both tables to the showroom (owner/manager see all; closer own).
+      const { startISO, endISO } = algiersDayBoundsISO()
+      const rentalActsP = supabase
+        .from('rental_activities')
+        .select('id, type, title, body, rental_id, created_at')
+        .gte('created_at', startISO).lt('created_at', endISO)
+        .order('created_at', { ascending: false }).limit(50)
+      const salesActsP = supabase
+        .from('activities')
+        .select('id, type, title, body, lead_id, created_at')
+        .gte('created_at', startISO).lt('created_at', endISO)
+        .order('created_at', { ascending: false }).limit(50)
+
+      const [{ data: l }, { data: v }, { data: s }, { data: ra }, { data: sa }] =
+        await Promise.all([leadsP, vehiclesP, ventesP, rentalActsP, salesActsP])
       setLeads((l ?? []) as Lead[])
       const vRows = (v ?? []) as Vehicle[]
       setVehicles(vRows)
       setVehiclesCount(vRows.length)
       setVentes((s ?? []) as Vente[])
+      setRentalActs((ra ?? []) as typeof rentalActs)
+      setSalesActs((sa ?? []) as typeof salesActs)
       setLoading(false)
     })()
   }, [])
@@ -290,6 +362,61 @@ export default function DashboardPage() {
   const showRdv         = role !== 'prospecteur'
   const showVentesCount = role !== 'prospecteur'
   const showListings    = role === 'owner' || role === 'manager' || role === 'super_admin'
+
+  // ── "Activité du jour" — merge today's events, newest first (cap 25) ──
+  // Amounts are gated behind showFinancials (vente montant hidden; payment
+  // titles, which embed the amount, replaced by a generic label).
+  const todayActivity = useMemo<FeedItem[]>(() => {
+    const { startISO, endISO } = algiersDayBoundsISO()
+    // Compare numerically: supabase returns "+00:00"-suffixed ISO while our
+    // bounds are "Z"-suffixed — string comparison across formats is unsafe.
+    const startMs = Date.parse(startISO), endMs = Date.parse(endISO)
+    const items: FeedItem[] = []
+
+    for (const ra of rentalActs) {
+      const m = FEED_META[`rental:${ra.type}`] ?? FEED_FALLBACK
+      const gated = ra.type === 'payment' && !showFinancials
+      items.push({
+        key: `ra:${ra.id}`, Icon: m.Icon, label: m.label, tone: m.tone,
+        text: gated ? 'Paiement enregistré' : ra.title,
+        sub:  gated ? null : (ra.body ?? null),
+        timeISO: ra.created_at,
+        href: ra.rental_id ? `/dashboard/location/contrats/${ra.rental_id}` : undefined,
+      })
+    }
+    for (const sa of salesActs) {
+      const m = FEED_META[`sales:${sa.type}`] ?? FEED_FALLBACK
+      items.push({
+        key: `sa:${sa.id}`, Icon: m.Icon, label: m.label, tone: m.tone,
+        text: sa.title, sub: sa.body ?? null, timeISO: sa.created_at,
+        href: sa.lead_id ? `/dashboard/prospects?lead=${sa.lead_id}` : undefined,
+      })
+    }
+    for (const ld of leads) {
+      const t = Date.parse(ld.created_at)
+      if (!(t >= startMs && t < endMs)) continue
+      const m = FEED_META['new_lead']
+      items.push({
+        key: `nl:${ld.id}`, Icon: m.Icon, label: m.label, tone: m.tone,
+        text: ld.full_name || 'Lead', sub: ld.model_wanted ?? null,
+        timeISO: ld.created_at, href: `/dashboard/prospects?lead=${ld.id}`,
+      })
+    }
+    for (const vt of ventes) {
+      const t = vt.date_vente ? Date.parse(vt.date_vente) : NaN
+      if (!(t >= startMs && t < endMs)) continue
+      const m = FEED_META['new_vente']
+      items.push({
+        key: `nv:${vt.id}`, Icon: m.Icon, label: m.label, tone: m.tone,
+        text: vt.vehicle_name || vt.client_name || 'Vente',
+        sub:  showFinancials && vt.prix_vente != null ? `${formatDzd(vt.prix_vente)} DZD` : null,
+        timeISO: vt.date_vente, href: '/dashboard/ventes',
+      })
+    }
+
+    items.sort((a, b) => Date.parse(b.timeISO) - Date.parse(a.timeISO)) // newest first
+    return items.slice(0, 25)
+  }, [rentalActs, salesActs, leads, ventes, showFinancials])
 
   // ── KPI definition list ─────────────────────────────────────────
   const kpis: Array<{
@@ -724,6 +851,50 @@ export default function DashboardPage() {
           )}
         </section>
       )}
+
+      {/* ── Activité du jour ─────────────────────────────────────── */}
+      <section>
+        <span className="inline-flex items-center gap-2 mb-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-600 dark:text-emerald-400">
+          <Activity className="w-3.5 h-3.5" /> Activité du jour
+        </span>
+        <div className="glass-card rounded-2xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+          {todayActivity.length === 0 ? (
+            <p className="text-sm text-center py-10" style={{ color: 'var(--text-secondary)' }}>
+              Aucune activité aujourd&apos;hui.
+            </p>
+          ) : (
+            <ul>
+              {todayActivity.map((it) => {
+                const Icon = it.Icon
+                const fg = it.tone === 'accent' ? 'var(--accent)' : it.tone === 'rose' ? '#fb7185' : 'var(--text-secondary)'
+                const tileBg = it.tone === 'accent' ? 'var(--accent-subtle)' : it.tone === 'rose' ? 'rgba(244,63,94,0.12)' : 'var(--bg-elevated)'
+                const row = (
+                  <div className="flex items-center gap-3 px-4 py-3">
+                    <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: tileBg, color: fg }}>
+                      <Icon className="w-4 h-4" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-2 min-w-0">
+                        <span className="text-[10px] font-bold uppercase tracking-wider shrink-0" style={{ color: fg }}>{it.label}</span>
+                        <span className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{it.text}</span>
+                      </span>
+                      {it.sub && <span className="block text-xs truncate" style={{ color: 'var(--text-secondary)' }}>{it.sub}</span>}
+                    </span>
+                    <span className="text-xs tabular-nums shrink-0" style={{ color: 'var(--text-muted)' }}>{feedTimeFr(it.timeISO)}</span>
+                  </div>
+                )
+                return (
+                  <li key={it.key} className="border-t first:border-t-0" style={{ borderColor: 'var(--border)' }}>
+                    {it.href
+                      ? <Link href={it.href} className="block transition-colors duration-150 motion-reduce:transition-none hover:bg-[var(--bg-elevated)]">{row}</Link>
+                      : row}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </div>
+      </section>
     </div>
   )
 }
