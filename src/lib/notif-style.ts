@@ -7,7 +7,7 @@
 // emerald = the AutoDex brand accent (var(--accent)) — no indigo.
 // ─────────────────────────────────────────────────────────────────────
 
-import { type LucideIcon, AlertTriangle, Clock, PackageX, UserX, AlertOctagon } from 'lucide-react'
+import { type LucideIcon, AlertTriangle, Clock, PackageX, UserX, AlertOctagon, Banknote, PhoneOff, XCircle } from 'lucide-react'
 import type { NotificationType } from '@/lib/types'
 
 export type Severity = 'critical' | 'warning' | 'info'
@@ -27,6 +27,9 @@ export function notifMeta(type: NotificationType): NotifMeta {
     case 'stock_rupture':   return { Icon: PackageX,      severity: 'warning',  label: 'Rupture de stock' }
     case 'vendor_inactive': return { Icon: UserX,         severity: 'warning',  label: 'Vendeur inactif' }
     case 'reminder':        return { Icon: Clock,         severity: 'info',     label: 'Rappel' }
+    case 'gros_paiement':   return { Icon: Banknote,      severity: 'info',     label: 'Gros paiement' }
+    case 'client_silence_3':return { Icon: PhoneOff,      severity: 'warning',  label: 'Client ne répond plus' }
+    case 'annulation':      return { Icon: XCircle,       severity: 'critical', label: 'Location annulée' }
     default:                return { Icon: AlertTriangle, severity: 'info',     label: 'Alerte' }
   }
 }

@@ -588,8 +588,11 @@ export type NotificationType =
   | 'lead_stagnant'
   | 'stock_rupture'
   | 'vendor_inactive'
-  | 'reminder'     // migration 34 — assignee-targeted reminder
-  | 'escalation'   // migration 34 — owner+manager escalation
+  | 'reminder'          // migration 34 — assignee-targeted reminder
+  | 'escalation'        // migration 34 — owner+manager escalation
+  | 'gros_paiement'     // owner — rental payment ≥ threshold today
+  | 'client_silence_3'  // owner — lead/prospect at tentative_3 (no response)
+  | 'annulation'        // owner — rental cancelled in the last 24h
 
 export type Notification = {
   id: string
@@ -612,6 +615,9 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   vendor_inactive: 'Vendeur inactif',
   reminder:        'Rappel',
   escalation:      'Escalade',
+  gros_paiement:    'Gros paiement',
+  client_silence_3: 'Client ne répond plus',
+  annulation:       'Location annulée',
 }
 
 // ── Integrations (Meta OAuth) ────────────────────────────────────

@@ -41,6 +41,18 @@ type LeadRow = {
 
 type VehicleRow = { brand: string; model: string; status: string }
 
+// Owner-rule embeds (Supabase nested selects arrive as object OR 1-el array).
+function firstOf<T>(v: T | T[] | null | undefined): T | null {
+  return Array.isArray(v) ? (v[0] ?? null) : (v ?? null)
+}
+const fmtDzd = (n: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(n)
+
+type CustomerEmbed = { full_name: string | null }
+type RentalEmbed = { id: string; contract_number: string | null; customer: CustomerEmbed | CustomerEmbed[] | null }
+type PaymentRow = { id: string; amount: number | string; created_at: string; rental: RentalEmbed | RentalEmbed[] | null }
+type SilenceRow = { id: string; full_name: string; updated_at: string | null; created_at: string }
+type CancelRow = { id: string; contract_number: string | null; updated_at: string; customer: CustomerEmbed | CustomerEmbed[] | null }
+
 export async function GET(req: NextRequest) {
   let ctx: Awaited<ReturnType<typeof requireShowroomMember>>
   try {
@@ -54,6 +66,8 @@ export async function GET(req: NextRequest) {
   const seeAll = canSeeAllNotifications(ctx.role as AppRole) || ctx.isSuperAdmin
   const nowDate = new Date()
   const now = nowDate.getTime()
+  // Server-local midnight "today" — shared by vendor_inactive + gros_paiement.
+  const dayStart = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate()).toISOString()
   const alerts: ComputedAlert[] = []
 
   // ── Rule 1 — leads 'new' older than 48h ───────────────────
@@ -112,11 +126,6 @@ export async function GET(req: NextRequest) {
   // Always evaluated for the caller themselves (a self-nudge), regardless
   // of seeAll — it's about the viewer's own day, not someone else's.
   {
-    const dayStart = new Date(
-      nowDate.getFullYear(),
-      nowDate.getMonth(),
-      nowDate.getDate(),
-    ).toISOString()
     const { count } = await sb
       .from('activities')
       .select('id', { count: 'exact', head: true })
@@ -177,6 +186,108 @@ export async function GET(req: NextRequest) {
           })
         }
       }
+    }
+  }
+
+  // ── Rule 5 — large payments today (owner-level) ───────────
+  // Notable cash-in events. SEUIL ajustable / future config showroom.
+  // rental_payments has no showroom_id — RLS scopes it via its rental.
+  if (seeAll) {
+    const SEUIL_GROS_PAIEMENT = 50_000 // DZD
+    const { data } = await sb
+      .from('rental_payments')
+      .select('id, amount, created_at, rental:rentals(id, contract_number, customer:rental_customers(full_name))')
+      .gte('amount', SEUIL_GROS_PAIEMENT)
+      .gte('created_at', dayStart)
+      .order('created_at', { ascending: false })
+      .limit(SCAN_LIMIT)
+    for (const p of (data ?? []) as PaymentRow[]) {
+      const rental = firstOf(p.rental)
+      const customer = firstOf(rental?.customer)
+      alerts.push({
+        key: `gros_paiement:${p.id}`,
+        type: 'gros_paiement',
+        title: 'Gros paiement',
+        message: `${fmtDzd(Number(p.amount))} DZD — ${customer?.full_name ?? 'Client'} (${rental?.contract_number ?? 'sans n°'})`,
+        lead_id: null,
+        vehicle_id: null,
+        since: p.created_at,
+        href: rental?.id ? `/dashboard/location/contrats/${rental.id}` : '/dashboard/location/contrats',
+      })
+    }
+  }
+
+  // ── Rule 6 — clients at 3 unanswered attempts (owner-level) ─
+  if (seeAll) {
+    // Sales leads: `suivi` is the relance tracker (tentative_3 = 3 attempts),
+    // still in the pipeline (not won/lost).
+    let lq = sb
+      .from('leads')
+      .select('id, full_name, updated_at, created_at')
+      .eq('suivi', 'tentative_3')
+      .neq('status', 'won')
+      .neq('status', 'lost')
+    if (ctx.showroomId) lq = lq.eq('showroom_id', ctx.showroomId)
+    const { data: lr } = await lq.order('updated_at', { ascending: true }).limit(SCAN_LIMIT)
+    for (const l of (lr ?? []) as SilenceRow[]) {
+      alerts.push({
+        key: `client_silence_3:${l.id}`,
+        type: 'client_silence_3',
+        title: 'Client ne répond plus',
+        message: `${l.full_name} — 3 tentatives sans réponse`,
+        lead_id: l.id,
+        vehicle_id: null,
+        since: l.updated_at ?? l.created_at,
+        href: `/dashboard/prospects?lead=${l.id}`,
+      })
+    }
+    // Rental prospects: migration 45 made `status` the suivi field, so
+    // status='tentative_3' = 3 attempts (already non-converti / non-perdu).
+    let pq = sb
+      .from('rental_prospects')
+      .select('id, full_name, updated_at, created_at')
+      .eq('status', 'tentative_3')
+      .is('deleted_at', null)
+    if (ctx.showroomId) pq = pq.eq('showroom_id', ctx.showroomId)
+    const { data: pr } = await pq.order('updated_at', { ascending: true }).limit(SCAN_LIMIT)
+    for (const p of (pr ?? []) as SilenceRow[]) {
+      alerts.push({
+        key: `client_silence_3:rp:${p.id}`,
+        type: 'client_silence_3',
+        title: 'Client ne répond plus',
+        message: `${p.full_name} — 3 tentatives sans réponse`,
+        lead_id: null,
+        vehicle_id: null,
+        since: p.updated_at ?? p.created_at,
+        href: '/dashboard/location/prospects',
+      })
+    }
+  }
+
+  // ── Rule 7 — rentals cancelled in the last 24h (owner-level) ─
+  // No cancelled_at column in DB → recency inferred from updated_at.
+  if (seeAll) {
+    const cutoff = new Date(now - 24 * HOURS).toISOString()
+    let q = sb
+      .from('rentals')
+      .select('id, contract_number, updated_at, customer:rental_customers(full_name)')
+      .eq('status', 'cancelled')
+      .gte('updated_at', cutoff)
+      .is('deleted_at', null)
+    if (ctx.showroomId) q = q.eq('showroom_id', ctx.showroomId)
+    const { data } = await q.order('updated_at', { ascending: false }).limit(SCAN_LIMIT)
+    for (const r of (data ?? []) as CancelRow[]) {
+      const customer = firstOf(r.customer)
+      alerts.push({
+        key: `annulation:${r.id}`,
+        type: 'annulation',
+        title: 'Location annulée',
+        message: `${customer?.full_name ?? 'Client'} — ${r.contract_number ?? 'sans n°'}`,
+        lead_id: null,
+        vehicle_id: null,
+        since: r.updated_at,
+        href: `/dashboard/location/contrats/${r.id}`,
+      })
     }
   }
 
