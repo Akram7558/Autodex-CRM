@@ -199,7 +199,7 @@ export const translations: Record<Locale, TranslationDict> = {
     'faq.title':                'Questions fréquentes',
     'faq.q1':                   'Combien ça coûte ?',
     'faq.a1':
-      "Nos plans Classique commencent à 15 000 DZD pour 3 mois. La Totale (avec AI chatbot + module location) commence à 30 000 DZD. Voir la section Tarifs.",
+      "Trois formules : Classique (CRM ventes) et Location (gestion de flotte illimitée) démarrent à 15 000 DZD / 3 mois ; La Totale (Vente + Location + IA : chatbot en darija et en français) à 30 000 DZD / 3 mois. Le module location est disponible en formule autonome (Location) ou inclus dans La Totale. 20 jours d'essai gratuit, sans carte bancaire. Voir la section Tarifs.",
     'faq.q2':                   'Combien de temps pour installer AutoDex ?',
     'faq.a2':
       "Setup en 2 minutes. Créez votre compte, ajoutez vos premiers véhicules, invitez votre équipe. Tout est prêt.",
@@ -660,7 +660,7 @@ export const translations: Record<Locale, TranslationDict> = {
     'faq.title':                'الأسئلة الشائعة',
     'faq.q1':                   'كم يكلف؟',
     'faq.a1':
-      'تبدأ باقات Classique من 15 000 دج لمدة 3 أشهر. La Totale (مع المساعد الذكي + وحدة الكراء) تبدأ من 30 000 دج. راجع قسم الأسعار.',
+      'ثلاث صيغ: Classique (CRM للمبيعات) وLocation (إدارة أسطول غير محدود) تبدآن من 15 000 دج لمدة 3 أشهر؛ La Totale (المبيعات + الكراء + الذكاء الاصطناعي: مساعد بالدارجة والفرنسية) من 30 000 دج لمدة 3 أشهر. وحدة الكراء متاحة كصيغة مستقلة (Location) أو مضمّنة في La Totale. 20 يوما تجربة مجانية، بدون بطاقة بنكية. راجع قسم الأسعار.',
     'faq.q2':                   'كم تستغرق عملية التثبيت؟',
     'faq.a2':
       'التثبيت في دقيقتين. أنشئ حسابك، أضف أولى سياراتك، ادعُ فريقك. كل شيء جاهز.',

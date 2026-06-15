@@ -245,7 +245,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   async function handleLogout() {
     await supabase.auth.signOut()
-    router.push('/')
+    router.push('/login')
   }
 
   // Shared sidebar body so desktop + mobile drawer stay in sync.
