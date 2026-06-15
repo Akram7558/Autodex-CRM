@@ -22,7 +22,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import {
   CalendarClock, ChevronLeft, ChevronRight, ChevronDown, ArrowUpRight, ArrowDownLeft,
-  Repeat, AlertTriangle, Car,
+  Repeat, AlertTriangle, Car, List, LayoutGrid,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { getCurrentUserRole } from '@/lib/auth'
@@ -64,6 +64,9 @@ export default function RentalAgendaCalendar() {
   const today = useMemo(() => algiersToday(), [])
   const [monthISO, setMonthISO] = useState(() => monthFirstOf(today))
   const [selectedDay, setSelectedDay] = useState<string>(today)
+  // Desktop view: list (default) or Gantt grid. Mobile always shows the list
+  // (the toggle is hidden < lg); the grid + side panel are grid-mode only.
+  const [viewMode, setViewMode] = useState<'liste' | 'grille'>('liste')
 
   const [rentals, setRentals] = useState<CalendarRental[]>([])   // raw month rentals (unfiltered)
   const [fleet, setFleet] = useState<FleetVehicle[]>([])
@@ -223,6 +226,21 @@ export default function RentalAgendaCalendar() {
           style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
           Aujourd&apos;hui
         </button>
+
+        {/* View toggle — desktop only (mobile is list-forced). */}
+        <div className="hidden lg:flex items-center gap-1 ml-auto rounded-xl p-0.5"
+          style={{ background: 'var(--bg-elevated)' }}>
+          {([['liste', 'Liste', List], ['grille', 'Grille', LayoutGrid]] as const).map(([mode, label, Icon]) => {
+            const active = viewMode === mode
+            return (
+              <button key={mode} type="button" onClick={() => setViewMode(mode)} aria-pressed={active}
+                className="inline-flex items-center gap-1.5 px-3 h-9 rounded-lg text-xs font-semibold transition-colors duration-150 motion-reduce:transition-none"
+                style={active ? { background: 'var(--accent)', color: '#fff' } : { color: 'var(--text-secondary)' }}>
+                <Icon className="w-3.5 h-3.5" />{label}
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {loadError ? (
@@ -306,11 +324,13 @@ export default function RentalAgendaCalendar() {
             </div>
           </div>
 
-          {/* Main: grid (desktop) / list (mobile) + day panel */}
-          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-6 items-start">
+          {/* Main: list (default) / Gantt grid (desktop toggle) + day panel.
+              Mobile ALWAYS shows the list; the grid + panel are grid-mode + lg
+              only. Pure-CSS breakpoint gating (no JS detection). */}
+          <div className={viewMode === 'grille' ? 'grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-6 items-start' : ''}>
             <div className="space-y-3">
-              {/* Desktop grid — Gantt span bars (week-split + lane packing) */}
-              <div className="hidden lg:block glass-card p-4 rounded-2xl overflow-x-auto">
+              {/* Gantt grid — lg only, in 'grille' mode */}
+              <div className={`${viewMode === 'grille' ? 'hidden lg:block' : 'hidden'} glass-card p-4 rounded-2xl overflow-x-auto`}>
                 <div className="min-w-[42rem]">
                   <div className="grid grid-cols-7 gap-1.5 mb-1.5">
                     {WEEKDAYS.map((w, i) => (
@@ -328,47 +348,57 @@ export default function RentalAgendaCalendar() {
                 </div>
               </div>
 
-              {/* Mobile chronological list */}
-              <div className="lg:hidden glass-card p-4 rounded-2xl">
-                {loading ? (
-                  <div className="space-y-2">
-                    {Array.from({ length: 4 }, (_, i) => (
-                      <div key={i} className="h-14 rounded-lg bg-[var(--bg-elevated)] animate-pulse" />
-                    ))}
+              {/* Chronological list — mobile ALWAYS; desktop when 'liste'. Width
+                  constrained on desktop so cards don't stretch across a wide screen. */}
+              <div className={`block ${viewMode === 'liste' ? 'lg:block' : 'lg:hidden'}`}>
+                <div className="lg:max-w-3xl lg:mx-auto">
+                  <div className="glass-card p-4 rounded-2xl">
+                    {loading ? (
+                      <div className="space-y-2">
+                        {Array.from({ length: 4 }, (_, i) => (
+                          <div key={i} className="h-14 rounded-lg bg-[var(--bg-elevated)] animate-pulse" />
+                        ))}
+                      </div>
+                    ) : listDays.length === 0 ? (
+                      <p className="text-sm text-center py-8" style={{ color: 'var(--text-secondary)' }}>
+                        Aucune location ce mois.
+                      </p>
+                    ) : (
+                      <div className="space-y-4">
+                        {listDays.map((d) => {
+                          const b = buckets[d] ?? EMPTY_BUCKET
+                          return (
+                            <div key={d}>
+                              <button type="button" onClick={() => setSelectedDay(d)}
+                                className="text-[11px] font-bold uppercase tracking-wider mb-2"
+                                style={{ color: d === selectedDay ? 'var(--accent)' : 'var(--text-muted)' }}>
+                                {dayHeading(d, today)}
+                              </button>
+                              <ul className="space-y-1.5">
+                                {b.remises.map((r) => <PanelRow key={`${r.id}-r`} r={r} time={r.start_time} kind="remise" />)}
+                                {b.retours.map((r) => <PanelRow key={`${r.id}-t`} r={r} time={r.end_time} kind="retour" />)}
+                              </ul>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
                   </div>
-                ) : listDays.length === 0 ? (
-                  <p className="text-sm text-center py-8" style={{ color: 'var(--text-secondary)' }}>
-                    Aucune location ce mois.
-                  </p>
-                ) : (
-                  <div className="space-y-4">
-                    {listDays.map((d) => {
-                      const b = buckets[d] ?? EMPTY_BUCKET
-                      return (
-                        <div key={d}>
-                          <button type="button" onClick={() => setSelectedDay(d)}
-                            className="text-[11px] font-bold uppercase tracking-wider mb-2"
-                            style={{ color: d === selectedDay ? 'var(--accent)' : 'var(--text-muted)' }}>
-                            {dayHeading(d, today)}
-                          </button>
-                          <ul className="space-y-1.5">
-                            {b.remises.map((r) => <PanelRow key={`${r.id}-r`} r={r} time={r.start_time} kind="remise" />)}
-                            {b.retours.map((r) => <PanelRow key={`${r.id}-t`} r={r} time={r.end_time} kind="retour" />)}
-                          </ul>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
+                </div>
               </div>
 
-              {/* Legend */}
-              <Legend />
+              {/* Legend — explains the Gantt bars → grid-mode + lg only */}
+              <div className={viewMode === 'grille' ? 'hidden lg:block' : 'hidden'}>
+                <Legend />
+              </div>
             </div>
 
-            <DayPanel day={selectedDay} today={today} loading={loading}
-              bucket={buckets[selectedDay] ?? EMPTY_BUCKET}
-              canManage={canManage} freeVehicles={freeVehicles} fleetTotal={fleet.length} />
+            {/* Day panel — grid-mode feature (lg only) */}
+            <div className={viewMode === 'grille' ? 'hidden lg:block' : 'hidden'}>
+              <DayPanel day={selectedDay} today={today} loading={loading}
+                bucket={buckets[selectedDay] ?? EMPTY_BUCKET}
+                canManage={canManage} freeVehicles={freeVehicles} fleetTotal={fleet.length} />
+            </div>
           </div>
         </>
       )}
