@@ -70,6 +70,7 @@ export function internalNotifyAddress(): string {
 
 const SITE_URL  = 'https://www.autodex.store'
 const ESC_QUOTE = (s: string) => s.replace(/[<>]/g, '')
+const fmtDzd    = (n: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(n)
 
 function shellHtml(inner: string): string {
   return `<!doctype html>
@@ -265,6 +266,71 @@ L'équipe AutoDex`
     </table>
     ${ctaButton('Accéder à mon dashboard', SITE_URL)}
     <p style="margin:0 0 0 0;color:#52525b;">Pour toute question, contactez-nous sur WhatsApp.</p>
+  `)
+
+  return { subject, text, html }
+}
+
+// ── Weekly digest (to owner) ────────────────────────────────────────
+// Module-aware: the ventes section shows only when module_vente is on, the
+// location section only when module_location is on. The caller skips sending
+// entirely when there is no activity, so this template assumes ≥1 metric.
+export function weeklyDigestEmail(args: {
+  showroomName: string
+  periodLabel:  string   // e.g. "Semaine du 9 juin au 16 juin"
+  dashboardUrl: string
+  metrics: {
+    newLeads:  number
+    vente?:    { count: number; ca: number } | null         // module_vente
+    location?: { newRentals: number; collected: number } | null // module_location
+    alerts?:   { overdue: number; bigPayments: number; silent: number } | null
+  }
+}): { subject: string; text: string; html: string } {
+  const showroom = ESC_QUOTE(args.showroomName)
+  const period   = ESC_QUOTE(args.periodLabel)
+  const m = args.metrics
+  const a = m.alerts
+  const hasAlerts = !!a && (a.overdue + a.bigPayments + a.silent) > 0
+  const subject = `Récap de la semaine — ${args.showroomName}`
+
+  const row = (label: string, value: string) =>
+    `<tr><td style="padding:10px 16px;border-top:1px solid #f4f4f5;color:#52525b;">${label}</td>` +
+    `<td style="padding:10px 16px;border-top:1px solid #f4f4f5;text-align:right;font-weight:700;color:#18181b;">${value}</td></tr>`
+
+  const rows: string[] = [row('Nouveaux prospects', String(m.newLeads))]
+  if (m.vente) {
+    rows.push(row('Ventes conclues', String(m.vente.count)))
+    rows.push(row("Chiffre d'affaires", `${fmtDzd(m.vente.ca)} DZD`))
+  }
+  if (m.location) {
+    rows.push(row('Nouveaux contrats', String(m.location.newRentals)))
+    rows.push(row('Encaissé (location)', `${fmtDzd(m.location.collected)} DZD`))
+  }
+
+  const alertHtml = hasAlerts && a
+    ? `<p style="margin:16px 0 0 0;padding:12px 16px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;color:#9a3412;font-size:13px;">` +
+      `<strong>À surveiller :</strong> ${a.overdue} retard(s) · ${a.bigPayments} gros paiement(s) · ${a.silent} client(s) sans réponse.</p>`
+    : ''
+
+  const text =
+`Récap de la semaine — ${args.showroomName}
+${args.periodLabel}
+
+Nouveaux prospects : ${m.newLeads}
+${m.vente ? `Ventes conclues : ${m.vente.count} · Chiffre d'affaires : ${fmtDzd(m.vente.ca)} DZD\n` : ''}${m.location ? `Nouveaux contrats : ${m.location.newRentals} · Encaissé : ${fmtDzd(m.location.collected)} DZD\n` : ''}${hasAlerts && a ? `À surveiller : ${a.overdue} retard(s), ${a.bigPayments} gros paiement(s), ${a.silent} client(s) sans réponse\n` : ''}
+Ouvrir mon tableau de bord : ${args.dashboardUrl}
+
+L'équipe AutoDex`
+
+  const html = shellHtml(`
+    <p style="margin:0 0 4px 0;">Bonjour,</p>
+    <p style="margin:0 0 16px 0;">Voici le récap de <strong>${showroom}</strong> — <strong>${period}</strong>.</p>
+    <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;background:#fafafa;border:1px solid #e4e4e7;border-radius:10px;overflow:hidden;font-size:14px;">
+      ${rows.join('')}
+    </table>
+    ${alertHtml}
+    ${ctaButton('Ouvrir mon tableau de bord', args.dashboardUrl)}
+    <p style="margin:0;color:#52525b;">Bonne semaine,<br/>L'équipe AutoDex</p>
   `)
 
   return { subject, text, html }
