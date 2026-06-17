@@ -361,6 +361,31 @@ function PlanCard({ plan, popular }: { plan: Plan; popular: boolean }) {
         {/* CTA */}
         <Link
           href={`/register?plan=${encodeURIComponent(plan.id)}`}
+          onClick={() => {
+            // InitiateCheckout — fires before client-side nav. price is always
+            // a number here. Guarded → safe no-op when pixels aren't loaded.
+            try {
+              if (typeof window !== 'undefined' && typeof window.fbq === 'function') {
+                window.fbq('track', 'InitiateCheckout', {
+                  content_name:     plan.name,
+                  content_category: plan.plan_type,
+                  content_ids:      [plan.id],
+                  content_type:     'product',
+                  value:            plan.price,
+                  currency:         'DZD',
+                })
+              }
+            } catch {}
+            try {
+              if (typeof window !== 'undefined' && window.ttq && typeof window.ttq.track === 'function') {
+                window.ttq.track('InitiateCheckout', {
+                  value:    plan.price,
+                  currency: 'DZD',
+                  contents: [{ content_id: plan.id, content_type: 'product', content_name: plan.name }],
+                })
+              }
+            } catch {}
+          }}
           className="mt-8 inline-flex items-center justify-center gap-2 w-full h-12 rounded-xl text-sm font-semibold text-white transition-all duration-300 hover:-translate-y-0.5"
           style={{
             background: 'var(--accent)',

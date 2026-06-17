@@ -106,6 +106,36 @@ export default function Register() {
     return () => { cancelled = true }
   }, [planParam])
 
+  // Best-effort ViewContent on arrival with a chosen plan (?plan=). No extra
+  // fetch — name/price come from the badge's chosenPlan IF already resolved,
+  // else only the plan id is sent. Fired once per planParam (we intentionally
+  // don't re-fire when chosenPlan resolves, to avoid double-counting).
+  // Guarded → safe no-op when the pixels aren't loaded / env IDs are unset.
+  useEffect(() => {
+    if (!planParam) return
+    const name  = chosenPlan?.name
+    const price = typeof chosenPlan?.price === 'number' ? chosenPlan.price : undefined
+    try {
+      if (typeof window !== 'undefined' && typeof window.fbq === 'function') {
+        window.fbq('track', 'ViewContent', {
+          content_name: name || 'Register',
+          content_ids:  [planParam],
+          content_type: 'product',
+          ...(price !== undefined ? { value: price, currency: 'DZD' } : {}),
+        })
+      }
+    } catch {}
+    try {
+      if (typeof window !== 'undefined' && window.ttq && typeof window.ttq.track === 'function') {
+        window.ttq.track('ViewContent', {
+          ...(price !== undefined ? { value: price, currency: 'DZD' } : {}),
+          contents: [{ content_id: planParam, content_type: 'product', content_name: name || '' }],
+        })
+      }
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planParam])
+
   const strength = useMemo(() => passwordStrength(form.password), [form.password])
   const meta     = STRENGTH_META[strength]
   const mismatch = form.password_confirm.length > 0 && form.password !== form.password_confirm
@@ -150,17 +180,31 @@ export default function Register() {
         return
       }
 
-      // ── 2. Pixels (best-effort, guarded) ────────────────────────
-      try {
-        if (typeof window !== 'undefined' && typeof window.fbq === 'function') {
-          window.fbq('track', 'Lead', { content_name: 'Register' })
-        }
-      } catch {}
-      try {
-        if (typeof window !== 'undefined' && window.ttq && typeof window.ttq.track === 'function') {
-          window.ttq.track('SubmitForm', { content_name: 'Register' })
-        }
-      } catch {}
+      // ── 2. Pixels — trial created = the canonical signup conversion.
+      // Best-effort + guarded; value/currency only when a numeric price is
+      // known (from the badge's chosenPlan, no extra fetch).
+      {
+        const planName  = chosenPlan?.name || 'Register'
+        const planPrice = typeof chosenPlan?.price === 'number' ? chosenPlan.price : undefined
+        try {
+          if (typeof window !== 'undefined' && typeof window.fbq === 'function') {
+            window.fbq('track', 'CompleteRegistration', {
+              content_name: planName,
+              status:       true,
+              ...(planPrice !== undefined ? { value: planPrice, currency: 'DZD' } : {}),
+            })
+          }
+        } catch {}
+        try {
+          if (typeof window !== 'undefined' && window.ttq && typeof window.ttq.track === 'function') {
+            window.ttq.track('CompleteRegistration', {
+              content_name: planName,
+              ...(planParam ? { contents: [{ content_id: planParam, content_type: 'product', content_name: chosenPlan?.name || '' }] } : {}),
+              ...(planPrice !== undefined ? { value: planPrice, currency: 'DZD' } : {}),
+            })
+          }
+        } catch {}
+      }
 
       // ── 3. Sign the user in (option (a)) ────────────────────────
       // Reuse the credentials we already have. On success, hard-nav to
