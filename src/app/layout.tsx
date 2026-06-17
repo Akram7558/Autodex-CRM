@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import Script from "next/script";
 import { Geist_Mono, DM_Sans } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
+import PublicPixels from "@/components/analytics/PublicPixels";
 
 // DM Sans — primary brand font (FoCar redesign). Self-hosted by Next
 // via next/font/google, so no external Google Fonts request at runtime
@@ -34,21 +34,6 @@ const themeBootstrap = `(function(){try{var k='autodex-theme';var s=localStorage
 // landing's RTL switch doesn't flash.
 const localeBootstrap = `(function(){try{var l=localStorage.getItem('autodex-locale')||'fr';document.documentElement.setAttribute('lang',l);document.documentElement.setAttribute('dir',l==='ar'?'rtl':'ltr');}catch(e){}})();`;
 
-// ── Marketing pixel snippets ────────────────────────────────────────
-// Loaded via next/script with `afterInteractive`. Each one only mounts
-// when its env var is set, so previews / dev / sites without ad
-// accounts don't ship a 404'ing snippet.
-const META_PIXEL_ID    = process.env.NEXT_PUBLIC_META_PIXEL_ID
-const TIKTOK_PIXEL_ID  = process.env.NEXT_PUBLIC_TIKTOK_PIXEL_ID
-
-const metaPixelSnippet = META_PIXEL_ID
-  ? `!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');fbq('init','${META_PIXEL_ID}');fbq('track','PageView');`
-  : null
-
-const tiktokPixelSnippet = TIKTOK_PIXEL_ID
-  ? `!function(w,d,t){w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie","holdConsent","revokeConsent","grantConsent"],ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.instance=function(t){for(var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n]);return e},ttq.load=function(e,n){var r="https://analytics.tiktok.com/i18n/pixel/events.js",o=n&&n.partner;ttq._i=ttq._i||{},ttq._i[e]=[],ttq._i[e]._u=r,ttq._t=ttq._t||{},ttq._t[e]=+new Date,ttq._o=ttq._o||{},ttq._o[e]=n||{};var i=document.createElement("script");i.type="text/javascript",i.async=!0,i.src=r+"?sdkid="+e+"&lib="+t;var a=document.getElementsByTagName("script")[0];a.parentNode.insertBefore(i,a)};ttq.load('${TIKTOK_PIXEL_ID}');ttq.page();}(window,document,'ttq');`
-  : null
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -67,26 +52,8 @@ export default function RootLayout({
       </head>
       <body className="h-full">
         <ThemeProvider>{children}</ThemeProvider>
-        {/* Pixels: load after the page is interactive — don't block FCP. */}
-        {metaPixelSnippet && (
-          <Script id="meta-pixel" strategy="afterInteractive" dangerouslySetInnerHTML={{ __html: metaPixelSnippet }} />
-        )}
-        {tiktokPixelSnippet && (
-          <Script id="tiktok-pixel" strategy="afterInteractive" dangerouslySetInnerHTML={{ __html: tiktokPixelSnippet }} />
-        )}
-        {/* <noscript> fallback for Meta — just shows a 1x1 image. */}
-        {META_PIXEL_ID && (
-          <noscript>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              height="1"
-              width="1"
-              style={{ display: 'none' }}
-              alt=""
-              src={`https://www.facebook.com/tr?id=${META_PIXEL_ID}&ev=PageView&noscript=1`}
-            />
-          </noscript>
-        )}
+        {/* Marketing pixels — public funnel routes only (excludes /dashboard). */}
+        <PublicPixels />
       </body>
     </html>
   );
