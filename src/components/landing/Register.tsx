@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { WILAYAS_58, type SaasPlan } from '@/lib/types'
 import { supabase } from '@/lib/supabase'
+import { readAttribution } from '@/lib/attribution'
 import { cn } from '@/lib/utils'
 
 // ─────────────────────────────────────────────────────────────────────
@@ -170,6 +171,8 @@ export default function Register() {
           // Raw ?plan= id — the server validates it; invalid/missing
           // silently falls back to the default vente-only trial.
           plan_id:       planParam,
+          // First-touch attribution (cookie) → server derives source + notes.
+          attribution:   readAttribution(),
         }),
       })
       const json = await res.json().catch(() => ({}))

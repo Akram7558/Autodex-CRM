@@ -22,6 +22,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { normalizePhone, PhoneNormalizeError } from '@/lib/phone'
+import { deriveSource, formatAttributionNote, sanitizeAttribution } from '@/lib/attribution'
 import {
   SAAS_SIZE_VALUES, type SaasShowroomSize,
 } from '@/lib/types'
@@ -99,6 +100,12 @@ export async function POST(req: NextRequest) {
     // (/register?plan=<id>). Validated below against ACTIVE saas_plans;
     // invalid/missing falls back to the default vente-only trial.
     const planIdRaw     = body.plan_id ? String(body.plan_id).trim() : ''
+    // First-touch acquisition attribution forwarded from the client cookie.
+    // sanitizeAttribution coerces the untrusted body to clean string fields
+    // (a forged non-string value would otherwise throw upstream of the
+    // best-effort insert and abort signup). Shapes source + notes only.
+    const attribution = sanitizeAttribution(body.attribution)
+    const derivedSource = deriveSource(attribution) // one of the 6 CHECK values
 
     if (!showroom_name) return NextResponse.json({ error: 'Nom du showroom requis.' }, { status: 400 })
     if (!full_name)     return NextResponse.json({ error: 'Nom complet requis.' },     { status: 400 })
@@ -265,6 +272,14 @@ export async function POST(req: NextRequest) {
         assignedTo = (pickedId as string | null) ?? null
       } catch { /* ignore — no distribution configured */ }
 
+      // Keep BOTH the plan note and the campaign detail in `notes` (no utm_*
+      // columns exist); source is the CHECK-valid derivedSource resolved above.
+      const attrNote = formatAttributionNote(attribution)
+      const notes = [
+        chosenPlanName ? `Plan choisi : ${chosenPlanName}` : '',
+        attrNote,
+      ].filter(Boolean).join('\n')
+
       await admin.from('super_admin_prospects').insert([{
         full_name,
         phone,
@@ -273,13 +288,9 @@ export async function POST(req: NextRequest) {
         showroom_name,
         showroom_size,
         suivi:         'nouveau',
-        // Source enum doesn't include 'register_page' yet — tag as
-        // landing_page; the originating page name is in the email body.
-        source:        'landing_page',
+        source:        derivedSource,
         assigned_to:   assignedTo,
-        // Lightweight record of the plan picked on the pricing page —
-        // the trial itself carries no plan_id (it shapes modules only).
-        ...(chosenPlanName ? { notes: `Plan choisi : ${chosenPlanName}` } : {}),
+        ...(notes ? { notes } : {}),
       }]).then(() => {}, () => {})
     } catch { /* ignore */ }
 
@@ -303,7 +314,7 @@ export async function POST(req: NextRequest) {
       showroomName: showroom_name,
       endsAtFr:     trialEndsAtFr,
     })
-    const internalText = `${internal.text}\nTel: ${phone}\nSource: register_page`
+    const internalText = `${internal.text}\nTel: ${phone}\nSource: ${derivedSource}`
     const internalRes = await sendEmail({
       to:      internalNotifyAddress(),
       subject: internal.subject,

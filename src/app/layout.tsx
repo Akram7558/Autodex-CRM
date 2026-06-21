@@ -3,6 +3,7 @@ import { Geist_Mono, DM_Sans } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import PublicPixels from "@/components/analytics/PublicPixels";
+import AttributionCapture from "@/components/analytics/AttributionCapture";
 
 // DM Sans — primary brand font (FoCar redesign). Self-hosted by Next
 // via next/font/google, so no external Google Fonts request at runtime
@@ -52,6 +53,8 @@ export default function RootLayout({
       </head>
       <body className="h-full">
         <ThemeProvider>{children}</ThemeProvider>
+        {/* First-touch acquisition attribution (cookie, app-wide). */}
+        <AttributionCapture />
         {/* Marketing pixels — public funnel routes only (excludes /dashboard). */}
         <PublicPixels />
       </body>
