@@ -109,6 +109,25 @@ function ctaButton(label: string, href: string): string {
   </p>`
 }
 
+// Build a WhatsApp conversation link to the AutoDex team with a prefilled
+// message. NEXT_PUBLIC_AUTODEX_WHATSAPP may be a full URL (used as-is) or a
+// phone number (sanitized to digits → https://wa.me/<digits>). Falls back to
+// SITE_URL if the env var is missing/unusable so the CTA is never broken.
+function whatsappCtaUrl(message: string): string {
+  const raw = (process.env.NEXT_PUBLIC_AUTODEX_WHATSAPP ?? '').trim()
+  if (!raw) return SITE_URL
+  let base: string
+  if (raw.startsWith('http')) {
+    base = raw
+  } else {
+    const digits = raw.replace(/\D/g, '')
+    if (!digits) return SITE_URL
+    base = `https://wa.me/${digits}`
+  }
+  const sep = base.includes('?') ? '&' : '?'
+  return `${base}${sep}text=${encodeURIComponent(message)}`
+}
+
 // ── Welcome / start of trial (to owner) ─────────────────────────────
 export function welcomeTrialEmail(args: {
   ownerName:      string
@@ -173,7 +192,7 @@ L'équipe AutoDex`
     <p style="margin:0 0 12px 0;">Bonjour,</p>
     <p style="margin:0 0 12px 0;">Votre essai gratuit AutoDex pour <strong>${ESC_QUOTE(args.showroomName)}</strong> expire le <strong>${args.endsAtFr}</strong>.</p>
     <p style="margin:0 0 12px 0;">Contactez-nous pour continuer à utiliser AutoDex après cette date.</p>
-    ${ctaButton('Accéder à mon dashboard', SITE_URL)}
+    ${ctaButton('Activer mon abonnement', whatsappCtaUrl(`Bonjour, je souhaite activer mon abonnement AutoDex pour ${args.showroomName} avant la fin de mon essai.`))}
   `)
   return { subject, text, html }
 }
@@ -196,7 +215,34 @@ L'équipe AutoDex`
     <p style="margin:0 0 12px 0;">Bonjour,</p>
     <p style="margin:0 0 12px 0;">Votre essai gratuit AutoDex pour <strong>${ESC_QUOTE(args.showroomName)}</strong> expire <strong>demain</strong> (${args.endsAtFr}).</p>
     <p style="margin:0 0 12px 0;">Contactez-nous dès aujourd'hui pour continuer à utiliser AutoDex.</p>
-    ${ctaButton('Accéder à mon dashboard', SITE_URL)}
+    ${ctaButton('Activer mon abonnement', whatsappCtaUrl(`Bonjour, je souhaite activer mon abonnement AutoDex pour ${args.showroomName} avant la fin de mon essai.`))}
+  `)
+  return { subject, text, html }
+}
+
+// ── Trial expired (to owner) — sent by STEP A of the trial-check cron ─
+export function trialExpiredEmail(args: {
+  showroomName: string
+  endsAtFr:     string
+}): { subject: string; text: string; html: string } {
+  const subject = 'Votre essai AutoDex a expiré'
+  const cta = whatsappCtaUrl(
+    `Bonjour, mon essai AutoDex (${args.showroomName}) a expiré, je souhaite activer un abonnement.`,
+  )
+  const text =
+`Bonjour,
+
+Votre essai gratuit AutoDex pour ${args.showroomName} a expiré le ${args.endsAtFr}. L'accès à votre compte est désormais suspendu.
+
+Pour réactiver AutoDex et continuer à gérer votre showroom, activez un abonnement en nous contactant sur WhatsApp :
+${cta}
+
+L'équipe AutoDex`
+  const html = shellHtml(`
+    <p style="margin:0 0 12px 0;">Bonjour,</p>
+    <p style="margin:0 0 12px 0;">Votre essai gratuit AutoDex pour <strong>${ESC_QUOTE(args.showroomName)}</strong> a expiré le <strong>${args.endsAtFr}</strong>. L'accès à votre compte est désormais <strong>suspendu</strong>.</p>
+    <p style="margin:0 0 12px 0;">Réactivez AutoDex en activant un abonnement :</p>
+    ${ctaButton('Activer mon abonnement', cta)}
   `)
   return { subject, text, html }
 }

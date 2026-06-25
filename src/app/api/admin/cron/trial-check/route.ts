@@ -34,7 +34,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import {
   sendEmail, internalNotifyAddress,
-  trialJ1Email, trialJ3Email,
+  trialJ1Email, trialJ3Email, trialExpiredEmail,
   formatDateFr,
 } from '@/lib/resend'
 
@@ -82,6 +82,42 @@ export async function GET(req: NextRequest) {
 
   const now = new Date()
 
+  // ── Helper: resolve owner email per showroom id (user_roles role='owner'
+  // → auth.users via paginated listUsers). Shared by the J-1/J-3 reminders
+  // AND the STEP A expired-trial email so the lookup lives in one place.
+  async function resolveOwnerEmails(ids: string[]): Promise<Map<string, string | null>> {
+    const map = new Map<string, string | null>()
+    if (ids.length === 0) return map
+    const { data: owners, error: oErr } = await admin
+      .from('user_roles')
+      .select('user_id, showroom_id')
+      .in('showroom_id', ids)
+      .eq('role', 'owner')
+    if (oErr) {
+      console.warn('[cron] owner lookup failed:', oErr.message)
+      return map
+    }
+    const wantedUserIds = new Set((owners ?? []).map(o => o.user_id as string))
+    const emailById = new Map<string, string | null>()
+    for (let page = 1; page <= 5 && emailById.size < wantedUserIds.size; page++) {
+      const { data, error: lErr } = await admin.auth.admin.listUsers({ page, perPage: 200 })
+      if (lErr) {
+        console.warn('[cron] listUsers failed:', lErr.message)
+        break
+      }
+      for (const u of data.users) if (wantedUserIds.has(u.id)) emailById.set(u.id, u.email ?? null)
+      if (data.users.length < 200) break
+    }
+    for (const o of (owners ?? [])) {
+      const email = emailById.get(o.user_id as string) ?? null
+      // First-write-wins; a showroom could in theory have multiple owners, so
+      // we keep the first non-null email.
+      if (!map.has(o.showroom_id as string)) map.set(o.showroom_id as string, email)
+      else if (email && !map.get(o.showroom_id as string)) map.set(o.showroom_id as string, email)
+    }
+    return map
+  }
+
   // ── STEP A — Disable expired trials ────────────────────────────────
   const { data: expiredRows, error: expErr } = await admin
     .from('showrooms')
@@ -94,13 +130,33 @@ export async function GET(req: NextRequest) {
   }
 
   const disabled: Array<{ id: string; name: string }> = []
+  const disabledRows: ShowroomLite[] = []
   for (const s of (expiredRows ?? []) as ShowroomLite[]) {
     const { error } = await admin
       .from('showrooms')
       .update({ active: false })
       .eq('id', s.id)
-    if (!error) disabled.push({ id: s.id, name: s.name })
+    if (!error) { disabled.push({ id: s.id, name: s.name }); disabledRows.push(s) }
     else console.warn(`[cron] failed to disable showroom ${s.id}:`, error.message)
+  }
+
+  // Expired-trial email (best-effort). The disable above already happened, so
+  // an email / owner-resolution failure NEVER blocks it. STEP A only selects
+  // is_trial=true AND active=true — and we just flipped active=false — so a
+  // disabled trial is never re-selected → this email fires exactly once.
+  let expired_emails_sent = 0
+  if (disabledRows.length > 0) {
+    const ownerEmails = await resolveOwnerEmails(disabledRows.map(r => r.id))
+    for (const s of disabledRows) {
+      const endsFr = s.trial_ends_at ? formatDateFr(s.trial_ends_at) : ''
+      const tpl    = trialExpiredEmail({ showroomName: s.name, endsAtFr: endsFr })
+      const recipients: string[] = [internalNotifyAddress()]
+      const ownerEmail = ownerEmails.get(s.id) ?? null
+      if (ownerEmail) recipients.unshift(ownerEmail)
+      const r = await sendEmail({ to: recipients, subject: tpl.subject, text: tpl.text, html: tpl.html })
+      if (r.ok) expired_emails_sent++
+      else console.warn(`[cron] expired send failed for ${s.id}:`, r.error)
+    }
   }
 
   // ── Helper: pull trials whose trial_ends_at falls on a given UTC day,
@@ -120,43 +176,7 @@ export async function GET(req: NextRequest) {
       .lte('trial_ends_at', end)
     if (error || !rows || rows.length === 0) return []
 
-    // Resolve owner emails for these showrooms.
-    const ids = rows.map(r => r.id as string)
-    const { data: owners, error: oErr } = await admin
-      .from('user_roles')
-      .select('user_id, showroom_id')
-      .in('showroom_id', ids)
-      .eq('role', 'owner')
-    if (oErr) {
-      console.warn('[cron] owner lookup failed:', oErr.message)
-      return rows.map(r => ({ ...(r as ShowroomLite), owner_email: null }))
-    }
-
-    // Resolve auth emails (paginated).
-    const wantedUserIds = new Set((owners ?? []).map(o => o.user_id as string))
-    const emailById = new Map<string, string | null>()
-    for (let page = 1; page <= 5 && emailById.size < wantedUserIds.size; page++) {
-      const { data, error: lErr } = await admin.auth.admin.listUsers({ page, perPage: 200 })
-      if (lErr) {
-        console.warn('[cron] listUsers failed:', lErr.message)
-        break
-      }
-      for (const u of data.users) if (wantedUserIds.has(u.id)) emailById.set(u.id, u.email ?? null)
-      if (data.users.length < 200) break
-    }
-    const ownerEmailByShowroom = new Map<string, string | null>()
-    for (const o of (owners ?? [])) {
-      const email = emailById.get(o.user_id as string) ?? null
-      // First-write-wins — there's a unique-on-user_id, so realistically
-      // one owner per user_roles, but a showroom could in theory have
-      // multiple owners; we pick the first non-null email.
-      if (!ownerEmailByShowroom.has(o.showroom_id as string)) {
-        ownerEmailByShowroom.set(o.showroom_id as string, email)
-      } else if (email && !ownerEmailByShowroom.get(o.showroom_id as string)) {
-        ownerEmailByShowroom.set(o.showroom_id as string, email)
-      }
-    }
-
+    const ownerEmailByShowroom = await resolveOwnerEmails(rows.map(r => r.id as string))
     return rows.map(r => ({
       ...(r as ShowroomLite),
       owner_email: ownerEmailByShowroom.get(r.id as string) ?? null,
@@ -492,6 +512,7 @@ Rappelez-le rapidement — chaque heure compte.
   return NextResponse.json({
     disabled: disabled.length,
     disabled_showrooms: disabled,
+    expired_emails_sent,
     j1_sent,
     j3_sent,
     temperatures_refreshed,
