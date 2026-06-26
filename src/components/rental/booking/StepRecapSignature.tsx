@@ -1,26 +1,24 @@
 'use client'
 // ─────────────────────────────────────────────────────────────────────
-// Booking wizard — Step 4: récap + signature.
+// Booking wizard — Step 4: récap.
 // ─────────────────────────────────────────────────────────────────────
-// Read-only recap of the whole booking, plus a raw-canvas signature pad
-// (mouse + touch via Pointer Events, devicePixelRatio-crisp, no library).
-// The signature is OPTIONAL at draft stage — it exports to a PNG data URL
-// in wizard state; the shell uploads it and creates the rental.
+// Read-only recap of the whole booking (vehicle, customer, dates, pricing).
+// Signature capture was removed from the new-contract flow; historical
+// signatures still render on the contract detail page.
 // ─────────────────────────────────────────────────────────────────────
 
-import { useEffect, useRef, useState } from 'react'
-import { Car as CarIcon, User, Eraser, PenLine, CalendarDays } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Car as CarIcon, User, CalendarDays } from 'lucide-react'
 import { getSignedReadUrl } from '@/lib/rental/storage'
 import {
-  type BookingAction, type BookingState,
+  type BookingState,
   computeDurationDays, computePricing, formatDateFr, formatDZD,
 } from '@/components/rental/booking/types'
 
 export default function StepRecapSignature({
-  state, dispatch, onValidity,
+  state, onValidity,
 }: {
   state:      BookingState
-  dispatch:   (a: BookingAction) => void
   onValidity: (valid: boolean) => void
 }) {
   const durationDays = computeDurationDays(state.startDate, state.endDate)
@@ -77,20 +75,6 @@ export default function StepRecapSignature({
         <Line label="Total" strong>{formatDZD(total)}</Line>
         <Line label="Caution" muted>{formatDZD(state.depositAmount)}</Line>
       </section>
-
-      {/* ── Signature ───────────────────────────────────────── */}
-      <section>
-        <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-1 flex items-center gap-2">
-          <PenLine className="w-4 h-4" /> Signature du client
-        </h3>
-        <p className="text-[11px] mb-2" style={{ color: 'var(--text-muted)' }}>
-          Optionnel à ce stade — le brouillon peut être signé plus tard.
-        </p>
-        <SignaturePad
-          value={state.signatureDataUrl}
-          onChange={(dataUrl) => dispatch({ type: 'SET_SIGNATURE', dataUrl })}
-        />
-      </section>
     </div>
   )
 }
@@ -135,121 +119,6 @@ function Thumb({ path }: { path: string | null }) {
       ) : (
         <CarIcon className="w-6 h-6" style={{ color: 'var(--accent)', opacity: 0.5 }} />
       )}
-    </div>
-  )
-}
-
-// ─── Signature pad (raw canvas, Pointer Events, DPR-crisp) ───────────
-function SignaturePad({ value, onChange }: { value: string | null; onChange: (dataUrl: string | null) => void }) {
-  const wrapRef   = useRef<HTMLDivElement>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const ctxRef    = useRef<CanvasRenderingContext2D | null>(null)
-  const drawing   = useRef(false)
-  const last      = useRef<{ x: number; y: number } | null>(null)
-  const [hasInk, setHasInk] = useState(!!value)
-
-  // Initialize the canvas once: size to wrapper × DPR, white bg, and
-  // redraw any existing signature (so navigating back keeps it).
-  useEffect(() => {
-    const canvas = canvasRef.current
-    const wrap = wrapRef.current
-    if (!canvas || !wrap) return
-    const cssW = Math.max(1, Math.floor(wrap.clientWidth))
-    const cssH = 180
-    const dpr = Math.max(1, window.devicePixelRatio || 1)
-    canvas.width = cssW * dpr
-    canvas.height = cssH * dpr
-    canvas.style.width = cssW + 'px'
-    canvas.style.height = cssH + 'px'
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    ctx.scale(dpr, dpr)
-    ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, cssW, cssH)
-    ctx.lineWidth = 2.2
-    ctx.lineCap = 'round'
-    ctx.lineJoin = 'round'
-    ctx.strokeStyle = '#0f172a'
-    ctxRef.current = ctx
-    if (value) {
-      const img = new Image()
-      img.onload = () => ctx.drawImage(img, 0, 0, cssW, cssH)
-      img.src = value
-    }
-    // Initialize once on mount only.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  function pointFromEvent(e: React.PointerEvent<HTMLCanvasElement>) {
-    const rect = e.currentTarget.getBoundingClientRect()
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top }
-  }
-  function onDown(e: React.PointerEvent<HTMLCanvasElement>) {
-    e.currentTarget.setPointerCapture(e.pointerId)
-    drawing.current = true
-    last.current = pointFromEvent(e)
-  }
-  function onMove(e: React.PointerEvent<HTMLCanvasElement>) {
-    if (!drawing.current || !ctxRef.current || !last.current) return
-    const p = pointFromEvent(e)
-    const ctx = ctxRef.current
-    ctx.beginPath()
-    ctx.moveTo(last.current.x, last.current.y)
-    ctx.lineTo(p.x, p.y)
-    ctx.stroke()
-    last.current = p
-    if (!hasInk) setHasInk(true)
-  }
-  function endStroke() {
-    if (!drawing.current) return
-    drawing.current = false
-    last.current = null
-    const canvas = canvasRef.current
-    if (canvas) onChange(canvas.toDataURL('image/png'))
-  }
-  function clear() {
-    const canvas = canvasRef.current
-    const ctx = ctxRef.current
-    if (!canvas || !ctx) return
-    ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, canvas.clientWidth, 180)
-    setHasInk(false)
-    onChange(null)
-  }
-
-  return (
-    <div>
-      <div
-        ref={wrapRef}
-        className="rounded-xl overflow-hidden"
-        style={{ border: '1.5px solid var(--border)' }}
-      >
-        <canvas
-          ref={canvasRef}
-          onPointerDown={onDown}
-          onPointerMove={onMove}
-          onPointerUp={endStroke}
-          onPointerLeave={endStroke}
-          onPointerCancel={endStroke}
-          className="block w-full touch-none cursor-crosshair"
-          style={{ touchAction: 'none', background: '#ffffff' }}
-          aria-label="Zone de signature"
-        />
-      </div>
-      <div className="mt-2 flex items-center justify-between">
-        <span className="text-[11px]" style={{ color: hasInk ? 'var(--accent)' : 'var(--text-muted)' }}>
-          {hasInk ? 'Signature capturée ✓' : 'Signez dans le cadre ci-dessus'}
-        </span>
-        <button
-          type="button"
-          onClick={clear}
-          disabled={!hasInk}
-          className="inline-flex items-center gap-1.5 text-xs font-medium px-3 h-9 rounded-lg disabled:opacity-40"
-          style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
-        >
-          <Eraser className="w-3.5 h-3.5" /> Effacer
-        </button>
-      </div>
     </div>
   )
 }

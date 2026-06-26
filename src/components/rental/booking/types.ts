@@ -37,12 +37,11 @@ export type BookingState = {
   startTime: string   // HH:mm
   endTime:   string   // HH:mm
   customer:  RentalCustomerLite | null
-  // ── chunk 2: pricing + signature ──────────────────────────────
+  // ── chunk 2: pricing ──────────────────────────────────────────
   discountType:     DiscountType
   discountValue:    number
   depositAmount:    number
   notes:            string
-  signatureDataUrl: string | null
 }
 
 export type BookingAction =
@@ -50,7 +49,6 @@ export type BookingAction =
   | { type: 'SET_DATES';    patch: Partial<Pick<BookingState, 'startDate' | 'endDate' | 'startTime' | 'endTime'>> }
   | { type: 'SET_CUSTOMER'; customer: RentalCustomerLite | null }
   | { type: 'SET_PRICING';  patch: Partial<Pick<BookingState, 'discountType' | 'discountValue' | 'depositAmount' | 'notes'>> }
-  | { type: 'SET_SIGNATURE'; dataUrl: string | null }
   | { type: 'GOTO';         step: BookingState['step'] }
   | { type: 'RESET' }
 
@@ -76,7 +74,6 @@ export function initialBookingState(): BookingState {
     discountValue:    0,
     depositAmount:    0,
     notes:            '',
-    signatureDataUrl: null,
   }
 }
 
@@ -89,7 +86,6 @@ export function bookingReducer(s: BookingState, a: BookingAction): BookingState 
     case 'SET_DATES':    return { ...s, ...a.patch }
     case 'SET_CUSTOMER': return { ...s, customer: a.customer }
     case 'SET_PRICING':  return { ...s, ...a.patch }
-    case 'SET_SIGNATURE': return { ...s, signatureDataUrl: a.dataUrl }
     case 'GOTO':         return { ...s, step: a.step }
     case 'RESET':        return initialBookingState()
   }

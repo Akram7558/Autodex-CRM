@@ -3,7 +3,7 @@
 // BookingWizard — 4-step rental contract creation (Phase 2B + chunk D).
 // ─────────────────────────────────────────────────────────────────────
 //   1 Véhicule & dates (availability)   2 Client
-//   3 Tarif (pricing/discount/deposit)  4 Récap & signature → create draft
+//   3 Tarif (pricing/discount/deposit)  4 Récap → create draft
 // Held in memory (useReducer); the rental row is inserted as 'draft' only
 // on "Créer le contrat" (POST /api/rental/rentals, re-validates + re-checks
 // availability).
@@ -19,7 +19,6 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, ArrowRight, Check, KeyRound, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { uploadViaSignedUrl } from '@/lib/rental/storage'
 import {
   bookingReducer, bookingStateFromPrefill, rentalStatusLabel,
   type WizardPrefill,
@@ -33,7 +32,7 @@ const STEPS = [
   { n: 1, label: 'Véhicule & dates' },
   { n: 2, label: 'Client' },
   { n: 3, label: 'Tarif' },
-  { n: 4, label: 'Récap & signature' },
+  { n: 4, label: 'Récap' },
 ] as const
 
 type CreatedContract = { id: string; contract_number: string | null }
@@ -71,20 +70,9 @@ export default function BookingWizard({ prefill }: { prefill?: WizardPrefill | n
     setSubmitting(true)
     setSubmitError(null)
     try {
-      // 1. Upload the signature (optional) via the signed-upload flow.
-      let signaturePath: string | null = null
-      if (state.signatureDataUrl) {
-        try {
-          const blob = await (await fetch(state.signatureDataUrl)).blob()
-          const file = new File([blob], 'signature.png', { type: 'image/png' })
-          signaturePath = await uploadViaSignedUrl(file, { kind: 'rental_signature', file_ext: 'png' })
-        } catch {
-          signaturePath = null   // non-fatal — create the draft without it
-        }
-      }
-
-      // 2. Create the rental (server re-validates everything + links the
-      //    prospect when from_prospect_id is present).
+      // Create the rental (server re-validates everything + links the
+      // prospect when from_prospect_id is present). Signature capture was
+      // removed from this flow; the server accepts a payload without it.
       const res = await fetch('/api/rental/rentals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -99,7 +87,6 @@ export default function BookingWizard({ prefill }: { prefill?: WizardPrefill | n
           discount_value:    state.discountValue,
           deposit_amount:    state.depositAmount,
           notes:             state.notes || null,
-          signature_path:    signaturePath,
           from_prospect_id:  fromProspectId,
         }),
       })
@@ -252,7 +239,7 @@ export default function BookingWizard({ prefill }: { prefill?: WizardPrefill | n
         {state.step === 1 && <StepVehicleDates state={state} dispatch={dispatch} onValidity={handleValidity} />}
         {state.step === 2 && <StepCustomer state={state} dispatch={dispatch} onValidity={handleValidity} prefill={customerPrefill} prefilledCustomerId={prefill?.customer?.id ?? null} />}
         {state.step === 3 && <StepPricing state={state} dispatch={dispatch} onValidity={handleValidity} />}
-        {state.step === 4 && <StepRecapSignature state={state} dispatch={dispatch} onValidity={handleValidity} />}
+        {state.step === 4 && <StepRecapSignature state={state} onValidity={handleValidity} />}
       </div>
 
       {submitError && (
