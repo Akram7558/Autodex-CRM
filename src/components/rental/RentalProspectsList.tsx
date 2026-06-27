@@ -26,8 +26,9 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
-  Car as CarIcon, CalendarRange, CalendarCheck, Loader2, Inbox, Trash2,
+  Car as CarIcon, CalendarRange, CalendarCheck, Loader2, Inbox, Trash2, UserPlus,
 } from 'lucide-react'
+import AddRentalProspectModal from '@/components/rental/AddRentalProspectModal'
 import { supabase } from '@/lib/supabase'
 import { getCurrentUserRole } from '@/lib/auth'
 import ContactButtons from '@/components/rental/ContactButtons'
@@ -148,6 +149,8 @@ export default function RentalProspectsList() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [canTrash, setCanTrash] = useState(false)
+  const [canAdd, setCanAdd] = useState(false)   // owner/manager/closer (RLS insert)
+  const [addOpen, setAddOpen] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -180,13 +183,16 @@ export default function RentalProspectsList() {
       if (!me || (me.role !== 'owner' && me.role !== 'manager' && me.role !== 'closer' && me.role !== 'super_admin')) {
         // Middleware already gates this route; treat an unexpected/absent role
         // as an empty (non-trash) view rather than crashing.
-        setRows([]); setCanTrash(false); setLoading(false)
+        setRows([]); setCanTrash(false); setCanAdd(false); setLoading(false)
         return
       }
       const { role, showroomId } = me
       // Only owner/manager/super_admin may bulk-trash cancelled (perdue)
       // demandes (closer is excluded, mirroring the trash endpoint's guard).
       const trash = role === 'owner' || role === 'manager' || role === 'super_admin'
+      // Manual add: owner/manager/closer (matches the rental_prospects_insert
+      // RLS policy). super_admin has no showroom to stamp → excluded.
+      const add = role === 'owner' || role === 'manager' || role === 'closer'
 
       let q = supabase
         .from('rental_prospects')
@@ -237,6 +243,7 @@ export default function RentalProspectsList() {
         contract_number:     firstOf(r.converted)?.contract_number ?? null,
       })))
       setCanTrash(trash)
+      setCanAdd(add)
       setLoading(false)
     })().catch(() => {
       if (cancelled) return
@@ -393,14 +400,23 @@ export default function RentalProspectsList() {
   return (
     <div className="p-6 md:p-10 max-w-6xl mx-auto space-y-6">
       {/* Header */}
-      <div>
-        <div className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-600 dark:text-emerald-400">
-          <Inbox className="w-3.5 h-3.5" /> Location
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-600 dark:text-emerald-400">
+            <Inbox className="w-3.5 h-3.5" /> Location
+          </div>
+          <h1 className="text-xl md:text-2xl font-bold tracking-tight text-[var(--text-primary)]">Demandes de location</h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
+            Demandes reçues depuis votre catalogue public.
+          </p>
         </div>
-        <h1 className="text-xl md:text-2xl font-bold tracking-tight text-[var(--text-primary)]">Demandes de location</h1>
-        <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
-          Demandes reçues depuis votre catalogue public.
-        </p>
+        {canAdd && (
+          <button type="button" onClick={() => setAddOpen(true)}
+            className="inline-flex items-center gap-2 px-4 h-10 rounded-xl text-sm font-semibold text-white shrink-0 transition-opacity hover:opacity-90 motion-reduce:transition-none"
+            style={{ background: 'var(--accent)' }}>
+            <UserPlus className="w-4 h-4" /> Ajouter un client
+          </button>
+        )}
       </div>
 
       {/* Single status filter over the full row set (replaces the 3 tabs).
@@ -662,6 +678,13 @@ export default function RentalProspectsList() {
           </div>
         </>
       )}
+
+      {/* Manual add — direct browser insert (RLS owner/manager/closer). */}
+      <AddRentalProspectModal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        onSaved={() => setReloadKey((k) => k + 1)}
+      />
 
       {/* Soft-delete confirm — moves the picked perdue demandes to the corbeille. */}
       {trashOpen && (
