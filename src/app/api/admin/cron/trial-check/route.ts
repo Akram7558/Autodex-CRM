@@ -509,6 +509,37 @@ Rappelez-le rapidement — chaque heure compte.
     }
   }
 
+  // ── STEP G — Auto-archive stale rental prospects ───────────────────
+  // Soft-delete (corbeille) location prospects untouched for 15+ days:
+  // sets deleted_at = now() — the canonical soft-delete signal (same as
+  // the manual trash endpoint; status is left untouched, preserved for
+  // history). Spares converted / scheduled (rdv_planifie) / lost (perdue)
+  // prospects, and any whose desired_start_date is still in the future
+  // (an upcoming booking shouldn't be archived for staff inactivity).
+  // Single GLOBAL service-role UPDATE (bypasses RLS, all showrooms).
+  // Idempotent: once deleted_at is set the row no longer matches, and the
+  // BEFORE UPDATE trigger re-stamps updated_at anyway. Best-effort — an
+  // error is logged and never breaks the response.
+  let rental_prospects_archived = 0
+  {
+    const cutoffIso = new Date(now.getTime() - 15 * 24 * 60 * 60 * 1000).toISOString()
+    const todayDate = now.toISOString().slice(0, 10) // YYYY-MM-DD (UTC)
+    const { data: archivedRows, error: archiveErr } = await admin
+      .from('rental_prospects')
+      .update({ deleted_at: now.toISOString() })
+      .is('deleted_at', null)
+      .is('converted_rental_id', null)
+      .not('status', 'in', '(rdv_planifie,convertie,perdue)')
+      .lt('updated_at', cutoffIso)
+      .or(`desired_start_date.is.null,desired_start_date.lt.${todayDate}`)
+      .select('id')
+    if (archiveErr) {
+      console.warn('[cron G] rental prospect auto-archive failed:', archiveErr.message)
+    } else {
+      rental_prospects_archived = archivedRows?.length ?? 0
+    }
+  }
+
   return NextResponse.json({
     disabled: disabled.length,
     disabled_showrooms: disabled,
@@ -520,5 +551,6 @@ Rappelez-le rapidement — chaque heure compte.
     hot_alerts_sent,
     reminders_sent,
     reminders_escalated,
+    rental_prospects_archived,
   })
 }
