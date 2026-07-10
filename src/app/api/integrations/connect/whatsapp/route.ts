@@ -207,7 +207,9 @@ async function handleRealFlow(showroomId: string, shortToken: string) {
       }],
       { onConflict: 'showroom_id,provider' },
     )
-    .select()
+    // Explicit columns WITHOUT access_token — the long-lived Meta token must
+    // never reach the browser (mirrors list/route.ts).
+    .select('id, showroom_id, provider, account_name, account_id, phone_number, expires_at, is_active, connected_at')
     .single()
 
   if (dbErr) {
@@ -250,7 +252,8 @@ async function handleMockFlow(body: {
       }],
       { onConflict: 'showroom_id,provider' },
     )
-    .select()
+    // Same column list as the real flow — no token fields to the client.
+    .select('id, showroom_id, provider, account_name, account_id, phone_number, expires_at, is_active, connected_at')
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

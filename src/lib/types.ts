@@ -624,6 +624,8 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
 
 export type IntegrationProvider = 'whatsapp' | 'messenger' | 'instagram'
 
+// Client-facing shape — deliberately WITHOUT access_token: the Meta token is
+// server-only (service-role routes) and must never transit to the browser.
 export type Integration = {
   id: string
   showroom_id: string
@@ -631,7 +633,6 @@ export type Integration = {
   account_name: string | null
   account_id: string | null
   phone_number: string | null
-  access_token: string | null
   expires_at: string | null
   is_active: boolean
   connected_at: string
