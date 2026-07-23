@@ -9,6 +9,7 @@
 import { NextResponse } from 'next/server'
 import {
   processIncomingMessage,
+  resolveShowroomFromProviderAccount,
   verifyChallenge,
   verifyMetaSignature,
 } from '@/lib/webhook-utils'
@@ -67,6 +68,16 @@ export async function POST(req: Request) {
   const results: unknown[] = []
 
   for (const entry of payload.entry ?? []) {
+    // entry.id is the WhatsApp Business Account (WABA) id → resolve the owning
+    // showroom via integrations.account_id. Fail closed: an unknown WABA means
+    // we create nothing (never misroute the lead) — but we still 200 below so
+    // Meta doesn't retry and disable the subscription. Entries are independent.
+    const showroomId = await resolveShowroomFromProviderAccount('whatsapp', entry.id)
+    if (!showroomId) {
+      console.warn(`[webhook/whatsapp] no active integration for WABA id ${entry.id ?? '(missing)'} — skipping entry`)
+      continue
+    }
+
     for (const change of entry.changes ?? []) {
       const value = change.value ?? {}
       const contacts = value.contacts ?? []
@@ -90,6 +101,7 @@ export async function POST(req: Request) {
           messageText: text,
           senderName,
           platformPhone,
+          showroomId,
         })
         results.push(result)
       }

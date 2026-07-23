@@ -10,6 +10,7 @@
 import { NextResponse } from 'next/server'
 import {
   processIncomingMessage,
+  resolveShowroomFromProviderAccount,
   verifyChallenge,
   verifyMetaSignature,
 } from '@/lib/webhook-utils'
@@ -69,6 +70,16 @@ export async function POST(req: Request) {
   const results: unknown[] = []
 
   for (const entry of payload.entry ?? []) {
+    // entry.id is the Facebook Page id → resolve the owning showroom via
+    // integrations.account_id. Fail closed: unknown page → create nothing
+    // (never misroute), but still 200 below so Meta doesn't retry. Entries
+    // are independent.
+    const showroomId = await resolveShowroomFromProviderAccount('messenger', entry.id)
+    if (!showroomId) {
+      console.warn(`[webhook/messenger] no active integration for page id ${entry.id ?? '(missing)'} — skipping entry`)
+      continue
+    }
+
     for (const m of entry.messaging ?? []) {
       // Skip echoes of our own outbound messages
       if (m.message?.is_echo) continue
@@ -88,6 +99,7 @@ export async function POST(req: Request) {
         messageText: text,
         senderName,
         platformPhone: null,
+        showroomId,
       })
       results.push(result)
     }

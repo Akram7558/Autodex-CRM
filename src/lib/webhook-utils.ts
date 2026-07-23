@@ -55,20 +55,57 @@ export function normalizePhone(raw: string): string {
   return raw.startsWith('+') ? raw : `+${digits}`
 }
 
+// Provider values as stored in the `integrations.provider` column. NB: the
+// webhook "platform" uses 'facebook' for Messenger, whereas the integration
+// provider is 'messenger' — callers must pass the integration value here.
+export type IntegrationProvider = 'whatsapp' | 'messenger' | 'instagram'
+
+/**
+ * Map an inbound Meta business-account id back to the showroom that owns it.
+ *
+ * The identifier is the webhook payload's top-level `entry.id`: the WhatsApp
+ * Business Account (WABA) id for WhatsApp, the Page id for Messenger, the
+ * Instagram account id for Instagram. That is exactly what the connect flow
+ * persists into `integrations.account_id` (connect/whatsapp writes account_id
+ * = wabaId), so account_id is the reliable join key. The WhatsApp
+ * `metadata.phone_number_id` is NOT stored (the phone_number column holds the
+ * display number), so we deliberately do not match on it.
+ *
+ * Returns the showroom_id, or null when no active integration matches. Callers
+ * MUST treat null as "do not create a lead" (fail closed) so a message can
+ * never be misrouted into the wrong tenant.
+ */
+export async function resolveShowroomFromProviderAccount(
+  provider: IntegrationProvider,
+  accountId: string | null | undefined,
+): Promise<string | null> {
+  if (!accountId) return null
+  const sb = supaServer()
+  const { data, error } = await sb
+    .from('integrations')
+    .select('showroom_id')
+    .eq('provider', provider)
+    .eq('account_id', accountId)
+    .eq('is_active', true)
+    .limit(1)
+    .maybeSingle()
+  if (error || !data) return null
+  return (data.showroom_id as string | null) ?? null
+}
+
 export type ProcessMessageArgs = {
   platform: 'whatsapp' | 'facebook' | 'instagram'
   messageText: string
   senderName?: string | null
   platformPhone?: string | null  // WhatsApp gives us the sender phone directly
   /**
-   * When provided, all showroom-scoped lookups (de-dupe, agent picking,
-   * lead insertion) are restricted to this showroom. Required by callers
-   * that have already authenticated the target showroom (e.g. the
-   * /api/integrations/test endpoint). Webhook routes still leave this
-   * unset for now — they need a separate refactor to map incoming Meta
-   * IDs back to a showroom via the `integrations` table.
+   * The showroom that owns the receiving Meta business account. REQUIRED —
+   * fail closed. Webhook routes resolve it from the inbound account id via
+   * `resolveShowroomFromProviderAccount`; the /integrations/test endpoint
+   * passes the caller's authenticated showroom. Without it we refuse to
+   * create a lead, so a message can never be misrouted into another tenant.
    */
-  showroomId?: string
+  showroomId: string
 }
 
 export type ProcessResult = {
@@ -88,6 +125,15 @@ export type ProcessResult = {
 // 6. Insert the lead + a system activity
 export async function processIncomingMessage(args: ProcessMessageArgs): Promise<ProcessResult> {
   const { platform, messageText, senderName, platformPhone, showroomId } = args
+
+  // Fail closed: never create a lead without an explicitly resolved showroom.
+  // Webhook routes resolve it from the inbound Meta account id and skip the
+  // entry when unknown; this guard is the last line of defence so no caller
+  // can ever insert an unscoped (misroutable) lead.
+  if (!showroomId) {
+    return { ok: false, error: 'showroom_id required — refusing to create an unscoped lead' }
+  }
+
   const text = (messageText ?? '').trim()
   if (!text) return { ok: true, skipped: 'empty_message', extracted: {
     phone: null, name: null, wilaya: null, model_wanted: null, budget_dzd: null,
@@ -103,35 +149,44 @@ export async function processIncomingMessage(args: ProcessMessageArgs): Promise<
 
   const sb = supaServer()
 
-  // De-dupe by phone — scoped to the target showroom when provided so
-  // tenant phone collisions don't accidentally cross-link leads.
-  let dupeQuery = sb.from('leads').select('id').eq('phone', phone)
-  if (showroomId) dupeQuery = dupeQuery.eq('showroom_id', showroomId)
-  const existing = await dupeQuery.limit(1).maybeSingle()
+  // De-dupe by phone WITHIN the owning showroom, so tenant phone collisions
+  // never cross-link leads.
+  const existing = await sb
+    .from('leads')
+    .select('id')
+    .eq('phone', phone)
+    .eq('showroom_id', showroomId)
+    .limit(1)
+    .maybeSingle()
 
   if (existing.data?.id) {
     return { ok: true, leadId: existing.data.id, created: false, skipped: 'duplicate', extracted }
   }
 
-  // Pick first active agent (fall back to any active user) to own the
-  // lead. Scoped to the showroom when one is provided so tests/webhooks
-  // can't accidentally route leads into another tenant.
-  let agentQuery = sb
+  // Pick an assignee WITHIN the owning showroom: prefer the oldest active
+  // agent, else the oldest active user. Deterministic ORDER BY so the choice
+  // is stable. If the showroom has no active user the lead is still created
+  // in the correct showroom with assigned_to = null (never misrouted).
+  const agent = await sb
     .from('users')
-    .select('id, showroom_id, role, is_active')
+    .select('id')
     .eq('is_active', true)
     .eq('role', 'agent')
-  if (showroomId) agentQuery = agentQuery.eq('showroom_id', showroomId)
-  const agent = await agentQuery.limit(1).maybeSingle()
+    .eq('showroom_id', showroomId)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
 
   let assignee = agent.data
   if (!assignee) {
-    let anyUserQuery = sb
+    assignee = (await sb
       .from('users')
-      .select('id, showroom_id, role, is_active')
+      .select('id')
       .eq('is_active', true)
-    if (showroomId) anyUserQuery = anyUserQuery.eq('showroom_id', showroomId)
-    assignee = (await anyUserQuery.limit(1).maybeSingle()).data
+      .eq('showroom_id', showroomId)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle()).data
   }
 
   const fullName = extracted.name?.trim() || senderName?.trim() || 'Prospect ' + platform
@@ -139,10 +194,6 @@ export async function processIncomingMessage(args: ProcessMessageArgs): Promise<
   const source: LeadSource = platform === 'whatsapp'
     ? 'whatsapp'
     : platform === 'facebook' ? 'facebook' : 'instagram'
-
-  // Prefer the explicit showroomId from the caller (authoritative) over
-  // the assignee's showroom_id (incidental).
-  const finalShowroomId = showroomId ?? assignee?.showroom_id ?? null
 
   const insertPayload: Record<string, unknown> = {
     full_name:   fullName,
@@ -152,7 +203,7 @@ export async function processIncomingMessage(args: ProcessMessageArgs): Promise<
     status:      'new',
     notes:       text.length > 1000 ? text.slice(0, 1000) + '…' : text,
     assigned_to: assignee?.id ?? null,
-    showroom_id: finalShowroomId,
+    showroom_id: showroomId,
   }
   if (extracted.model_wanted) insertPayload.model_wanted = extracted.model_wanted
   if (extracted.budget_dzd != null) insertPayload.budget_dzd = extracted.budget_dzd
@@ -192,7 +243,7 @@ export async function processIncomingMessage(args: ProcessMessageArgs): Promise<
 
   // Log a system activity so the lead timeline shows the origin message
   await sb.from('activities').insert([{
-    showroom_id: finalShowroomId,
+    showroom_id: showroomId,
     lead_id:     ins.data.id,
     user_id:     assignee?.id ?? null,
     type:        'note',

@@ -11,6 +11,7 @@
 import { NextResponse } from 'next/server'
 import {
   processIncomingMessage,
+  resolveShowroomFromProviderAccount,
   verifyChallenge,
   verifyMetaSignature,
 } from '@/lib/webhook-utils'
@@ -70,6 +71,16 @@ export async function POST(req: Request) {
   const results: unknown[] = []
 
   for (const entry of payload.entry ?? []) {
+    // entry.id is the Instagram account id → resolve the owning showroom via
+    // integrations.account_id. Fail closed: unknown account → create nothing
+    // (never misroute), but still 200 below so Meta doesn't retry. Entries
+    // are independent.
+    const showroomId = await resolveShowroomFromProviderAccount('instagram', entry.id)
+    if (!showroomId) {
+      console.warn(`[webhook/instagram] no active integration for IG account id ${entry.id ?? '(missing)'} — skipping entry`)
+      continue
+    }
+
     for (const m of entry.messaging ?? []) {
       if (m.message?.is_echo || m.message?.is_deleted) continue
 
@@ -86,6 +97,7 @@ export async function POST(req: Request) {
         messageText: text,
         senderName,
         platformPhone: null,
+        showroomId,
       })
       results.push(result)
     }
