@@ -4,18 +4,15 @@
 // ─────────────────────────────────────────────────────────────
 
 import { createHmac, timingSafeEqual } from 'node:crypto'
-import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { LeadSource } from './types'
 import { detectLeadFromMessage, type ExtractedLead } from './ai-lead-detector'
+import { supaServer } from './integrations-utils'
 
-export function supaServer(): SupabaseClient {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const key =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  if (!url || !key) throw new Error('Supabase env vars missing')
-  return createClient(url, key, { auth: { persistSession: false } })
-}
+// Single hardened service-role client for the whole codebase: it throws when
+// SUPABASE_SERVICE_ROLE_KEY is missing instead of silently falling back to the
+// anon key (which, post-RLS-hardening, would hit tenant denials and quietly
+// drop inbound leads). Re-exported so existing webhook imports keep working.
+export { supaServer }
 
 // Meta sends `x-hub-signature-256: sha256=<hex>` with the raw body
 // HMAC'd against the app secret. Returns true only on a match.

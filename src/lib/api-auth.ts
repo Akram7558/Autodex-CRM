@@ -214,3 +214,26 @@ export async function requireShowroomMember(
     isSuperAdmin,
   }
 }
+
+/**
+ * Like `requireShowroomMember`, but restricted to the showroom OWNER
+ * (super_admin keeps its global override). Used by endpoints whose table
+ * is owner-only at the RLS level — currently `integrations` (migration 58:
+ * `is_super_admin() OR (showroom_id = user_showroom_id() AND
+ * user_app_role() = 'owner')`).
+ *
+ * Those routes talk to Supabase with the SERVICE-ROLE client, which
+ * bypasses RLS, so this guard is the only thing enforcing the owner-only
+ * rule — `requireShowroomAdmin` would be too permissive here because it
+ * also admits `manager`.
+ */
+export async function requireShowroomOwner(
+  req: NextRequest,
+  requestedShowroomId?: string | null,
+): Promise<ShowroomContext> {
+  const ctx = await requireShowroomMember(req, requestedShowroomId)
+  if (!ctx.isSuperAdmin && ctx.role !== 'owner') {
+    throw new ApiError(403, 'Accès réservé au propriétaire du showroom.')
+  }
+  return ctx
+}

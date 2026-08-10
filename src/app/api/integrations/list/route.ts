@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { supaServer } from '@/lib/integrations-utils'
-import { requireShowroomMember, errorResponse } from '@/lib/api-auth'
+import { requireShowroomOwner, errorResponse } from '@/lib/api-auth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url)
     const requested = url.searchParams.get('showroom_id') || undefined
-    ctx = await requireShowroomMember(req, requested)
+    ctx = await requireShowroomOwner(req, requested)
   } catch (err) {
     return errorResponse(err)
   }

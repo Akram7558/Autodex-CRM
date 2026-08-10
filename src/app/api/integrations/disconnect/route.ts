@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { supaServer, isAllowedProvider } from '@/lib/integrations-utils'
-import { requireShowroomMember, errorResponse } from '@/lib/api-auth'
+import { requireShowroomOwner, errorResponse } from '@/lib/api-auth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
 
   let ctx
   try {
-    ctx = await requireShowroomMember(req, targetShowroomId)
+    ctx = await requireShowroomOwner(req, targetShowroomId)
   } catch (err) {
     return errorResponse(err)
   }

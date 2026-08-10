@@ -197,6 +197,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const canSeeShowroomSettings =
     userRole === 'owner' || userRole === 'manager'
 
+  // Integrations are owner-only: the table is owner-scoped at the RLS level
+  // (migration 58) and the /api/integrations/* routes enforce the same via
+  // requireShowroomOwner, so showing the link to a manager would only lead
+  // to a 403.
+  const canSeeIntegrations = userRole === 'owner'
+
   // On every committed route change: close the mobile drawer and drop the
   // optimistic override so the real pathname becomes the source of truth
   // again (handles browser back/forward and redirects too).
@@ -351,6 +357,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <Settings className={cn('w-4 h-4', effectivePath === '/dashboard/parametres' ? 'text-white' : '')} />
               Paramètres
             </Link>
+            {canSeeIntegrations && (
             <Link
               href="/dashboard/settings/integrations"
               onClick={() => { setOptimisticHref('/dashboard/settings/integrations'); setMobileOpen(false) }}
@@ -365,6 +372,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <Plug className={cn('w-4 h-4', effectivePath.startsWith('/dashboard/settings/integrations') ? 'text-white' : '')} />
               Intégrations
             </Link>
+            )}
           </>
         )}
         <button

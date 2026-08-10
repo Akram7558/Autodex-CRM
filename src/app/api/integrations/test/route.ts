@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { isAllowedProvider, type AllowedProvider } from '@/lib/integrations-utils'
 import { processIncomingMessage } from '@/lib/webhook-utils'
-import { requireShowroomMember, errorResponse } from '@/lib/api-auth'
+import { requireShowroomOwner, errorResponse } from '@/lib/api-auth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
 
   let ctx
   try {
-    ctx = await requireShowroomMember(req, requested)
+    ctx = await requireShowroomOwner(req, requested)
   } catch (err) {
     return errorResponse(err)
   }
