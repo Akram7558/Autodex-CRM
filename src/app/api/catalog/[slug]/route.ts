@@ -13,6 +13,7 @@
 
 import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { CATALOG_VEHICLE_FIELDS, CATALOG_PREORDER_FIELDS } from '@/lib/catalog-public-fields'
 
 export const runtime = 'nodejs'
 
@@ -45,7 +46,7 @@ export async function GET(_req: NextRequest, { params }: RouteCtx) {
     // Vehicles in stock — public ones only, only `available` status.
     const { data: vehicles, error: vErr } = await admin
       .from('vehicles')
-      .select('*')
+      .select(CATALOG_VEHICLE_FIELDS)
       .eq('showroom_id', showroom.id)
       .eq('status', 'available')
       .eq('is_public', true)
@@ -54,7 +55,7 @@ export async function GET(_req: NextRequest, { params }: RouteCtx) {
 
     const { data: preorders, error: pErr } = await admin
       .from('preorder_vehicles')
-      .select('*')
+      .select(CATALOG_PREORDER_FIELDS)
       .eq('showroom_id', showroom.id)
       .eq('disponible', true)
       .order('created_at', { ascending: false })

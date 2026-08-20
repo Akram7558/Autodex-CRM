@@ -133,7 +133,14 @@ export function welcomeTrialEmail(args: {
   ownerName:      string
   showroomName:   string
   ownerEmail:     string
-  ownerPassword:  string
+  /**
+   * Only set when an admin provisioned the account and chose the password
+   * on the owner's behalf (super-admin "start trial"). Self-service signup
+   * MUST omit it: the user typed their own password, so mailing it back
+   * would leave the credential sitting in their inbox and in Resend's logs
+   * forever for no benefit.
+   */
+  ownerPassword?: string
   trialEndsAtFr:  string  // already formatted dd/MM/yyyy
 }): { subject: string; text: string; html: string } {
   const owner    = ESC_QUOTE(args.ownerName)
@@ -149,7 +156,9 @@ Vous bénéficiez d'un essai gratuit de 20 jours jusqu'au ${args.trialEndsAtFr}.
 
 Vos identifiants de connexion :
 Email : ${args.ownerEmail}
-Mot de passe : ${args.ownerPassword}
+${args.ownerPassword
+  ? `Mot de passe : ${args.ownerPassword}`
+  : 'Mot de passe : celui que vous avez choisi lors de votre inscription.'}
 
 Connectez-vous : ${SITE_URL}
 
@@ -164,7 +173,9 @@ L'équipe AutoDex`
     <table role="presentation" cellpadding="0" cellspacing="0" style="margin:16px 0;background:#fafafa;border:1px solid #e4e4e7;border-radius:10px;width:100%;">
       <tr><td style="padding:14px 16px;font-family:ui-monospace,Menlo,monospace;font-size:13px;color:#18181b;">
         Email : <strong>${ESC_QUOTE(args.ownerEmail)}</strong><br/>
-        Mot de passe : <strong>${ESC_QUOTE(args.ownerPassword)}</strong>
+        ${args.ownerPassword
+          ? `Mot de passe : <strong>${ESC_QUOTE(args.ownerPassword)}</strong>`
+          : 'Mot de passe : celui que vous avez choisi lors de votre inscription.'}
       </td></tr>
     </table>
     ${ctaButton('Accéder à mon dashboard', SITE_URL)}

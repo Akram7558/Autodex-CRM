@@ -296,11 +296,12 @@ export async function POST(req: NextRequest) {
 
     // ── 6. Emails (best-effort) ────────────────────────────────────
     const trialEndsAtFr = formatDateFr(trialEndsAt)
+    // No ownerPassword: the user chose it at signup, so we never mail the
+    // plaintext credential back (it would live in their inbox / Resend logs).
     const owner = welcomeTrialEmail({
       ownerName:     full_name,
       showroomName:  showroom_name,
       ownerEmail:    emailRaw,
-      ownerPassword: password,
       trialEndsAtFr,
     })
     const ownerRes = await sendEmail({

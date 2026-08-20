@@ -3,7 +3,12 @@
 //   GET  — public read (used by the public landing Tarifs section AND
 //          the Super-Admin Plans Manager). Returns:
 //            { plans: SaasPlan[], grouped: { classique: [], totale: [] } }
-//          - plans:   ALL plans (active + inactive) — used by admin UI
+//          - plans:   ACTIVE plans only for anonymous / non-super-admin
+//                     callers; ALL plans (active + inactive) for an
+//                     authenticated super_admin — the Plans Manager needs
+//                     the inactive rows to toggle them back on. Anonymous
+//                     visitors must not be able to enumerate discontinued
+//                     or draft pricing.
 //          - grouped: only ACTIVE plans, ordered by duration_months ASC,
 //                     split by plan_type — used by the public landing.
 //   PUT  — upsert plans (super_admin only). Now accepts plan_type.
@@ -27,13 +32,22 @@ function adminClient() {
 }
 
 // ── GET ─────────────────────────────────────────────────────────────
-// PUBLIC. The plan catalogue is non-sensitive (it's marketing copy
-// shown on the landing page). RLS on saas_plans already allows SELECT
-// to all authenticated users, but we want anonymous landing visitors
-// to see prices too — so this route returns plans via the service-role
-// client without checking auth.
-export async function GET() {
+// PUBLIC (no auth required). The ACTIVE plan catalogue is marketing copy
+// shown on the landing page, so anonymous visitors may read it via the
+// service-role client. Inactive/draft plans are NOT public — they are
+// returned only to an authenticated super_admin (Plans Manager).
+export async function GET(req: NextRequest) {
   try {
+    // Super admins get the full catalogue (the Plans Manager edits inactive
+    // rows); everyone else — including anonymous landing visitors — only
+    // ever sees active plans. requireSuperAdmin throws for anon/tenant
+    // callers, which is the normal path here, not an error.
+    let isSuperAdmin = false
+    try {
+      await requireSuperAdmin(req)
+      isSuperAdmin = true
+    } catch { /* not a super admin — fall through to the public view */ }
+
     const admin = adminClient()
     const { data, error } = await admin
       .from('saas_plans')
@@ -42,12 +56,13 @@ export async function GET() {
       .order('duration_months', { ascending: true })
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    const plans = (data ?? []) as SaasPlan[]
+    const allPlans = (data ?? []) as SaasPlan[]
+    const plans = isSuperAdmin ? allPlans : allPlans.filter((p) => p.active)
 
     // Build the grouped view (active only, ordered by duration). Each
     // group is empty if there's no active plan of that type.
     const grouped: Record<SaasPlanType, SaasPlan[]> = { classique: [], totale: [], location: [] }
-    for (const p of plans) {
+    for (const p of allPlans) {
       if (!p.active) continue
       const t = (p.plan_type ?? 'classique') as SaasPlanType
       if (grouped[t]) grouped[t].push(p)

@@ -19,6 +19,7 @@ import type {
   PreorderVehicle,
   Vehicle,
 } from '@/lib/types'
+import { CATALOG_VEHICLE_FIELDS, CATALOG_PREORDER_FIELDS } from '@/lib/catalog-public-fields'
 import CatalogPage from '@/components/catalog/CatalogPage'
 import type { RentalFleetCard } from '@/components/catalog/RentalFleetSection'
 
@@ -82,14 +83,14 @@ async function getCatalogData(slug: string): Promise<CatalogData | null> {
   const [{ data: vehicles }, { data: preorders }, { data: rentalRows }, { data: busyRentals }] = await Promise.all([
     admin
       .from('vehicles')
-      .select('*')
+      .select(CATALOG_VEHICLE_FIELDS)
       .eq('showroom_id', showroom.id)
       .eq('status', 'available')
       .eq('is_public', true)
       .order('created_at', { ascending: false }),
     admin
       .from('preorder_vehicles')
-      .select('*')
+      .select(CATALOG_PREORDER_FIELDS)
       .eq('showroom_id', showroom.id)
       .eq('disponible', true)
       .order('created_at', { ascending: false }),
@@ -147,8 +148,8 @@ async function getCatalogData(slug: string): Promise<CatalogData | null> {
 
   return {
     showroom: showroom as unknown as ShowroomPublicInfo,
-    vehicles: (vehicles ?? []) as Vehicle[],
-    preorders: (preorders ?? []) as PreorderVehicle[],
+    vehicles: (vehicles ?? []) as unknown as Vehicle[],
+    preorders: (preorders ?? []) as unknown as PreorderVehicle[],
     rentalVehicles,
   }
 }
