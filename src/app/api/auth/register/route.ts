@@ -32,35 +32,15 @@ import {
   formatDateFr,
 } from '@/lib/resend'
 
+import { getClientIp, checkRateLimit, RATE_LIMIT_MESSAGE } from '@/lib/rate-limit'
+
 export const runtime = 'nodejs'
 
 const HOUR_MS    = 60 * 60 * 1000
-const RATE_LIMIT = 3
+const IP_RULE    = { limit: 3, windowSeconds: 3600 }
+const EMAIL_RULE = { limit: 3, windowSeconds: 3600 }
 const TRIAL_DAYS = 20
 const EMAIL_RX   = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-
-// ── In-memory IP rate limit (per lambda instance) ────────────────────
-type Bucket = { count: number; resetAt: number }
-const ipBuckets = new Map<string, Bucket>()
-
-function getClientIp(req: NextRequest): string {
-  const xff = req.headers.get('x-forwarded-for') ?? ''
-  const first = xff.split(',')[0]?.trim()
-  if (first) return first
-  return req.headers.get('x-real-ip') ?? 'unknown'
-}
-
-function rateLimitOk(ip: string): boolean {
-  const now = Date.now()
-  const cur = ipBuckets.get(ip)
-  if (!cur || now > cur.resetAt) {
-    ipBuckets.set(ip, { count: 1, resetAt: now + HOUR_MS })
-    return true
-  }
-  if (cur.count >= RATE_LIMIT) return false
-  cur.count += 1
-  return true
-}
 
 function mapShowroomSize(raw: string | undefined): SaasShowroomSize | null {
   if (!raw) return null
@@ -81,11 +61,8 @@ function mapShowroomSize(raw: string | undefined): SaasShowroomSize | null {
 export async function POST(req: NextRequest) {
   try {
     const ip = getClientIp(req)
-    if (!rateLimitOk(ip)) {
-      return NextResponse.json(
-        { error: 'Trop de tentatives. Réessayez dans une heure.' },
-        { status: 429 },
-      )
+    if (!(await checkRateLimit(`register:ip:${ip}`, IP_RULE)).ok) {
+      return NextResponse.json({ error: RATE_LIMIT_MESSAGE }, { status: 429 })
     }
 
     const body = await req.json().catch(() => ({}))
@@ -111,6 +88,11 @@ export async function POST(req: NextRequest) {
     if (!full_name)     return NextResponse.json({ error: 'Nom complet requis.' },     { status: 400 })
     if (!emailRaw || !EMAIL_RX.test(emailRaw)) {
       return NextResponse.json({ error: 'Email invalide.' }, { status: 400 })
+    }
+    // Second dimension: an attacker rotating IPs still can't hammer one
+    // address (account pre-emption / mail bombing).
+    if (!(await checkRateLimit(`register:email:${emailRaw}`, EMAIL_RULE)).ok) {
+      return NextResponse.json({ error: RATE_LIMIT_MESSAGE }, { status: 429 })
     }
     if (!password || password.length < 8) {
       return NextResponse.json({ error: 'Mot de passe (≥ 8 caractères) requis.' }, { status: 400 })

@@ -18,6 +18,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { normalizePhone, PhoneNormalizeError } from '@/lib/phone'
+import { getClientIp, checkRateLimit, RATE_LIMIT_MESSAGE } from '@/lib/rate-limit'
 import {
   SAAS_SIZE_VALUES,
   type SaasShowroomSize,
@@ -26,33 +27,8 @@ import { sendEmail, internalNotifyAddress } from '@/lib/resend'
 
 export const runtime = 'nodejs'
 
-const HOUR_MS    = 60 * 60 * 1000
-const RATE_LIMIT = 3   // submissions per IP per HOUR_MS
-
-// In-memory rate limiter (per-instance). When the lambda recycles,
-// counters reset — that's fine for a public marketing form.
-type Bucket = { count: number; resetAt: number }
-const ipBuckets = new Map<string, Bucket>()
-
-function getClientIp(req: NextRequest): string {
-  // Try the standard Vercel/Cloudflare headers; fall back to a sentinel.
-  const xff = req.headers.get('x-forwarded-for') ?? ''
-  const first = xff.split(',')[0]?.trim()
-  if (first) return first
-  return req.headers.get('x-real-ip') ?? 'unknown'
-}
-
-function rateLimitOk(ip: string): boolean {
-  const now = Date.now()
-  const cur = ipBuckets.get(ip)
-  if (!cur || now > cur.resetAt) {
-    ipBuckets.set(ip, { count: 1, resetAt: now + HOUR_MS })
-    return true
-  }
-  if (cur.count >= RATE_LIMIT) return false
-  cur.count += 1
-  return true
-}
+const IP_RULE    = { limit: 5, windowSeconds: 3600 }
+const PHONE_RULE = { limit: 3, windowSeconds: 3600 }
 
 // Map landing-page label → enum value. Tolerant: anything starting
 // with "petit" / "moyen" / "grand" maps cleanly. Unknown → null.
@@ -73,11 +49,8 @@ export async function POST(req: NextRequest) {
   try {
     // ── Rate limit ─────────────────────────────────────────────────
     const ip = getClientIp(req)
-    if (!rateLimitOk(ip)) {
-      return NextResponse.json(
-        { error: 'Trop de tentatives. Réessayez dans une heure.' },
-        { status: 429 },
-      )
+    if (!(await checkRateLimit(`capture:ip:${ip}`, IP_RULE)).ok) {
+      return NextResponse.json({ error: RATE_LIMIT_MESSAGE }, { status: 429 })
     }
 
     const body = await req.json().catch(() => ({}))
@@ -110,6 +83,11 @@ export async function POST(req: NextRequest) {
     catch (e) {
       const msg = e instanceof PhoneNormalizeError ? e.message : 'Téléphone invalide.'
       return NextResponse.json({ error: msg }, { status: 400 })
+    }
+
+    // Second dimension: rotating IPs must not allow hammering one number.
+    if (!(await checkRateLimit(`capture:phone:${phone}`, PHONE_RULE)).ok) {
+      return NextResponse.json({ error: RATE_LIMIT_MESSAGE }, { status: 429 })
     }
 
     // ── Service-role client (bypasses RLS) ─────────────────────────

@@ -18,37 +18,16 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { normalizePhone, PhoneNormalizeError } from '@/lib/phone'
 import { isRentalProspectReason } from '@/lib/rental/prospects'
+import { getClientIp, checkRateLimit, RATE_LIMIT_MESSAGE } from '@/lib/rate-limit'
 
 export const runtime = 'nodejs'
 
 const WINDOW_MS  = 10 * 60 * 1000   // 10 minutes
-const IP_LIMIT   = 5                // max submissions per IP per window
+const IP_RULE    = { limit: 5, windowSeconds: 600 }  // max submissions per IP per window
 const PHONE_LIMIT = 3               // max rows per phone+showroom per window
 const DATE_RX = /^\d{4}-\d{2}-\d{2}$/
 
 const MAX = { full_name: 120, phone: 30, reason_other: 200, message: 1000 }
-
-type Bucket = { count: number; resetAt: number }
-const ipBuckets = new Map<string, Bucket>()
-
-function getClientIp(req: NextRequest): string {
-  const xff = req.headers.get('x-forwarded-for') ?? ''
-  const first = xff.split(',')[0]?.trim()
-  if (first) return first
-  return req.headers.get('x-real-ip') ?? 'unknown'
-}
-
-function ipRateOk(ip: string): boolean {
-  const now = Date.now()
-  const cur = ipBuckets.get(ip)
-  if (!cur || now > cur.resetAt) {
-    ipBuckets.set(ip, { count: 1, resetAt: now + WINDOW_MS })
-    return true
-  }
-  if (cur.count >= IP_LIMIT) return false
-  cur.count += 1
-  return true
-}
 
 function adminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -61,8 +40,8 @@ export async function POST(req: NextRequest) {
   try {
     // ── IP rate limit ───────────────────────────────────────────────
     const ip = getClientIp(req)
-    if (!ipRateOk(ip)) {
-      return NextResponse.json({ error: 'Trop de demandes. Réessayez dans quelques minutes.' }, { status: 429 })
+    if (!(await checkRateLimit(`rental-prospect:ip:${ip}`, IP_RULE)).ok) {
+      return NextResponse.json({ error: RATE_LIMIT_MESSAGE }, { status: 429 })
     }
 
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>

@@ -14,34 +14,15 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { normalizePhone, PhoneNormalizeError } from '@/lib/phone'
+import { getClientIp, checkRateLimit, RATE_LIMIT_MESSAGE } from '@/lib/rate-limit'
 import { sendEmail } from '@/lib/resend'
 
 export const runtime = 'nodejs'
 
-const HOUR_MS    = 60 * 60 * 1000
-const RATE_LIMIT = 5
-
-type Bucket = { count: number; resetAt: number }
-const ipBuckets = new Map<string, Bucket>()
-
-function getClientIp(req: NextRequest): string {
-  const xff = req.headers.get('x-forwarded-for') ?? ''
-  const first = xff.split(',')[0]?.trim()
-  if (first) return first
-  return req.headers.get('x-real-ip') ?? 'unknown'
-}
-
-function rateLimitOk(ip: string): boolean {
-  const now = Date.now()
-  const cur = ipBuckets.get(ip)
-  if (!cur || now > cur.resetAt) {
-    ipBuckets.set(ip, { count: 1, resetAt: now + HOUR_MS })
-    return true
-  }
-  if (cur.count >= RATE_LIMIT) return false
-  cur.count += 1
-  return true
-}
+const IP_RULE     = { limit: 10, windowSeconds: 3600 }
+const PHONE_RULE  = { limit: 3,  windowSeconds: 3600 }
+// M3: independent cap on owner notification emails (not on lead creation).
+const NOTIFY_RULE = { limit: 3,  windowSeconds: 3600 }
 
 function adminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -55,11 +36,8 @@ type RouteCtx = { params: Promise<{ slug: string }> }
 export async function POST(req: NextRequest, { params }: RouteCtx) {
   try {
     const ip = getClientIp(req)
-    if (!rateLimitOk(ip)) {
-      return NextResponse.json(
-        { error: 'Trop de tentatives. Réessayez dans une heure.' },
-        { status: 429 },
-      )
+    if (!(await checkRateLimit(`order:ip:${ip}`, IP_RULE)).ok) {
+      return NextResponse.json({ error: RATE_LIMIT_MESSAGE }, { status: 429 })
     }
 
     const { slug } = await params
@@ -95,6 +73,12 @@ export async function POST(req: NextRequest, { params }: RouteCtx) {
       return NextResponse.json({ error: 'Catalogue introuvable.' }, { status: 404 })
     }
 
+    // Second dimension: rotating IPs must not allow one number to spam a
+    // single showroom's catalogue.
+    if (!(await checkRateLimit(`order:phone:${showroom.id}:${phone}`, PHONE_RULE)).ok) {
+      return NextResponse.json({ error: RATE_LIMIT_MESSAGE }, { status: 429 })
+    }
+
     // ── Resolve the ordered item (for the lead's notes/title) ───────
     let vehicleLabel = 'Demande générale'
     let resolvedVehicleId: string | null = null  // only set for in-stock orders
@@ -127,7 +111,7 @@ export async function POST(req: NextRequest, { params }: RouteCtx) {
     // ── Dedupe by phone within this showroom ────────────────────────
     const { data: existing } = await admin
       .from('leads')
-      .select('id, notes')
+      .select('id, notes, vehicle_id')
       .eq('showroom_id', showroom.id)
       .eq('phone', phone)
       .limit(1)
@@ -135,6 +119,22 @@ export async function POST(req: NextRequest, { params }: RouteCtx) {
 
     let leadId: string | null = existing?.id ?? null
     let createdNew = false
+
+    // ── M3: is this a repeat order for the SAME item? ───────────────
+    // `leads.vehicle_id` is only written on INSERT (the dedup branch below
+    // never updates it), so it holds the FIRST vehicle, not the latest.
+    // `leads.notes` is the field that actually accumulates every order —
+    // set to `noteBody` on insert and appended on each dedup — so the last
+    // "Commande via catalogue : <label>" line in it IS the last item of
+    // interest, and it covers in-stock vehicles, pre-orders and general
+    // requests uniformly. We compare that against the current header.
+    let sameItemAsLast = false
+    if (existing?.id) {
+      const prev = String(existing.notes ?? '')
+      const matches = prev.match(/Commande via catalogue : .*/g)
+      const lastHeader = matches?.at(-1)?.trim()
+      sameItemAsLast = !!lastHeader && lastHeader === noteHeader
+    }
 
     if (existing?.id) {
       // Append the new request to the existing notes; keep history.
@@ -183,7 +183,20 @@ export async function POST(req: NextRequest, { params }: RouteCtx) {
     // expressions of interest, not confirmed holds.
 
     // ── Notify the showroom owner (best-effort) ─────────────────────
-    if (showroom.owner_email) {
+    // M3 — two independent guards against inbox flooding:
+    //   (a) a repeat order for the SAME item on an existing lead adds no
+    //       information the owner doesn't already have (the timeline
+    //       activity above records it), so we skip the email;
+    //   (b) a per showroom+phone cap on notifications, so varying the
+    //       vehicle can't be used to bomb the owner either.
+    // Both only suppress the EMAIL — the lead and its activity are always
+    // written.
+    let notify = !!showroom.owner_email && !sameItemAsLast
+    if (notify) {
+      notify = (await checkRateLimit(`order-notify:${showroom.id}:${phone}`, NOTIFY_RULE)).ok
+    }
+
+    if (notify) {
       const waLink = `https://wa.me/${phone.replace(/^\+/, '')}`
       const subject = `🔔 Nouvelle commande catalogue — ${vehicleLabel}`
       const text =
