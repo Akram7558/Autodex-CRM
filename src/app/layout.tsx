@@ -1,23 +1,33 @@
 import type { Metadata } from "next";
-import { Geist_Mono, DM_Sans } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import PublicPixels from "@/components/analytics/PublicPixels";
 import AttributionCapture from "@/components/analytics/AttributionCapture";
 
-// DM Sans — primary brand font (FoCar redesign). Self-hosted by Next
-// via next/font/google, so no external Google Fonts request at runtime
-// and no FOUT flash.
-const dmSans = DM_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+// Fonts are self-hosted from src/app/fonts (OFL, licenses alongside) so the
+// build never fetches Google Fonts — a Google Fonts hiccup used to fail
+// production deploys. Each file is the upstream variable font subset to
+// latin + latin-ext, keeping the wght axis.
+
+// DM Sans — primary brand font (FoCar redesign). Pinned to opsz=14 and
+// declared as 400–700, matching what the Google Fonts loader used to serve.
+const dmSans = localFont({
+  src: "./fonts/DMSans-Variable.woff2",
+  weight: "400 700",
+  style: "normal",
   variable: "--font-sans",
   display: "swap",
 });
 
-const geistMono = Geist_Mono({
+const geistMono = localFont({
+  src: "./fonts/GeistMono-Variable.woff2",
+  weight: "100 900",
+  style: "normal",
   variable: "--font-geist-mono",
-  subsets: ["latin"],
+  display: "swap",
+  fallback: ["ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
+  adjustFontFallback: false,
 });
 
 export const metadata: Metadata = {

@@ -1,7 +1,7 @@
-/* DM Sans is loaded via `next/font/google` in src/app/layout.tsx,
-   which writes the --font-sans CSS variable on <html>. Tailwind's
-   --font-sans @theme below reads that same variable. No external
-   Google Fonts request happens at runtime. */
+/* DM Sans is self-hosted via `next/font/local` in src/app/layout.tsx
+   (files in src/app/fonts), which writes the --font-sans CSS variable on
+   <html>. Tailwind's --font-sans @theme below reads that same variable.
+   No Google Fonts request happens at build time or at runtime. */
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
