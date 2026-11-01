@@ -37,6 +37,13 @@ export default function TermsPage() {
               automobiles en Algérie. En utilisant la plateforme, vous
               acceptez les présentes conditions.
             </p>
+            <p className="mt-2">
+              La plateforme est éditée et exploitée par SHYFTCOM LLC
+              (AutoDex), Limited Liability Company du Nouveau-Mexique
+              (États-Unis), dont le siège est situé 102 Gold Ave SW,
+              Albuquerque, NM 87102, United States. Contact :
+              contact@autodex.store.
+            </p>
           </section>
 
           <section>
@@ -214,18 +221,27 @@ export default function TermsPage() {
               Pour toute question relative aux présentes conditions, vous
               pouvez nous écrire à{' '}
               <a
-                href="mailto:shytfcom@autodex.store"
+                href="mailto:contact@autodex.store"
                 className="text-indigo-600 dark:text-indigo-400 hover:underline"
               >
-                shytfcom@autodex.store
+                contact@autodex.store
               </a>
               .
             </p>
           </section>
         </div>
 
-        <footer className="mt-16 pt-8 border-t border-zinc-200 dark:border-zinc-800 text-center text-[10px] font-bold uppercase tracking-[0.3em] text-zinc-500">
-          &copy; 2026 AutoDex CRM
+        <footer className="mt-16 pt-8 border-t border-zinc-200 dark:border-zinc-800 text-center">
+          <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-zinc-500">
+            &copy; 2026 AutoDex CRM
+          </p>
+          <p className="mt-3 text-xs text-zinc-500">
+            AutoDex est un produit de SHYFTCOM LLC — 102 Gold Ave SW,
+            Albuquerque, NM 87102, USA — contact@autodex.store ·{' '}
+            <Link href="/mentions-legales" className="underline underline-offset-2">
+              Mentions légales
+            </Link>
+          </p>
         </footer>
       </div>
     </main>

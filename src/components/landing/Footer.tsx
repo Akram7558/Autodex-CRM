@@ -38,9 +38,9 @@ export default function Footer() {
     {
       titleKey: 'footer.product',
       items: [
-        { href: '#features', labelKey: 'footer.link.features' },
-        { href: '#tarifs',   labelKey: 'footer.link.pricing' },
-        { href: '#faq',      labelKey: 'footer.link.faq' },
+        { href: '/#features', labelKey: 'footer.link.features' },
+        { href: '/#tarifs',  labelKey: 'footer.link.pricing' },
+        { href: '/#faq',     labelKey: 'footer.link.faq' },
         { href: '/s/exemple', labelKey: 'footer.link.catalog' },
       ],
     },
@@ -58,6 +58,7 @@ export default function Footer() {
       items: [
         { href: '/privacy', labelKey: 'footer.link.privacy' },
         { href: '/terms',   labelKey: 'footer.link.terms' },
+        { href: '/mentions-legales', labelKey: 'footer.link.mentions' },
         { href: '#',        labelKey: 'footer.link.cookies' },
       ],
     },
@@ -136,6 +137,21 @@ export default function Footer() {
           className="mt-12 pt-8 border-t flex flex-wrap items-center justify-between gap-4"
           style={{ borderColor: 'var(--border)' }}
         >
+          {/* Legal entity disclosure (operator of autodex.store). */}
+          <p
+            className="w-full text-xs leading-relaxed"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            {t('footer.legal_entity')}
+            {' · '}
+            <Link
+              href="/mentions-legales"
+              className="underline underline-offset-2"
+              style={{ color: 'var(--text-secondary)' }}
+            >
+              {t('footer.link.mentions')}
+            </Link>
+          </p>
           <p
             className="text-xs"
             style={{ color: 'var(--text-muted)' }}
